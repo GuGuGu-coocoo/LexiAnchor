@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 
 import { normalizeProgress } from '@lexianchor/domain';
 import type { RecentBook } from '@lexianchor/domain';
@@ -10,7 +10,15 @@ import {
   type MessageKey,
 } from '@lexianchor/i18n';
 import type { PlatformBridge } from '@lexianchor/platform';
-import type { ReaderSource } from '@lexianchor/reader-core';
+import type { ReaderLocator, ReaderSource } from '@lexianchor/reader-core';
+import {
+  OpfsContentStore,
+  sha256,
+  SqliteBookRepository,
+  type BookRecord,
+  type ReadingProgressRecord,
+  type StorageStatus,
+} from '@lexianchor/storage';
 import { epubSpikeUrl, pdfScanUrl, pdfTextUrl } from '@lexianchor/test-fixtures';
 import '@lexianchor/ui/styles.css';
 
@@ -20,6 +28,17 @@ type IconName = Section | 'expand' | 'lock' | 'book-open';
 
 export interface AppProps {
   readonly platform: PlatformBridge;
+}
+
+interface LibraryEntry {
+  readonly book: BookRecord;
+  readonly progress: ReadingProgressRecord | null;
+}
+
+interface OpenBookSession {
+  readonly source: ReaderSource;
+  readonly bookId?: string;
+  readonly initialLocator?: ReaderLocator;
 }
 
 const demoRecentBook: RecentBook = {
@@ -59,6 +78,44 @@ const ReaderPage = lazy(() =>
   import('./reader-page').then((module) => ({ default: module.ReaderPage })),
 );
 
+let bookRepository: SqliteBookRepository | undefined;
+const contentStore = new OpfsContentStore();
+
+function repository(): SqliteBookRepository {
+  bookRepository ??= new SqliteBookRepository();
+  return bookRepository;
+}
+
+async function loadLibrary(): Promise<LibraryEntry[]> {
+  const books = await repository().listBooks();
+  return Promise.all(
+    books.map(async (book) => ({
+      book,
+      progress: await repository().getProgress(book.id),
+    })),
+  );
+}
+
+function deviceId(): string {
+  const key = 'lexianchor:device-id';
+  const stored = globalThis.localStorage?.getItem(key);
+
+  if (stored) {
+    return stored;
+  }
+
+  const id = crypto.randomUUID();
+  globalThis.localStorage?.setItem(key, id);
+  return id;
+}
+
+function originalFileName(book: BookRecord): string {
+  const storedName = book.metadata.originalFileName;
+  return typeof storedName === 'string'
+    ? storedName
+    : `${book.title}.${book.format === 'pdf' ? 'pdf' : 'epub'}`;
+}
+
 function readStoredLocale(): Locale {
   const stored = globalThis.localStorage?.getItem('lexianchor:locale');
   return supportedLocales.find((locale) => locale === stored) ?? detectSystemLocale();
@@ -77,8 +134,10 @@ export function App({ platform }: AppProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [appVersion, setAppVersion] = useState('0.1.0');
   const [statusMessage, setStatusMessage] = useState('');
-  const [openBook, setOpenBook] = useState<ReaderSource | null>(null);
-  const t = (key: MessageKey) => translate(locale, key);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus>();
+  const [library, setLibrary] = useState<LibraryEntry[]>([]);
+  const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
+  const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -107,6 +166,134 @@ export function App({ platform }: AppProps) {
     };
   }, [platform]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    void repository()
+      .initialize()
+      .then(async (nextStatus) => {
+        document.documentElement.dataset.storage = nextStatus.persistence;
+        const entries = await loadLibrary();
+
+        if (isActive) {
+          setStorageStatus(nextStatus);
+          setLibrary(entries);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setStatusMessage(error instanceof Error ? error.message : String(error));
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const refreshLibrary = useCallback(async () => {
+    setLibrary(await loadLibrary());
+  }, []);
+
+  const openStoredBook = useCallback(async (entry: LibraryEntry) => {
+    try {
+      const data = await contentStore.get(entry.book.contentRef);
+
+      if (!data) {
+        throw new Error('The local book file is missing.');
+      }
+
+      setOpenBook({
+        source: {
+          data,
+          name: originalFileName(entry.book),
+          format: entry.book.format,
+        },
+        bookId: entry.book.id,
+        initialLocator: entry.progress?.locator,
+      });
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const importBook = useCallback(
+    async (file: File) => {
+      try {
+        setStatusMessage(t('importingBook'));
+        const format = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'epub';
+        const data = await file.arrayBuffer();
+        const hash = await sha256(data);
+        const now = new Date().toISOString();
+        const title = file.name.replace(/\.(epub|pdf)$/i, '') || file.name;
+        const book: BookRecord = {
+          id: `book-${hash}`,
+          title,
+          author: '',
+          format,
+          language: null,
+          coverRef: null,
+          contentRef: hash,
+          contentHash: hash,
+          fileSize: data.byteLength,
+          importedAt: now,
+          lastOpenedAt: now,
+          metadata: {
+            originalFileName: file.name,
+            mimeType: file.type,
+          },
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+          version: 1,
+        };
+
+        await contentStore.put(hash, data);
+        await repository().saveBook(book);
+        await refreshLibrary();
+        setStatusMessage(t('bookSaved'));
+        setOpenBook({
+          source: { data, name: file.name, format },
+          bookId: book.id,
+        });
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [refreshLibrary, t],
+  );
+
+  const persistLocation = useCallback(
+    (locator: ReaderLocator, percentage: number) => {
+      const bookId = openBook?.bookId;
+
+      if (!bookId) {
+        return;
+      }
+
+      const updatedAt = new Date().toISOString();
+      void repository()
+        .saveProgress({
+          id: `progress-${bookId}`,
+          bookId,
+          locator,
+          percentage: normalizeProgress(percentage),
+          updatedAt,
+          deviceId: deviceId(),
+          version: 1,
+        })
+        .catch((error: unknown) =>
+          setStatusMessage(error instanceof Error ? error.message : String(error)),
+        );
+    },
+    [openBook?.bookId],
+  );
+
+  const closeReader = useCallback(() => {
+    setOpenBook(null);
+    void refreshLibrary();
+  }, [refreshLibrary]);
+
   async function toggleFullscreen() {
     setStatusMessage('');
 
@@ -131,10 +318,12 @@ export function App({ platform }: AppProps) {
     return (
       <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
         <ReaderPage
-          key={`${openBook.format}:${openBook.name}`}
-          source={openBook}
+          key={`${openBook.source.format}:${openBook.source.name}`}
+          source={openBook.source}
+          initialLocator={openBook.initialLocator}
           t={t}
-          onClose={() => setOpenBook(null)}
+          onClose={closeReader}
+          onLocationChange={persistLocation}
         />
       </Suspense>
     );
@@ -206,7 +395,11 @@ export function App({ platform }: AppProps) {
             <Icon name="lock" className="nav-icon" />
             {t('localOnly')}
           </p>
-          <p className="privacy-copy">{t('privateByDefault')}</p>
+          <p className="privacy-copy">
+            {storageStatus?.persistence === 'memory'
+              ? t('temporaryStorage')
+              : t('privateByDefault')}
+          </p>
         </div>
       </aside>
 
@@ -218,10 +411,18 @@ export function App({ platform }: AppProps) {
             platform={platform}
             t={t}
             onToggleFullscreen={toggleFullscreen}
-            onOpenBook={setOpenBook}
+            library={library}
+            onOpenSample={(source) => setOpenBook({ source })}
+            onOpenStored={openStoredBook}
           />
         ) : activeSection === 'library' ? (
-          <LibraryPage t={t} onOpenBook={setOpenBook} />
+          <LibraryPage
+            library={library}
+            t={t}
+            onImportBook={importBook}
+            onOpenSample={(source) => setOpenBook({ source })}
+            onOpenStored={openStoredBook}
+          />
         ) : (
           <EmptyPage t={t} />
         )}
@@ -239,7 +440,9 @@ interface HomePageProps {
   readonly platform: PlatformBridge;
   readonly t: (key: MessageKey) => string;
   readonly onToggleFullscreen: () => Promise<void>;
-  readonly onOpenBook: (source: ReaderSource) => void;
+  readonly library: readonly LibraryEntry[];
+  readonly onOpenSample: (source: ReaderSource) => void;
+  readonly onOpenStored: (entry: LibraryEntry) => Promise<void>;
 }
 
 function HomePage({
@@ -248,7 +451,9 @@ function HomePage({
   platform,
   t,
   onToggleFullscreen,
-  onOpenBook,
+  library,
+  onOpenSample,
+  onOpenStored,
 }: HomePageProps) {
   const progress = normalizeProgress(demoRecentBook.progressPercent);
 
@@ -272,40 +477,60 @@ function HomePage({
 
       <div className="section-heading">
         <h2 className="section-title">{t('continueReading')}</h2>
-        <span className="section-meta">{t('sampleData')}</span>
+        <span className="section-meta">
+          {library.length > 0 ? t('savedOnDevice') : t('sampleData')}
+        </span>
       </div>
 
       <div className="book-grid">
-        <article className="book-card">
-          <div className="book-cover" aria-hidden="true">
-            A
-          </div>
-          <div className="book-details">
-            <div className="book-badges">
-              <span className="badge">{demoRecentBook.format}</span>
-              <span className="badge">{t('sampleData')}</span>
+        {library.length > 0 ? (
+          library
+            .slice(0, 8)
+            .map((entry) => (
+              <StoredBookCard
+                key={entry.book.id}
+                entry={entry}
+                headingLevel={3}
+                t={t}
+                onOpen={() => void onOpenStored(entry)}
+              />
+            ))
+        ) : (
+          <article className="book-card">
+            <div className="book-cover" aria-hidden="true">
+              A
             </div>
-            <h3 className="book-title">{demoRecentBook.title}</h3>
-            <p className="book-author">{demoRecentBook.author}</p>
-            <div className="progress-row">
-              <span>{t('progress')}</span>
-              <span>{progress}%</span>
+            <div className="book-details">
+              <div className="book-badges">
+                <span className="badge">{demoRecentBook.format}</span>
+                <span className="badge">{t('sampleData')}</span>
+              </div>
+              <h3 className="book-title">{demoRecentBook.title}</h3>
+              <p className="book-author">{demoRecentBook.author}</p>
+              <div className="progress-row">
+                <span>{t('progress')}</span>
+                <span>{progress}%</span>
+              </div>
+              <div
+                className="progress-track"
+                role="progressbar"
+                aria-label={t('progress')}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress}
+              >
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <button
+                className="book-action"
+                type="button"
+                onClick={() => onOpenSample(sampleEpub)}
+              >
+                {t('openBook')} →
+              </button>
             </div>
-            <div
-              className="progress-track"
-              role="progressbar"
-              aria-label={t('progress')}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progress}
-            >
-              <div className="progress-fill" style={{ width: `${progress}%` }} />
-            </div>
-            <button className="book-action" type="button" onClick={() => onOpenBook(sampleEpub)}>
-              {t('openBook')} →
-            </button>
-          </div>
-        </article>
+          </article>
+        )}
       </div>
 
       <article className="foundation-card">
@@ -328,21 +553,20 @@ function HomePage({
 }
 
 interface LibraryPageProps {
+  readonly library: readonly LibraryEntry[];
   readonly t: (key: MessageKey) => string;
-  readonly onOpenBook: (source: ReaderSource) => void;
+  readonly onImportBook: (file: File) => Promise<void>;
+  readonly onOpenSample: (source: ReaderSource) => void;
+  readonly onOpenStored: (entry: LibraryEntry) => Promise<void>;
 }
 
-function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
-  async function importBook(file: File | undefined) {
+function LibraryPage({ library, t, onImportBook, onOpenSample, onOpenStored }: LibraryPageProps) {
+  function importBook(file: File | undefined) {
     if (!file) {
       return;
     }
 
-    onOpenBook({
-      data: await file.arrayBuffer(),
-      name: file.name,
-      format: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'epub',
-    });
+    void onImportBook(file);
   }
 
   return (
@@ -367,10 +591,33 @@ function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
             onChange={(event) => void importBook(event.target.files?.[0])}
           />
         </label>
-        <button className="button" type="button" onClick={() => onOpenBook(sampleEpub)}>
+        <button className="button" type="button" onClick={() => onOpenSample(sampleEpub)}>
           {t('openSampleBook')}
         </button>
       </div>
+
+      {library.length > 0 ? (
+        <>
+          <div className="section-heading">
+            <h2 className="section-title">{t('savedOnDevice')}</h2>
+            <span className="section-meta">{library.length}</span>
+          </div>
+          <div className="book-grid saved-book-grid">
+            {library.map((entry) => (
+              <StoredBookCard
+                key={entry.book.id}
+                entry={entry}
+                headingLevel={2}
+                t={t}
+                onOpen={() => void onOpenStored(entry)}
+              />
+            ))}
+          </div>
+          <div className="section-heading sample-section-heading">
+            <h2 className="section-title">{t('testBooks')}</h2>
+          </div>
+        </>
+      ) : null}
 
       <div className="book-grid">
         <article className="book-card">
@@ -385,7 +632,7 @@ function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
             <h2 className="book-title">Anchored Reading</h2>
             <p className="book-author">LexiAnchor</p>
             <p className="fixture-description">{t('sampleBookDescription')}</p>
-            <button className="book-action" type="button" onClick={() => onOpenBook(sampleEpub)}>
+            <button className="book-action" type="button" onClick={() => onOpenSample(sampleEpub)}>
               {t('openBook')} →
             </button>
           </div>
@@ -403,7 +650,11 @@ function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
             <h2 className="book-title">Anchored Pages</h2>
             <p className="book-author">LexiAnchor</p>
             <p className="fixture-description">{t('sampleTextPdfDescription')}</p>
-            <button className="book-action" type="button" onClick={() => onOpenBook(sampleTextPdf)}>
+            <button
+              className="book-action"
+              type="button"
+              onClick={() => onOpenSample(sampleTextPdf)}
+            >
               {t('openBook')} →
             </button>
           </div>
@@ -421,13 +672,71 @@ function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
             <h2 className="book-title">Image-only Sample</h2>
             <p className="book-author">LexiAnchor</p>
             <p className="fixture-description">{t('sampleScanPdfDescription')}</p>
-            <button className="book-action" type="button" onClick={() => onOpenBook(sampleScanPdf)}>
+            <button
+              className="book-action"
+              type="button"
+              onClick={() => onOpenSample(sampleScanPdf)}
+            >
               {t('openBook')} →
             </button>
           </div>
         </article>
       </div>
     </section>
+  );
+}
+
+interface StoredBookCardProps {
+  readonly entry: LibraryEntry;
+  readonly headingLevel: 2 | 3;
+  readonly t: (key: MessageKey) => string;
+  readonly onOpen: () => void;
+}
+
+function StoredBookCard({ entry, headingLevel, t, onOpen }: StoredBookCardProps) {
+  const progress = normalizeProgress(entry.progress?.percentage ?? 0);
+  const title = entry.book.title;
+  const titleElement =
+    headingLevel === 2 ? (
+      <h2 className="book-title">{title}</h2>
+    ) : (
+      <h3 className="book-title">{title}</h3>
+    );
+
+  return (
+    <article className="book-card" data-book-id={entry.book.id}>
+      <div
+        className={`book-cover${entry.book.format === 'pdf' ? ' pdf-cover' : ''}`}
+        aria-hidden="true"
+      >
+        {title.trim().charAt(0).toUpperCase() || 'B'}
+      </div>
+      <div className="book-details">
+        <div className="book-badges">
+          <span className="badge">{entry.book.format.toUpperCase()}</span>
+          <span className="badge">{t('savedOnDevice')}</span>
+        </div>
+        {titleElement}
+        <p className="book-author">{entry.book.author || t('unknownAuthor')}</p>
+        <div className="progress-row">
+          <span>{t('progress')}</span>
+          <span>{progress}%</span>
+        </div>
+        <div
+          className="progress-track"
+          role="progressbar"
+          aria-label={`${title} · ${t('progress')}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress}
+        >
+          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+        <button className="book-action" type="button" onClick={onOpen}>
+          {t('openBook')} →
+        </button>
+      </div>
+    </article>
   );
 }
 

@@ -386,6 +386,14 @@ button {
   gap: 16px;
 }
 
+.saved-book-grid {
+  margin-bottom: 32px;
+}
+
+.sample-section-heading {
+  margin-top: 4px;
+}
+
 .book-card {
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
@@ -803,9 +811,21 @@ button {
   z-index: 1;
 }
 
-.pdf-text-layer lexi-anchor {
+.pdf-focus-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pdf-focus-prefix {
+  position: absolute;
   color: #173f32;
   font-weight: 800;
+  transform-origin: left top;
+  white-space: pre;
 }
 
 .pdf-page-jump {

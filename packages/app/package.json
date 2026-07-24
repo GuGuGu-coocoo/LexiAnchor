@@ -16,6 +16,7 @@
     "@lexianchor/reader-core": "workspace:*",
     "@lexianchor/reader-epub": "workspace:*",
     "@lexianchor/reader-pdf": "workspace:*",
+    "@lexianchor/storage": "workspace:*",
     "@lexianchor/test-fixtures": "workspace:*",
     "@lexianchor/ui": "workspace:*",
     "react": "19.2.8"

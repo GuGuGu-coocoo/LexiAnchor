@@ -1,0 +1,19 @@
+{
+  "name": "@lexianchor/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lexianchor/reader-core": "workspace:*",
+    "@sqlite.org/sqlite-wasm": "3.53.0-build1"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

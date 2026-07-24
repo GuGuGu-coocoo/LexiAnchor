@@ -58,39 +58,60 @@ function sentenceForSelection(pageText: string, selectedText: string): string {
   return pageText.slice(Math.max(0, index - 100), index + selectedText.length + 100).trim();
 }
 
-function applyFocusMarkup(textLayer: HTMLElement): void {
+function applyFocusMarkup(textLayer: HTMLElement, pageElement: HTMLElement): void {
   const wordPattern = /([A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?)/g;
+  const overlay = textLayer.ownerDocument.createElement('div');
+  const pageRect = pageElement.getBoundingClientRect();
+
+  overlay.className = 'pdf-focus-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  pageElement.append(overlay);
 
   for (const textSpan of textLayer.querySelectorAll<HTMLElement>('span')) {
-    if (textSpan.closest('.markedContent') !== textSpan.parentElement && textSpan.children.length) {
+    if (textSpan.children.length > 0) {
       continue;
     }
 
-    const original = textSpan.textContent ?? '';
-    const parts = original.split(wordPattern);
+    const textNode = [...textSpan.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
+    const original = textNode?.textContent ?? '';
+    const computedStyle = textSpan.ownerDocument.defaultView?.getComputedStyle(textSpan);
 
-    if (parts.length === 1) {
+    if (!textNode || !computedStyle) {
       continue;
     }
 
-    const fragment = textSpan.ownerDocument.createDocumentFragment();
+    for (const match of original.matchAll(wordPattern)) {
+      const word = match[0];
+      const start = match.index;
+      const prefixLength = word.length <= 3 ? 1 : Math.ceil(word.length * 0.45);
+      const range = textSpan.ownerDocument.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + prefixLength);
+      const rangeRect = range.getBoundingClientRect();
 
-    for (const part of parts) {
-      wordPattern.lastIndex = 0;
-
-      if (!wordPattern.test(part)) {
-        fragment.append(part);
+      if (rangeRect.width <= 0 || rangeRect.height <= 0) {
         continue;
       }
 
-      const prefixLength = part.length <= 3 ? 1 : Math.ceil(part.length * 0.45);
-      const anchor = textSpan.ownerDocument.createElement('lexi-anchor');
+      const anchor = textSpan.ownerDocument.createElement('span');
+      anchor.className = 'pdf-focus-prefix';
       anchor.dataset.lexianchorFocus = 'anchor';
-      anchor.textContent = part.slice(0, prefixLength);
-      fragment.append(anchor, part.slice(prefixLength));
-    }
+      anchor.textContent = word.slice(0, prefixLength);
+      anchor.style.left = `${rangeRect.left - pageRect.left}px`;
+      anchor.style.top = `${rangeRect.top - pageRect.top}px`;
+      anchor.style.fontFamily = computedStyle.fontFamily;
+      anchor.style.fontSize = computedStyle.fontSize;
+      anchor.style.fontStyle = computedStyle.fontStyle;
+      anchor.style.letterSpacing = computedStyle.letterSpacing;
+      anchor.style.lineHeight = `${rangeRect.height}px`;
+      anchor.style.height = `${rangeRect.height}px`;
+      overlay.append(anchor);
 
-    textSpan.replaceChildren(fragment);
+      const naturalWidth = anchor.getBoundingClientRect().width;
+      if (naturalWidth > 0) {
+        anchor.style.transform = `scaleX(${rangeRect.width / naturalWidth})`;
+      }
+    }
   }
 }
 
@@ -189,6 +210,7 @@ export class PdfJsReaderEngine {
       pageElement.className = 'pdf-page';
       pageElement.style.width = `${viewport.width}px`;
       pageElement.style.height = `${viewport.height}px`;
+      pageElement.style.setProperty('--total-scale-factor', String(scale));
       pageElement.setAttribute('aria-label', `Page ${safePageNumber} of ${document.numPages}`);
 
       canvas.className = 'pdf-canvas';
@@ -228,7 +250,7 @@ export class PdfJsReaderEngine {
         await this.textLayer.render();
 
         if (focusMode) {
-          applyFocusMarkup(textLayerElement);
+          applyFocusMarkup(textLayerElement, pageElement);
           textLayerElement.dataset.focusMode = 'on';
         }
 

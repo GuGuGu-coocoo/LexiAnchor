@@ -1,0 +1,247 @@
+/// <reference lib="webworker" />
+
+import sqlite3InitModule, { type Database } from '@sqlite.org/sqlite-wasm';
+
+import type { DatabaseRequest, DatabaseResponse } from './protocol';
+import { applyMigrations } from './schema';
+import type { BookRecord, ReadingProgressRecord, StorageStatus } from './types';
+
+interface BookRow {
+  readonly id: string;
+  readonly title: string;
+  readonly author: string;
+  readonly format: 'epub' | 'pdf';
+  readonly language: string | null;
+  readonly cover_ref: string | null;
+  readonly content_ref: string;
+  readonly content_hash: string;
+  readonly file_size: number;
+  readonly imported_at: string;
+  readonly last_opened_at: string | null;
+  readonly metadata_json: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly deleted_at: string | null;
+  readonly version: number;
+}
+
+interface ProgressRow {
+  readonly id: string;
+  readonly book_id: string;
+  readonly locator_json: string;
+  readonly percentage: number;
+  readonly updated_at: string;
+  readonly device_id: string;
+  readonly version: number;
+}
+
+interface DatabaseContext {
+  readonly db: Database;
+  readonly status: StorageStatus;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function createDatabase(): Promise<DatabaseContext> {
+  const sqlite3 = await sqlite3InitModule();
+  let db: Database;
+  let persistence: StorageStatus['persistence'] = 'memory';
+
+  try {
+    const pool = await sqlite3.installOpfsSAHPoolVfs({
+      name: 'lexianchor-sahpool',
+      directory: '/lexianchor/sqlite',
+      initialCapacity: 6,
+    });
+    db = new pool.OpfsSAHPoolDb('/lexianchor.sqlite3');
+    persistence = 'opfs-sahpool';
+  } catch (error) {
+    console.warn(
+      'Persistent SQLite is unavailable; using an in-memory database.',
+      errorMessage(error),
+    );
+    db = new sqlite3.oo1.DB(':memory:', 'c');
+  }
+
+  applyMigrations(db);
+  return {
+    db,
+    status: {
+      sqliteVersion: sqlite3.version.libVersion,
+      persistence,
+    },
+  };
+}
+
+function mapBook(row: BookRow): BookRecord {
+  return {
+    id: row.id,
+    title: row.title,
+    author: row.author,
+    format: row.format,
+    language: row.language,
+    coverRef: row.cover_ref,
+    contentRef: row.content_ref,
+    contentHash: row.content_hash,
+    fileSize: row.file_size,
+    importedAt: row.imported_at,
+    lastOpenedAt: row.last_opened_at,
+    metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    version: row.version,
+  };
+}
+
+function mapProgress(row: ProgressRow): ReadingProgressRecord {
+  const locator: unknown = JSON.parse(row.locator_json);
+
+  return {
+    id: row.id,
+    bookId: row.book_id,
+    locator: locator as ReadingProgressRecord['locator'],
+    percentage: row.percentage,
+    updatedAt: row.updated_at,
+    deviceId: row.device_id,
+    version: row.version,
+  };
+}
+
+const contextPromise = createDatabase();
+
+async function handleRequest(request: DatabaseRequest) {
+  const context = await contextPromise;
+
+  switch (request.type) {
+    case 'initialize':
+      return context.status;
+    case 'list-books': {
+      const rows = context.db.exec({
+        sql: `
+          SELECT * FROM books
+          WHERE deleted_at IS NULL
+          ORDER BY COALESCE(last_opened_at, imported_at) DESC, title COLLATE NOCASE
+        `,
+        rowMode: 'object',
+        returnValue: 'resultRows',
+      }) as unknown as BookRow[];
+      return rows.map(mapBook);
+    }
+    case 'save-book': {
+      const book = request.book;
+      context.db.exec({
+        sql: `
+          INSERT INTO books (
+            id, title, author, format, language, cover_ref, content_ref, content_hash,
+            file_size, imported_at, last_opened_at, metadata_json, created_at, updated_at,
+            deleted_at, version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            author = excluded.author,
+            language = excluded.language,
+            cover_ref = excluded.cover_ref,
+            last_opened_at = excluded.last_opened_at,
+            metadata_json = excluded.metadata_json,
+            updated_at = excluded.updated_at,
+            deleted_at = excluded.deleted_at,
+            version = excluded.version
+        `,
+        bind: [
+          book.id,
+          book.title,
+          book.author,
+          book.format,
+          book.language,
+          book.coverRef,
+          book.contentRef,
+          book.contentHash,
+          book.fileSize,
+          book.importedAt,
+          book.lastOpenedAt,
+          JSON.stringify(book.metadata),
+          book.createdAt,
+          book.updatedAt,
+          book.deletedAt,
+          book.version,
+        ],
+      });
+      return undefined;
+    }
+    case 'get-progress': {
+      const rows = context.db.exec({
+        sql: 'SELECT * FROM reading_progress WHERE book_id = ? LIMIT 1',
+        bind: [request.bookId],
+        rowMode: 'object',
+        returnValue: 'resultRows',
+      }) as unknown as ProgressRow[];
+      return rows[0] ? mapProgress(rows[0]) : null;
+    }
+    case 'save-progress': {
+      const progress = request.progress;
+      context.db.exec('BEGIN IMMEDIATE');
+
+      try {
+        context.db.exec({
+          sql: `
+            INSERT INTO reading_progress (
+              id, book_id, locator_json, percentage, updated_at, device_id, version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(book_id) DO UPDATE SET
+              locator_json = excluded.locator_json,
+              percentage = excluded.percentage,
+              updated_at = excluded.updated_at,
+              device_id = excluded.device_id,
+              version = reading_progress.version + 1
+          `,
+          bind: [
+            progress.id,
+            progress.bookId,
+            JSON.stringify(progress.locator),
+            progress.percentage,
+            progress.updatedAt,
+            progress.deviceId,
+            progress.version,
+          ],
+        });
+        context.db.exec({
+          sql: `
+            UPDATE books
+            SET last_opened_at = ?, updated_at = ?, version = version + 1
+            WHERE id = ? AND deleted_at IS NULL
+          `,
+          bind: [progress.updatedAt, progress.updatedAt, progress.bookId],
+        });
+        context.db.exec('COMMIT');
+      } catch (error) {
+        context.db.exec('ROLLBACK');
+        throw error;
+      }
+      return undefined;
+    }
+    case 'close':
+      context.db.close();
+      return undefined;
+  }
+}
+
+self.addEventListener('message', (event: MessageEvent<DatabaseRequest>) => {
+  const request = event.data;
+
+  void handleRequest(request)
+    .then((result) => {
+      const response: DatabaseResponse = { id: request.id, ok: true, result };
+      self.postMessage(response);
+    })
+    .catch((error: unknown) => {
+      const response: DatabaseResponse = {
+        id: request.id,
+        ok: false,
+        error: errorMessage(error),
+      };
+      self.postMessage(response);
+    });
+});

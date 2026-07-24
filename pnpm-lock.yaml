@@ -165,6 +165,9 @@ importers:
       '@lexianchor/reader-pdf':
         specifier: workspace:*
         version: link:../reader-pdf
+      '@lexianchor/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@lexianchor/test-fixtures':
         specifier: workspace:*
         version: link:../test-fixtures
@@ -243,6 +246,19 @@ importers:
       '@readium/shared':
         specifier: 2.3.0
         version: 2.3.0
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/storage:
+    dependencies:
+      '@lexianchor/reader-core':
+        specifier: workspace:*
+        version: link:../reader-core
+      '@sqlite.org/sqlite-wasm':
+        specifier: 3.53.0-build1
+        version: 3.53.0-build1
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -1455,6 +1471,10 @@ packages:
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
+
+  '@sqlite.org/sqlite-wasm@3.53.0-build1':
+    resolution: {integrity: sha512-PfWPWN2n+/37doa8oh2/oUXk4OOsRYZsxc1W1sDXIGb/Pu5Yrb+f2eyYpgQMGITVX7HVgxhs9P18Rc6I97ym/g==}
+    engines: {node: '>=22'}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -5593,6 +5613,8 @@ snapshots:
     optional: true
 
   '@sindresorhus/is@4.6.0': {}
+
+  '@sqlite.org/sqlite-wasm@3.53.0-build1': {}
 
   '@standard-schema/spec@1.1.0': {}
 

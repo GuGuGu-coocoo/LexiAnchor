@@ -17,8 +17,10 @@ const PdfReaderPage = lazy(async () => {
 
 interface ReaderPageProps {
   readonly source: ReaderSource;
+  readonly initialLocator?: ReaderLocator;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
 }
 
 function storageKey(source: ReaderSource): string {
@@ -59,7 +61,7 @@ export function ReaderPage(props: ReaderPageProps) {
   return <EpubReaderPage {...props} />;
 }
 
-function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
+function EpubReaderPage({ source, initialLocator, t, onClose, onLocationChange }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
@@ -88,6 +90,10 @@ function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
 
         setLocator(nextLocator);
         globalThis.localStorage?.setItem(storageKey(source), JSON.stringify(nextLocator));
+        onLocationChange?.(
+          nextLocator,
+          Math.round((nextLocator.totalProgression ?? nextLocator.progression ?? 0) * 100),
+        );
       },
       onSelection: (nextSelection) => isActive && setSelection(nextSelection),
       onError: (readerError) => isActive && setError(readerError.message),
@@ -98,7 +104,7 @@ function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
     setError('');
 
     void engine
-      .open(container, source, readLocator(source))
+      .open(container, source, initialLocator ?? readLocator(source))
       .then(() => engine.setPreferences(initialPreferencesRef.current))
       .then(() => isActive && setIsLoading(false))
       .catch(() => isActive && setIsLoading(false));
@@ -108,7 +114,7 @@ function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
       engineRef.current = null;
       void engine.close();
     };
-  }, [source]);
+  }, [initialLocator, onLocationChange, source]);
 
   useEffect(() => {
     void engineRef.current
@@ -132,7 +138,12 @@ function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
   return (
     <section className="reader-page" aria-label={t('readerExperiment')}>
       <header className="reader-toolbar">
-        <button className="reader-icon-button" type="button" onClick={onClose}>
+        <button
+          className="reader-icon-button"
+          type="button"
+          aria-label={t('backToLibrary')}
+          onClick={onClose}
+        >
           <span aria-hidden="true">←</span>
           <span>{t('backToLibrary')}</span>
         </button>
@@ -144,6 +155,7 @@ function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
           <button
             className="reader-icon-button"
             type="button"
+            aria-label={t('previousPage')}
             onClick={() => void engineRef.current?.previous()}
           >
             <span aria-hidden="true">←</span>
@@ -152,6 +164,7 @@ function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
           <button
             className="reader-icon-button"
             type="button"
+            aria-label={t('nextPage')}
             onClick={() => void engineRef.current?.next()}
           >
             <span>{t('nextPage')}</span>

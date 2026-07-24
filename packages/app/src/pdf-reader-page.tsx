@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { MessageKey } from '@lexianchor/i18n';
-import type { ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
+import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
 import {
   PdfJsReaderEngine,
   type PdfDocumentInfo,
@@ -10,8 +10,10 @@ import {
 
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
+  readonly initialLocator?: ReaderLocator;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
 }
 
 interface StoredPdfView {
@@ -23,17 +25,17 @@ function storageKey(source: ReaderSource): string {
   return `lexianchor:pdf-view:${source.name}`;
 }
 
-function readStoredView(source: ReaderSource): StoredPdfView {
+function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): StoredPdfView {
   const stored = globalThis.localStorage?.getItem(storageKey(source));
 
   if (!stored) {
-    return { pageNumber: 1, scale: 1.15 };
+    return { pageNumber: initialLocator?.pageNumber ?? 1, scale: 1.15 };
   }
 
   try {
     const view = JSON.parse(stored) as Partial<StoredPdfView>;
     return {
-      pageNumber: Math.max(1, Math.floor(view.pageNumber ?? 1)),
+      pageNumber: Math.max(1, Math.floor(initialLocator?.pageNumber ?? view.pageNumber ?? 1)),
       scale: Math.min(2, Math.max(0.75, view.scale ?? 1.15)),
     };
   } catch {
@@ -41,10 +43,16 @@ function readStoredView(source: ReaderSource): StoredPdfView {
   }
 }
 
-export function PdfReaderPage({ source, t, onClose }: PdfReaderPageProps) {
+export function PdfReaderPage({
+  source,
+  initialLocator,
+  t,
+  onClose,
+  onLocationChange,
+}: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
-  const [initialView] = useState(() => readStoredView(source));
+  const [initialView] = useState(() => readStoredView(source, initialLocator));
   const [documentInfo, setDocumentInfo] = useState<PdfDocumentInfo>();
   const [pageResult, setPageResult] = useState<PdfPageResult>();
   const [pageNumber, setPageNumber] = useState(initialView.pageNumber);
@@ -105,6 +113,15 @@ export function PdfReaderPage({ source, t, onClose }: PdfReaderPageProps) {
           storageKey(source),
           JSON.stringify({ pageNumber: result.pageNumber, scale }),
         );
+        onLocationChange?.(
+          {
+            href: source.name,
+            pageNumber: result.pageNumber,
+            progression: result.pageNumber / result.pageCount,
+            totalProgression: result.pageNumber / result.pageCount,
+          },
+          Math.round((result.pageNumber / result.pageCount) * 100),
+        );
       })
       .catch((renderError: unknown) => {
         if (
@@ -121,7 +138,7 @@ export function PdfReaderPage({ source, t, onClose }: PdfReaderPageProps) {
     return () => {
       isActive = false;
     };
-  }, [documentInfo, focusMode, pageNumber, scale, source]);
+  }, [documentInfo, focusMode, onLocationChange, pageNumber, scale, source]);
 
   const pageCount = documentInfo?.pageCount ?? 0;
   const progress = pageCount > 0 ? Math.round((pageNumber / pageCount) * 100) : 0;
@@ -130,7 +147,12 @@ export function PdfReaderPage({ source, t, onClose }: PdfReaderPageProps) {
   return (
     <section className="reader-page" aria-label={t('pdfReader')}>
       <header className="reader-toolbar">
-        <button className="reader-icon-button" type="button" onClick={onClose}>
+        <button
+          className="reader-icon-button"
+          type="button"
+          aria-label={t('backToLibrary')}
+          onClick={onClose}
+        >
           <span aria-hidden="true">←</span>
           <span>{t('backToLibrary')}</span>
         </button>
@@ -144,6 +166,7 @@ export function PdfReaderPage({ source, t, onClose }: PdfReaderPageProps) {
           <button
             className="reader-icon-button"
             type="button"
+            aria-label={t('previousPage')}
             disabled={pageNumber <= 1}
             onClick={() => setPageNumber((current) => Math.max(1, current - 1))}
           >
@@ -153,6 +176,7 @@ export function PdfReaderPage({ source, t, onClose }: PdfReaderPageProps) {
           <button
             className="reader-icon-button"
             type="button"
+            aria-label={t('nextPage')}
             disabled={pageCount === 0 || pageNumber >= pageCount}
             onClick={() => setPageNumber((current) => Math.min(pageCount, current + 1))}
           >

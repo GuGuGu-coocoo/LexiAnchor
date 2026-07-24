@@ -138,7 +138,8 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
     name: /Focus emphasis|焦点加粗|Mise en évidence/,
   });
   await focusToggle.check();
-  await expect(textLayer.locator('lexi-anchor').first()).toBeVisible();
+  await expect(page.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();
+  await page.screenshot({ path: 'test-results/pdf-focus-reader.png', fullPage: true });
 
   const zoomControl = page.getByRole('slider', { name: /Zoom|缩放/ });
   await zoomControl.fill('1.5');
@@ -173,4 +174,83 @@ test('keeps an image-only PDF readable and disables text-only features', async (
   ).toBeDisabled();
 
   await page.screenshot({ path: 'test-results/pdf-image-only-reader.png', fullPage: true });
+});
+
+test('persists an imported book and its reading progress in local SQLite and OPFS', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-storage', 'opfs-sahpool');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-text.pdf'));
+
+  await expect(page.locator('.pdf-page')).toBeVisible();
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+
+  const savedBook = page
+    .locator('article[data-book-id]')
+    .filter({ hasText: 'lexianchor-text' })
+    .first();
+  await expect(savedBook).toBeVisible();
+  await expect(savedBook.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+  await page.screenshot({ path: 'test-results/library-persisted.png', fullPage: true });
+
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-storage', 'opfs-sahpool');
+  const recentBook = page
+    .locator('article[data-book-id]')
+    .filter({ hasText: 'lexianchor-text' })
+    .first();
+  await expect(recentBook).toBeVisible();
+  await expect(recentBook.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+  await recentBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+});
+
+test('restores an imported EPUB locator from SQLite after localStorage is cleared', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-spike.epub'));
+
+  let bookFrame = page.locator('.epub-container iframe').first().contentFrame();
+  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  const recentBook = page
+    .locator('article[data-book-id]')
+    .filter({ hasText: 'lexianchor-spike' })
+    .first();
+  await expect(recentBook).toBeVisible();
+  await recentBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+
+  bookFrame = page.locator('.epub-container iframe').first().contentFrame();
+  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+});
+
+test('keeps the PDF reader usable in a narrow window', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-text.pdf'));
+
+  await expect(page.locator('.pdf-canvas')).toBeVisible();
+  await expect(page.getByRole('slider', { name: /Zoom|缩放/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Next|下一页|Suivant/ })).toBeVisible();
+  await page.screenshot({ path: 'test-results/pdf-reader-narrow.png', fullPage: true });
 });
