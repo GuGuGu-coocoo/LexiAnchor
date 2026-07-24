@@ -98,12 +98,12 @@ v0.1 例外。后续大词典仍按架构基线转换为只读 SQLite。
 
 - 选择 FreeDict/WikDict `eng-zho` 2025.11.23，共 26,660 个源 headword；
 - 数据由 WikDict 从 Wiktionary 经 DBnary 自动生成，TEI header 明确为 CC-BY-SA-3.0；
-- 从 Debian FreeDict 团队 Salsa 仓库的固定 commit 通过 CORS API 下载，内容与 FreeDict
-  WikDict 下载文件通过固定大小与 SHA-256 校验，并与 FreeDict 2025.11.23 源码归档交叉审计；
-- manifest 记录版本、来源、许可证、12,535,861 字节大小和 SHA-256；
+- 从 WikDict 的浏览器可访问下载地址获取 TEI，并在写入前执行固定大小与 SHA-256 校验；
+- 下载文件与 FreeDict 2025.11.23 官方源码归档中的 TEI 交叉审计；
+- manifest 记录版本、来源、许可证、文件大小和 SHA-256；
 - 设置页提供安装、删除、启停、来源、许可证、顺序与自动生成质量警告；
 - 查询显示中文翻译和数据自带的英语释义；WordNet 仍保持默认第一顺序；
-- 完整资源中 24,225 个词条有可显示翻译，当前开发机完整解析约 177 ms；
+- 完整资源的覆盖度与解析耗时记录在资源 Spike 中；
 - Web 真实跨域下载、完整安装、OPFS 持久化和断网查询通过。
 
 ECDICT 不进入官方分发清单。尽管仓库标记 MIT，其 README 说明内容来自多类资料、抓取和
@@ -112,3 +112,14 @@ ECDICT 不进入官方分发清单。尽管仓库标记 MIT，其 README 说明�
 
 完整证据见
 [FreeDict/WikDict English–Chinese Spike](../spikes/0006-freedict-eng-zho.md)。
+
+## StarDict 用户导入实现结果
+
+v0.1 支持用户选择一组同名、未压缩的 `.ifo + .idx + .dict`。导入在独立 Web Worker
+中完成版本、元数据、词条数、索引大小、偏移边界、字段结构和 UTF-8 校验；通过后封装成单个
+本地包并写入 OPFS。校验失败发生在写入前，不替换当前已安装的用户词典。
+
+应用只提供通用格式能力，不代为获取或再分发用户数据；设置页明确说明内容与许可证由用户
+负责。压缩变体、64 位索引、二进制媒体和多本用户词典不属于 v0.1 兼容范围。
+
+完整证据见 [StarDict 用户词典导入 Spike](../spikes/0007-stardict-import.md)。

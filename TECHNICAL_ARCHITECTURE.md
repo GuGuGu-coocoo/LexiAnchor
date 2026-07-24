@@ -342,7 +342,7 @@ lexianchor-export.zip
 | --- | --- | --- | --- |
 | 英英 | Princeton WordNet 3.1 | 随应用分发 | 已实现并通过离线查询、许可与完整性验证 |
 | 英法 | FreeDict `eng-fra` 0.1.6 | 应用内按需下载 | 已实现，固定来源、大小与 SHA-256，支持卸载 |
-| 英汉 | FreeDict/WikDict `eng-zho` 2024.10.10 | 应用内按需下载 | 已实现，CC-BY-SA-3.0；自动生成质量提示 |
+| 英汉 | FreeDict/WikDict `eng-zho` 2025.11.23 | 应用内按需下载 | 已实现，CC-BY-SA-3.0；自动生成质量提示 |
 | 词根/词源补充 | Wiktionary/Kaikki 数据 | 独立可选包 | 需处理署名和 ShareAlike |
 
 不得将“仓库公开”视为数据可自由再分发。每个包必须携带：
@@ -362,10 +362,10 @@ WordNet 3.1 的内置基线保留上游有序 index/data 文件，通过字节�
 预缓存完整资源，Electron 使用相同构建资产。资源清单和完整声明分别保存在
 `packages/dictionary/resources` 与 `docs/licenses`。
 
-FreeDict `eng-fra` 0.1.6 与 FreeDict/WikDict `eng-zho` 2024.10.10 是 v0.1 的按需 TEI
+FreeDict `eng-fra` 0.1.6 与 FreeDict/WikDict `eng-zho` 2025.11.23 是 v0.1 的按需 TEI
 资源例外：应用从固定 upstream commit 下载，在写入 OPFS 前核对大小与 SHA-256，并验证能够
 解析出词条。安装后仅从 OPFS 读取，首次查询按会话解析并缓存索引。完整英法 8,799 词条在
-当前开发机约 43 ms；英汉 24,242 个源词条中 24,225 个有可显示翻译，解析约 177 ms。
+当前开发机约 43 ms；英汉资源包含 26,660 个源词条，完整解析性能由资源 Spike 持续记录。
 若后续双语包体积或数量继续增加，将解析迁移到 Worker 或在资源构建阶段转换为只读
 SQLite，上层 `DictionaryProvider` 无需变化。
 
@@ -375,7 +375,7 @@ ECDICT 仓库本身标记 MIT，但 README 描述其释义和音标由多种资�
 
 其他较大 LexiAnchor 官方词典仍统一转换为只读 SQLite 包。用户导入优先支持：
 
-1. StarDict；
+1. StarDict（v0.1 已支持未压缩 `.ifo + .idx + .dict`，后台校验后写入 OPFS）；
 2. LexiAnchor Dictionary Package；
 3. MDX/MDD 在 P1 调研。
 
@@ -385,6 +385,7 @@ ECDICT 仓库本身标记 MIT，但 README 描述其释义和音标由多种资�
 [WordNet 离线英英词典 Spike](./docs/spikes/0004-wordnet.md) 与
 [FreeDict 英法词典 Spike](./docs/spikes/0005-freedict-eng-fra.md) 以及
 [FreeDict/WikDict 英汉词典 Spike](./docs/spikes/0006-freedict-eng-zho.md)、
+[StarDict 用户词典导入 Spike](./docs/spikes/0007-stardict-import.md)、
 [ADR-0004](./docs/adr/0004-dictionaries-and-translation.md)。
 
 ## 10. 翻译架构
