@@ -7,7 +7,7 @@
 
 - PDF 使用 PDF.js display layer 构建自定义 viewer；
 - EPUB v0.1 使用 EPUB.js 0.3.93；
-- Reader Core 使用 adapter 隔离具体实现，产品 UI 不直接调用 EPUB.js；
+- Reader Core 使用 adapter 隔离具体实现，产品 UI 不直接调用 EPUB.js 或 PDF.js；
 - 默认禁用 EPUB 内脚本与弹窗；
 - Readium Web 保留为后续候选，不进入 v0.1 产品 bundle。
 
@@ -22,6 +22,17 @@
 - 浏览器端到端测试覆盖 EPUB 2 导入、EPUB 3 加载、选词、焦点加粗和位置恢复。
 
 完整证据见 [EPUB 阅读内核 Spike](../spikes/0001-epub-engine.md)。
+
+PDF.js 6.1.200 的 Spike 也已完成核心验证：
+
+- 文本型 PDF 的 canvas 与文本层正常显示；
+- 选词、原句、焦点加粗、75%–200% 缩放和页码恢复通过；
+- 英文、法语重音和中文夹具通过视觉与提取检查；
+- 扫描型 PDF 保持可见，并自动禁用选词能力；
+- PDF reader 与 worker 按需加载，不进入 Home/EPUB 首屏 bundle；
+- 尚未完成 100MB 级压力样本、annotation layer 和 Windows 实机验证。
+
+完整证据见 [PDF 阅读内核 Spike](../spikes/0002-pdf-engine.md)。
 
 ## 为什么暂不选 Readium Web
 
@@ -45,9 +56,12 @@ Readium 仍有明显优点：维护活跃、偏好与 locator 模型完整、无
 
 ## PDF 边界
 
+- 锁定 PDF.js 6.1.200，具体 API 只存在于 `@lexianchor/reader-pdf`；
+- 使用 display layer 构建自定义 viewer，不复制完整默认 viewer；
 - 保持原始版式；
 - 焦点加粗只作用于可用文本层；
 - 扫描 PDF 在 MVP 中降级为页面查看；
+- 当前只渲染可见页，并取消过期渲染任务；
 - 不修改原始 PDF。
 
 ## 重新评估触发条件

@@ -134,7 +134,8 @@ Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimenta
 
 - [x] EPUB 内核对比：选择 EPUB.js 0.3.93，见
       `docs/spikes/0001-epub-engine.md` 与 ADR-0003；
-- [ ] PDF.js 文本层；
+- [x] PDF.js 文本层与 PDF 核心阅读切片：见
+      `docs/spikes/0002-pdf-engine.md` 与 ADR-0003；100MB 压力验证仍待完成；
 - [ ] SQLite WASM + OPFS；
 - [ ] 词典包；
 - [ ] 本地翻译模型；
@@ -175,6 +176,8 @@ Phase 1 结束前不大规模开发阅读 UI。
 - E2E 覆盖导入到恢复。
 
 ### Phase 3：PDF 垂直切片
+
+核心路径已提前随 PDF Spike 完成；压力测试和 annotation layer 继续留在本阶段收尾。
 
 流程：
 

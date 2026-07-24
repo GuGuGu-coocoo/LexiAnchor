@@ -46,7 +46,7 @@ LexiAnchor 采用 TypeScript 优先的跨平台架构：
 | 桌面 | Electron | 已确定 | 内置 Chromium，降低跨平台渲染差异 |
 | 桌面打包 | Electron Forge | 已确定 | 生成 Windows/macOS 构建产物 |
 | Web | PWA | 已确定 | Service Worker 缓存应用壳与离线资源清单 |
-| PDF | PDF.js | 已确定 | 解析、渲染、文本层、选词 |
+| PDF | PDF.js 6.1.200 | 已确定（v0.1） | display layer、文本层、选词；通过 adapter 隔离 |
 | EPUB | EPUB.js 0.3.93 | 已确定（v0.1） | 本地文件直读；通过 adapter 隔离并保留 Readium 迁移能力 |
 | 数据库 | SQLite WASM | 已确定 | 桌面/Web 使用相同 schema 和迁移 |
 | 数据持久化 | OPFS | 已确定 | 数据库运行于 Worker；提供能力检测和导出 |
@@ -209,13 +209,16 @@ PDF.js 为确定选型，使用其 display layer 构建自定义阅读 UI：
 - 焦点加粗通过可撤销的文本层装饰实现；
 - 原始 PDF 不被修改。
 
-PDF Spike 必须验证：
+PDF 核心 Spike 已完成，证据记录在
+[PDF 阅读内核 Spike](./docs/spikes/0002-pdf-engine.md) 与
+[ADR-0003](./docs/adr/0003-reader-engines.md)：
 
-- 文本层与视觉页面对齐；
-- 缩放后选区稳定；
-- 中英文混排；
-- 无文本层降级；
-- 100MB 级文档的内存和首屏时间。
+- 文本层与视觉页面对齐通过；
+- 150% 缩放、选词、焦点加粗和进度恢复通过；
+- 中文、英文和法语重音字符通过；
+- 无文本层页面按图片显示并禁用选词；
+- 当前只渲染可见页，PDF reader 与 worker 按需加载；
+- 100MB 级文档的内存和首屏时间仍待发布前验证。
 
 ### 7.2 EPUB
 
