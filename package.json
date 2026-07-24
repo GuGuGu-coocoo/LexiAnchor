@@ -1,0 +1,43 @@
+{
+  "name": "lexianchor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A local-first EPUB/PDF reader for focused reading and language learning.",
+  "license": "MIT",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=24.18.0 <25",
+    "pnpm": ">=11.17.0 <12"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @lexianchor/web dev",
+    "dev:desktop": "pnpm --filter @lexianchor/desktop dev",
+    "build": "pnpm build:web && pnpm build:desktop",
+    "build:web": "pnpm --filter @lexianchor/web build",
+    "build:desktop": "pnpm --filter @lexianchor/desktop build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "pnpm build:web && playwright test",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.7.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.3",
+    "globals": "17.7.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

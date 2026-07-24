@@ -1,0 +1,18 @@
+packages:
+  - apps/*
+  - packages/*
+
+catalogMode: strict
+
+# Electron Forge packaging currently requires a hoisted pnpm layout.
+nodeLinker: hoisted
+
+allowBuilds:
+  electron: true
+  esbuild: true
+
+# Forge 7.x declares rebuild 3.x. Rebuild 4 keeps the named API Forge uses,
+# removes the Git-based node-gyp dependency, and is verified by our package job.
+overrides:
+  '@electron/rebuild': 4.0.4
+  tmp: 0.2.7
