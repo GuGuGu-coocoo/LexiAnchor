@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { FreeDictEnglishFrenchProvider, parseFreeDictTei } from './freedict';
+import {
+  FreeDictEnglishChineseProvider,
+  FreeDictEnglishFrenchProvider,
+  parseFreeDictTei,
+} from './freedict';
 
 const sample = `<?xml version="1.0" encoding="UTF-8"?>
 <TEI xmlns="http://www.tei-c.org/ns/1.0">
@@ -11,6 +15,21 @@ const sample = `<?xml version="1.0" encoding="UTF-8"?>
       <sense>
         <cit type="trans"><quote>résilient</quote></cit>
         <cit type="trans"><quote>robuste</quote></cit>
+        <sense><def>Returning quickly to an original shape or condition.</def></sense>
+      </sense>
+    </entry>
+  </body></text>
+</TEI>`;
+
+const chineseSample = `<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <text><body>
+    <entry>
+      <form><orth>attentive</orth><pron>/əˈtɛntɪv/</pron></form>
+      <gramGrp><pos>adj</pos></gramGrp>
+      <sense>
+        <cit type="trans" xml:lang="zh"><quote>細緻</quote></cit>
+        <sense><def>Paying attention or listening closely.</def></sense>
       </sense>
     </entry>
   </body></text>
@@ -26,6 +45,7 @@ describe('FreeDict TEI provider', () => {
         pronunciation: 'rɪˈzɪliənt',
         partOfSpeech: 'adjective',
         translations: ['résilient', 'robuste'],
+        englishDefinitions: ['Returning quickly to an original shape or condition.'],
       },
     ]);
   });
@@ -55,6 +75,26 @@ describe('FreeDict TEI provider', () => {
       partOfSpeech: 'adjective',
       pronunciation: 'rɪˈzɪliənt',
       translations: ['résilient', 'robuste'],
+      definition: 'Returning quickly to an original shape or condition.',
+      englishDefinitions: ['Returning quickly to an original shape or condition.'],
+    });
+  });
+
+  it('queries Chinese translations and strips surrounding pronunciation marks', async () => {
+    const provider = new FreeDictEnglishChineseProvider({
+      get: () => Promise.resolve(chineseSample),
+      put: () => Promise.resolve(),
+      delete: () => Promise.resolve(),
+    });
+
+    const result = await provider.lookup('attentive');
+
+    expect(result?.source.languages).toEqual(['en', 'zh']);
+    expect(result?.senses[0]).toMatchObject({
+      partOfSpeech: 'adjective',
+      pronunciation: 'əˈtɛntɪv',
+      translations: ['細緻'],
+      definition: 'Paying attention or listening closely.',
     });
   });
 

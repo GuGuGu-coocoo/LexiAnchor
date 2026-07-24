@@ -204,7 +204,7 @@ export function SelectionTools({
                   {sense.translations?.length ? (
                     <>
                       <strong className="dictionary-translation-label">
-                        {t('frenchTranslation')}:
+                        {t(translationKey(result.source.languages[1]))}:
                       </strong>{' '}
                       {sense.translations.join(', ')}
                     </>
@@ -212,6 +212,12 @@ export function SelectionTools({
                     sense.definition
                   )}
                 </p>
+                {sense.englishDefinitions?.[0] ? (
+                  <p className="dictionary-detail">
+                    <strong>{t('englishDefinition')}:</strong>{' '}
+                    {sense.englishDefinitions.slice(0, 2).join(' · ')}
+                  </p>
+                ) : null}
                 {sense.synonyms.length > 1 ? (
                   <p className="dictionary-detail">
                     <strong>{t('synonyms')}:</strong> {sense.synonyms.join(', ')}
@@ -288,4 +294,8 @@ function partOfSpeechKey(partOfSpeech: DictionaryPartOfSpeech): MessageKey {
     unknown: 'unknownPartOfSpeech',
   };
   return keys[partOfSpeech];
+}
+
+function translationKey(targetLanguage: string): MessageKey {
+  return targetLanguage === 'zh' ? 'chineseTranslation' : 'frenchTranslation';
 }

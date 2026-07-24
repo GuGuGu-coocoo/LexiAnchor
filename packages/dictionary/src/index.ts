@@ -1,6 +1,9 @@
 export {
+  FreeDictEnglishChineseProvider,
   FreeDictEnglishFrenchProvider,
+  FreeDictTeiProvider,
   OpfsDictionaryAssetStore,
+  freeDictEnglishChineseResource,
   freeDictEnglishFrenchResource,
   parseFreeDictTei,
   type DictionaryAssetStore,

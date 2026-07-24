@@ -12,6 +12,20 @@ const freeDictFixture = `<?xml version="1.0" encoding="UTF-8"?>
   </body></text>
 </TEI>`;
 
+const freeDictChineseFixture = `<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <text><body>
+    <entry>
+      <form><orth>attentive</orth><pron>/əˈtɛntɪv/</pron></form>
+      <gramGrp><pos>adj</pos></gramGrp>
+      <sense>
+        <cit type="trans" xml:lang="zh"><quote>細緻</quote></cit>
+        <sense><def>Paying attention or listening closely.</def></sense>
+      </sense>
+    </entry>
+  </body></text>
+</TEI>`;
+
 async function ensureServiceWorkerControl(page: Page) {
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -26,24 +40,33 @@ async function ensureServiceWorkerControl(page: Page) {
     .toBe(true);
 }
 
-async function installFreeDictFixture(page: Page) {
-  await page.evaluate(async (content) => {
-    const root = await navigator.storage.getDirectory();
-    const appDirectory = await root.getDirectoryHandle('lexianchor', { create: true });
-    const dictionaryDirectory = await appDirectory.getDirectoryHandle('dictionaries', {
-      create: true,
-    });
-    const file = await dictionaryDirectory.getFileHandle('freedict-eng-fra-0.1.6.tei', {
-      create: true,
-    });
-    const writer = await file.createWritable();
+async function installFreeDictFixtures(page: Page) {
+  await page.evaluate(
+    async (fixtures) => {
+      const root = await navigator.storage.getDirectory();
+      const appDirectory = await root.getDirectoryHandle('lexianchor', { create: true });
+      const dictionaryDirectory = await appDirectory.getDirectoryHandle('dictionaries', {
+        create: true,
+      });
 
-    try {
-      await writer.write(content);
-    } finally {
-      await writer.close();
-    }
-  }, freeDictFixture);
+      for (const [id, content] of fixtures) {
+        const file = await dictionaryDirectory.getFileHandle(`${id}.tei`, {
+          create: true,
+        });
+        const writer = await file.createWritable();
+
+        try {
+          await writer.write(content);
+        } finally {
+          await writer.close();
+        }
+      }
+    },
+    [
+      ['freedict-eng-fra-0.1.6', freeDictFixture],
+      ['freedict-eng-zho-2025.11.23', freeDictChineseFixture],
+    ],
+  );
 }
 
 test('shows the shared LexiAnchor home surface', async ({ page }) => {
@@ -412,15 +435,23 @@ test('looks up a selected word from the full offline WordNet package', async ({
   await expect(page.locator('.dictionary-attribution')).toContainText('Princeton WordNet');
 });
 
-test('reorders, disables, and uses installed English-French data offline', async ({ page }) => {
+test('reorders, disables, and uses installed bilingual dictionaries offline', async ({ page }) => {
   await page.goto('/');
-  await installFreeDictFixture(page);
+  await installFreeDictFixtures(page);
   await page.reload();
 
   await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
   const freeDictCard = page.locator('article[data-dictionary-id="freedict-eng-fra-0.1.6"]').first();
+  const chineseDictionaryCard = page
+    .locator('article[data-dictionary-id="freedict-eng-zho-2025.11.23"]')
+    .first();
   await expect(freeDictCard).toContainText(/Installed|已安装|Installé/);
   await expect(freeDictCard.getByRole('checkbox')).toBeChecked();
+  await expect(chineseDictionaryCard).toContainText(/Installed|已安装|Installé/);
+  await expect(chineseDictionaryCard.getByRole('checkbox')).toBeChecked();
+  await expect(chineseDictionaryCard).toContainText(
+    /Automatically generated|自动生成|Généré automatiquement/,
+  );
 
   await freeDictCard
     .getByRole('button', {
@@ -431,11 +462,6 @@ test('reorders, disables, and uses installed English-French data offline', async
     'data-dictionary-id',
     'freedict-eng-fra-0.1.6',
   );
-  await page.screenshot({
-    path: 'test-results/dictionary-settings.png',
-    fullPage: true,
-    animations: 'disabled',
-  });
 
   await page.reload();
   const settingsNavigation = page.getByRole('button', { name: /Settings|设置|Réglages/ });
@@ -449,7 +475,12 @@ test('reorders, disables, and uses installed English-French data offline', async
     'data-dictionary-id',
     'freedict-eng-fra-0.1.6',
   );
-  await page.screenshot({ path: 'test-results/dictionary-settings.png', fullPage: true });
+  await page.getByRole('heading', { level: 1, name: /Settings|设置|Réglages/ }).hover();
+  await page.screenshot({
+    path: 'test-results/dictionary-settings.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
 
   async function openAndSelectAttentive() {
     await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
@@ -475,16 +506,32 @@ test('reorders, disables, and uses installed English-French data offline', async
   await openAndSelectAttentive();
   await expect(page.locator('.dictionary-result').first()).toContainText('FreeDict');
   await expect(page.locator('.dictionary-result').first()).toContainText('attentif');
-  await expect(page.locator('.dictionary-result')).toHaveCount(2);
+  await expect(page.locator('.dictionary-result')).toHaveCount(3);
+  await expect(page.locator('.dictionary-result').last()).toContainText('細緻');
+  await expect(page.locator('.dictionary-result').last()).toContainText(
+    'Paying attention or listening closely.',
+  );
+  await page.screenshot({
+    path: 'test-results/dictionary-multi-provider.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
   await freeDictCard.getByRole('checkbox').uncheck();
+  await chineseDictionaryCard.getByRole('checkbox').uncheck();
 
   await openAndSelectAttentive();
   await expect(page.locator('.dictionary-result').filter({ hasText: 'FreeDict' })).toHaveCount(0);
   await expect(page.locator('.dictionary-result')).toHaveCount(1);
   await expect(page.locator('.dictionary-result')).toContainText('Princeton WordNet');
+
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await chineseDictionaryCard.getByRole('button', { name: /Remove|移除|Supprimer/ }).click();
+  await expect(chineseDictionaryCard).toContainText(/Not installed|未安装|Non installé/);
 });
 
 test('saves, searches, and deletes a persistent word card', async ({ page }) => {

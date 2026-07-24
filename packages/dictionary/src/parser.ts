@@ -14,6 +14,7 @@ export interface WordNetSense {
   readonly examples: readonly string[];
   readonly pronunciation?: string;
   readonly translations?: readonly string[];
+  readonly englishDefinitions?: readonly string[];
 }
 
 const partOfSpeechNames: Readonly<Record<string, WordNetPartOfSpeech>> = {

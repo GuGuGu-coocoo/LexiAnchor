@@ -1080,11 +1080,16 @@ button {
 }
 
 .dictionary-settings-main p,
-.dictionary-download-note {
+.dictionary-download-note,
+.dictionary-quality-note {
   margin: 7px 0 0;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.dictionary-quality-note {
+  max-width: 760px;
 }
 
 .dictionary-enable {

@@ -1,4 +1,5 @@
-import manifest from '../resources/freedict-eng-fra.manifest.json';
+import frenchManifest from '../resources/freedict-eng-fra.manifest.json';
+import chineseManifest from '../resources/freedict-eng-zho.manifest.json';
 
 import {
   morphologyCandidates,
@@ -13,6 +14,7 @@ interface FreeDictEntry {
   readonly pronunciation: string | null;
   readonly partOfSpeech: DictionaryPartOfSpeech;
   readonly translations: readonly string[];
+  readonly englishDefinitions: readonly string[];
 }
 
 export interface DictionaryAssetStore {
@@ -39,24 +41,27 @@ export interface FreeDictResource {
 }
 
 export const freeDictEnglishFrenchResource: FreeDictResource = {
-  id: manifest.id,
+  id: frenchManifest.id,
   name: 'FreeDict English–French',
-  version: manifest.version,
+  version: frenchManifest.version,
   languages: ['en', 'fr'],
-  license: manifest.license.name,
-  attribution: manifest.attribution,
-  downloadUrl: manifest.distribution.downloadUrl,
-  size: manifest.distribution.size,
-  sha256: manifest.distribution.sha256,
+  license: frenchManifest.license.name,
+  attribution: frenchManifest.attribution,
+  downloadUrl: frenchManifest.distribution.downloadUrl,
+  size: frenchManifest.distribution.size,
+  sha256: frenchManifest.distribution.sha256,
 };
 
-const source: DictionarySource = {
-  id: freeDictEnglishFrenchResource.id,
-  name: freeDictEnglishFrenchResource.name,
-  version: freeDictEnglishFrenchResource.version,
-  languages: freeDictEnglishFrenchResource.languages,
-  license: freeDictEnglishFrenchResource.license,
-  attribution: freeDictEnglishFrenchResource.attribution,
+export const freeDictEnglishChineseResource: FreeDictResource = {
+  id: chineseManifest.id,
+  name: 'FreeDict/WikDict English–Chinese',
+  version: chineseManifest.version,
+  languages: ['en', 'zh'],
+  license: chineseManifest.license.name,
+  attribution: chineseManifest.attribution,
+  downloadUrl: chineseManifest.distribution.downloadUrl,
+  size: chineseManifest.distribution.size,
+  sha256: chineseManifest.distribution.sha256,
 };
 
 function decodeXmlText(value: string): string {
@@ -95,6 +100,23 @@ function partOfSpeech(body: string): DictionaryPartOfSpeech {
   return value ? (names[value] ?? 'unknown') : 'unknown';
 }
 
+function pronunciation(body: string): string | null {
+  const value = firstTag(body, 'pron');
+
+  if (!value) {
+    return null;
+  }
+
+  if (
+    (value.startsWith('/') && value.endsWith('/')) ||
+    (value.startsWith('[') && value.endsWith(']'))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
+}
+
 export function parseFreeDictTei(xml: string): ReadonlyMap<string, readonly FreeDictEntry[]> {
   if (!xml.includes('<TEI') || !xml.includes('<entry')) {
     throw new Error('The downloaded FreeDict resource is not valid TEI dictionary data.');
@@ -113,6 +135,9 @@ export function parseFreeDictTei(xml: string): ReadonlyMap<string, readonly Free
     const translations = [...body.matchAll(/<quote(?:\s[^>]*)?>([\s\S]*?)<\/quote>/gi)]
       .map((quote) => decodeXmlText(quote[1] ?? ''))
       .filter(Boolean);
+    const englishDefinitions = [...body.matchAll(/<def(?:\s[^>]*)?>([\s\S]*?)<\/def>/gi)]
+      .map((definition) => decodeXmlText(definition[1] ?? ''))
+      .filter(Boolean);
 
     if (translations.length === 0) {
       continue;
@@ -122,9 +147,10 @@ export function parseFreeDictTei(xml: string): ReadonlyMap<string, readonly Free
     const current = entries.get(key) ?? [];
     current.push({
       term,
-      pronunciation: firstTag(body, 'pron'),
+      pronunciation: pronunciation(body),
       partOfSpeech: partOfSpeech(body),
       translations: [...new Set(translations)],
+      englishDefinitions: [...new Set(englishDefinitions)],
     });
     entries.set(key, current);
   }
@@ -187,7 +213,7 @@ export class OpfsDictionaryAssetStore implements DictionaryAssetStore {
   }
 }
 
-export class FreeDictEnglishFrenchProvider implements DictionaryProvider {
+export class FreeDictTeiProvider implements DictionaryProvider {
   readonly source: DictionarySource;
   private entries: ReadonlyMap<string, readonly FreeDictEntry[]> | null = null;
 
@@ -196,7 +222,7 @@ export class FreeDictEnglishFrenchProvider implements DictionaryProvider {
     private readonly download: typeof fetch = fetch,
     private readonly resource: FreeDictResource = freeDictEnglishFrenchResource,
   ) {
-    this.source = resource === freeDictEnglishFrenchResource ? source : resource;
+    this.source = resource;
   }
 
   async status(): Promise<FreeDictInstallStatus> {
@@ -253,11 +279,12 @@ export class FreeDictEnglishFrenchProvider implements DictionaryProvider {
 
       const senses: WordNetSense[] = matches.map((entry) => ({
         partOfSpeech: entry.partOfSpeech,
-        definition: entry.translations.join(', '),
+        definition: entry.englishDefinitions[0] ?? entry.translations.join(', '),
         synonyms: [],
         examples: [],
         pronunciation: entry.pronunciation ?? undefined,
         translations: entry.translations,
+        englishDefinitions: entry.englishDefinitions,
       }));
 
       return {
@@ -285,5 +312,25 @@ export class FreeDictEnglishFrenchProvider implements DictionaryProvider {
 
     this.entries = parseFreeDictTei(content);
     return this.entries;
+  }
+}
+
+export class FreeDictEnglishFrenchProvider extends FreeDictTeiProvider {
+  constructor(
+    store: DictionaryAssetStore = new OpfsDictionaryAssetStore(),
+    download: typeof fetch = fetch,
+    resource: FreeDictResource = freeDictEnglishFrenchResource,
+  ) {
+    super(store, download, resource);
+  }
+}
+
+export class FreeDictEnglishChineseProvider extends FreeDictTeiProvider {
+  constructor(
+    store: DictionaryAssetStore = new OpfsDictionaryAssetStore(),
+    download: typeof fetch = fetch,
+    resource: FreeDictResource = freeDictEnglishChineseResource,
+  ) {
+    super(store, download, resource);
   }
 }

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "freedict-eng-zho-2025.11.23",
+  "name": "English-Chinese FreeDict+WikDict Dictionary",
+  "version": "2025.11.23",
+  "languages": ["en", "zh"],
+  "headwordCount": 26660,
+  "distribution": {
+    "type": "downloaded-tei",
+    "downloadUrl": "https://download.wikdict.com/dictionaries/tei/no-infl/eng-zho.tei",
+    "size": 14016229,
+    "sha256": "a942ed0aaf609b60fecda19b23a4e737dd69c809e2bd9a3d44ffcf2a12050cec"
+  },
+  "source": {
+    "project": "https://www.wikdict.com/",
+    "repository": "https://download.freedict.org/dictionaries/eng-zho/2025.11.23/",
+    "upstream": "Wiktionary via DBnary and WikDict",
+    "archive": "https://download.freedict.org/dictionaries/eng-zho/2025.11.23/freedict-eng-zho-2025.11.23.src.tar.xz",
+    "archiveSize": 1600448,
+    "archiveSha256": "78f6909786861809886201827e5e3d55dbf8e12f753d7a7183e785dbc574de8b",
+    "archiveSha512": "25aed0f1d7de68919aa9da1ba92d67f566ae4ea81660f42071c81fc21e56d4b210d61df379315678648c45ca7e52c4a0ba2eec009fbaab7c72e7472489e1fc4c",
+    "archiveTeiSize": 13913829,
+    "archiveTeiSha256": "76e15cbc8497b479ebd3834259d52366f051e16eca44c3b50fced7a78f191fb3"
+  },
+  "license": {
+    "spdx": "CC-BY-SA-3.0",
+    "name": "Creative Commons Attribution-ShareAlike 3.0 Unported",
+    "url": "https://creativecommons.org/licenses/by-sa/3.0/"
+  },
+  "attribution": "English-Chinese FreeDict+WikDict Dictionary 2025.11.23 · WikDict and FreeDict contributors · Based on Wiktionary via DBnary.",
+  "quality": "Automatically generated bilingual data; translations can be incomplete or inaccurate.",
+  "dataUpdatedAt": "2025-11-23",
+  "removal": "Delete the installed resource from LexiAnchor dictionary settings."
+}

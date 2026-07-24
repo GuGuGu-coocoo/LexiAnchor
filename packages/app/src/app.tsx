@@ -1,7 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  FreeDictEnglishChineseProvider,
   FreeDictEnglishFrenchProvider,
+  type FreeDictTeiProvider,
   WordNetProvider,
   type DictionaryProvider,
 } from '@lexianchor/dictionary';
@@ -33,7 +35,10 @@ import type { WordCardDraft } from './selection-tools';
 type Section = 'home' | 'library' | 'cards' | 'settings';
 type Theme = 'system' | 'light' | 'dark' | 'eye-care';
 type IconName = Section | 'expand' | 'lock' | 'book-open';
-type DictionaryId = 'princeton-wordnet-3.1' | 'freedict-eng-fra-0.1.6';
+type DictionaryId =
+  'princeton-wordnet-3.1' | 'freedict-eng-fra-0.1.6' | 'freedict-eng-zho-2025.11.23';
+type DownloadableDictionaryId = Exclude<DictionaryId, 'princeton-wordnet-3.1'>;
+type DictionaryInstallState = Readonly<Record<DownloadableDictionaryId, boolean>>;
 
 interface DictionaryPreferences {
   readonly order: readonly DictionaryId[];
@@ -93,8 +98,24 @@ const ReaderPage = lazy(() =>
 );
 
 const wordNetProvider = new WordNetProvider();
-const freeDictProvider = new FreeDictEnglishFrenchProvider();
-const dictionaryIds: readonly DictionaryId[] = ['princeton-wordnet-3.1', 'freedict-eng-fra-0.1.6'];
+const freeDictFrenchProvider = new FreeDictEnglishFrenchProvider();
+const freeDictChineseProvider = new FreeDictEnglishChineseProvider();
+const downloadableDictionaryIds: readonly DownloadableDictionaryId[] = [
+  'freedict-eng-fra-0.1.6',
+  'freedict-eng-zho-2025.11.23',
+];
+const freeDictProviders: Readonly<Record<DownloadableDictionaryId, FreeDictTeiProvider>> = {
+  'freedict-eng-fra-0.1.6': freeDictFrenchProvider,
+  'freedict-eng-zho-2025.11.23': freeDictChineseProvider,
+};
+const dictionaryProvidersById: Readonly<Record<DictionaryId, DictionaryProvider>> = {
+  'princeton-wordnet-3.1': wordNetProvider,
+  ...freeDictProviders,
+};
+const dictionaryIds: readonly DictionaryId[] = [
+  'princeton-wordnet-3.1',
+  ...downloadableDictionaryIds,
+];
 
 let bookRepository: SqliteBookRepository | undefined;
 const contentStore = new OpfsContentStore();
@@ -151,6 +172,7 @@ function readDictionaryPreferences(): DictionaryPreferences {
     enabled: {
       'princeton-wordnet-3.1': true,
       'freedict-eng-fra-0.1.6': true,
+      'freedict-eng-zho-2025.11.23': true,
     },
   };
   const stored = globalThis.localStorage?.getItem('lexianchor:dictionary-preferences');
@@ -172,11 +194,18 @@ function readDictionaryPreferences(): DictionaryPreferences {
           parsed.enabled?.['princeton-wordnet-3.1'] ?? fallback.enabled['princeton-wordnet-3.1'],
         'freedict-eng-fra-0.1.6':
           parsed.enabled?.['freedict-eng-fra-0.1.6'] ?? fallback.enabled['freedict-eng-fra-0.1.6'],
+        'freedict-eng-zho-2025.11.23':
+          parsed.enabled?.['freedict-eng-zho-2025.11.23'] ??
+          fallback.enabled['freedict-eng-zho-2025.11.23'],
       },
     };
   } catch {
     return fallback;
   }
+}
+
+function isDownloadableDictionary(id: DictionaryId): id is DownloadableDictionaryId {
+  return id !== 'princeton-wordnet-3.1';
 }
 
 export function App({ platform }: AppProps) {
@@ -192,22 +221,23 @@ export function App({ platform }: AppProps) {
   const [cardSearch, setCardSearch] = useState('');
   const [lastDeletedCard, setLastDeletedCard] = useState<WordCardRecord | null>(null);
   const [dictionaryPreferences, setDictionaryPreferences] = useState(readDictionaryPreferences);
-  const [freeDictInstalled, setFreeDictInstalled] = useState(false);
-  const [isInstallingDictionary, setIsInstallingDictionary] = useState(false);
+  const [installedDictionaries, setInstalledDictionaries] = useState<DictionaryInstallState>({
+    'freedict-eng-fra-0.1.6': false,
+    'freedict-eng-zho-2025.11.23': false,
+  });
+  const [installingDictionary, setInstallingDictionary] = useState<DownloadableDictionaryId | null>(
+    null,
+  );
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
   const dictionaryProviders = useMemo<readonly DictionaryProvider[]>(() => {
-    const providers: Readonly<Record<DictionaryId, DictionaryProvider>> = {
-      'princeton-wordnet-3.1': wordNetProvider,
-      'freedict-eng-fra-0.1.6': freeDictProvider,
-    };
-
     return dictionaryPreferences.order.flatMap((id) =>
-      dictionaryPreferences.enabled[id] && (id !== 'freedict-eng-fra-0.1.6' || freeDictInstalled)
-        ? [providers[id]]
+      dictionaryPreferences.enabled[id] &&
+      (!isDownloadableDictionary(id) || installedDictionaries[id])
+        ? [dictionaryProvidersById[id]]
         : [],
     );
-  }, [dictionaryPreferences, freeDictInstalled]);
+  }, [dictionaryPreferences, installedDictionaries]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -272,9 +302,19 @@ export function App({ platform }: AppProps) {
   useEffect(() => {
     let isActive = true;
 
-    void freeDictProvider
-      .status()
-      .then((status) => isActive && setFreeDictInstalled(status.installed))
+    void Promise.all(
+      downloadableDictionaryIds.map(async (id) => {
+        const status = await freeDictProviders[id].status();
+        return [id, status.installed] as const;
+      }),
+    )
+      .then((entries) => {
+        if (isActive) {
+          setInstalledDictionaries(
+            Object.fromEntries(entries) as Record<DownloadableDictionaryId, boolean>,
+          );
+        }
+      })
       .catch((error: unknown) => {
         if (isActive) {
           setStatusMessage(error instanceof Error ? error.message : String(error));
@@ -461,33 +501,33 @@ export function App({ platform }: AppProps) {
     }
   }, [cardSearch, lastDeletedCard]);
 
-  async function installFreeDict() {
-    setIsInstallingDictionary(true);
+  async function installFreeDict(id: DownloadableDictionaryId) {
+    setInstallingDictionary(id);
     setStatusMessage(t('downloadingDictionary'));
 
     try {
-      await freeDictProvider.install();
-      setFreeDictInstalled(true);
+      await freeDictProviders[id].install();
+      setInstalledDictionaries((current) => ({ ...current, [id]: true }));
       setDictionaryPreferences((current) => ({
         ...current,
-        enabled: { ...current.enabled, 'freedict-eng-fra-0.1.6': true },
+        enabled: { ...current.enabled, [id]: true },
       }));
       setStatusMessage(t('dictionaryInstalled'));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setIsInstallingDictionary(false);
+      setInstallingDictionary(null);
     }
   }
 
-  async function removeFreeDict() {
+  async function removeFreeDict(id: DownloadableDictionaryId) {
     if (!globalThis.confirm(t('removeDictionaryConfirm'))) {
       return;
     }
 
     try {
-      await freeDictProvider.remove();
-      setFreeDictInstalled(false);
+      await freeDictProviders[id].remove();
+      setInstalledDictionaries((current) => ({ ...current, [id]: false }));
       setStatusMessage(t('dictionaryRemoved'));
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : String(error));
@@ -672,8 +712,8 @@ export function App({ platform }: AppProps) {
         ) : (
           <SettingsPage
             dictionaryPreferences={dictionaryPreferences}
-            freeDictInstalled={freeDictInstalled}
-            isInstallingDictionary={isInstallingDictionary}
+            installedDictionaries={installedDictionaries}
+            installingDictionary={installingDictionary}
             t={t}
             onToggleDictionary={toggleDictionary}
             onMoveDictionary={moveDictionary}
@@ -1114,20 +1154,20 @@ function CardsPage({
 
 interface SettingsPageProps {
   readonly dictionaryPreferences: DictionaryPreferences;
-  readonly freeDictInstalled: boolean;
-  readonly isInstallingDictionary: boolean;
+  readonly installedDictionaries: DictionaryInstallState;
+  readonly installingDictionary: DownloadableDictionaryId | null;
   readonly t: (key: MessageKey) => string;
   readonly onToggleDictionary: (id: DictionaryId, enabled: boolean) => void;
   readonly onMoveDictionary: (id: DictionaryId, direction: -1 | 1) => void;
-  readonly onInstallFreeDict: () => Promise<void>;
-  readonly onRemoveFreeDict: () => Promise<void>;
+  readonly onInstallFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
+  readonly onRemoveFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
   readonly onOpenExternal: (url: string) => Promise<void>;
 }
 
 function SettingsPage({
   dictionaryPreferences,
-  freeDictInstalled,
-  isInstallingDictionary,
+  installedDictionaries,
+  installingDictionary,
   t,
   onToggleDictionary,
   onMoveDictionary,
@@ -1144,6 +1184,8 @@ function SettingsPage({
         readonly license: string;
         readonly source: string;
         readonly licenseUrl: string;
+        readonly downloadNote?: MessageKey;
+        readonly qualityNote?: MessageKey;
       }
     >
   > = {
@@ -1161,6 +1203,16 @@ function SettingsPage({
       source:
         'https://github.com/freedict/fd-dictionaries/tree/5bdceeac8d0dba3298c1bebe734f60d54dad30f7/eng-fra',
       licenseUrl: 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html',
+      downloadNote: 'dictionaryDownloadNote',
+    },
+    'freedict-eng-zho-2025.11.23': {
+      name: 'FreeDict/WikDict English–Chinese 2025.11.23',
+      languages: 'EN → ZH',
+      license: 'CC-BY-SA-3.0',
+      source: 'https://download.freedict.org/dictionaries/eng-zho/2025.11.23/',
+      licenseUrl: 'https://creativecommons.org/licenses/by-sa/3.0/',
+      downloadNote: 'chineseDictionaryDownloadNote',
+      qualityNote: 'automatedDictionaryNote',
     },
   };
 
@@ -1179,7 +1231,8 @@ function SettingsPage({
       <div className="dictionary-settings-list">
         {dictionaryPreferences.order.map((id, index) => {
           const description = descriptions[id];
-          const installed = id === 'princeton-wordnet-3.1' || freeDictInstalled;
+          const downloadableId = isDownloadableDictionary(id) ? id : null;
+          const installed = downloadableId ? installedDictionaries[downloadableId] : true;
 
           return (
             <article className="dictionary-settings-card" data-dictionary-id={id} key={id}>
@@ -1227,12 +1280,12 @@ function SettingsPage({
                 <button type="button" onClick={() => void onOpenExternal(description.licenseUrl)}>
                   {t('license')}
                 </button>
-                {id === 'freedict-eng-fra-0.1.6' ? (
+                {downloadableId ? (
                   installed ? (
                     <button
                       className="dictionary-remove"
                       type="button"
-                      onClick={() => void onRemoveFreeDict()}
+                      onClick={() => void onRemoveFreeDict(downloadableId)}
                     >
                       {t('removeDictionary')}
                     </button>
@@ -1240,16 +1293,21 @@ function SettingsPage({
                     <button
                       className="dictionary-install"
                       type="button"
-                      disabled={isInstallingDictionary}
-                      onClick={() => void onInstallFreeDict()}
+                      disabled={installingDictionary !== null}
+                      onClick={() => void onInstallFreeDict(downloadableId)}
                     >
-                      {isInstallingDictionary ? t('downloadingDictionary') : t('installDictionary')}
+                      {installingDictionary === downloadableId
+                        ? t('downloadingDictionary')
+                        : t('installDictionary')}
                     </button>
                   )
                 ) : null}
               </div>
-              {id === 'freedict-eng-fra-0.1.6' && !installed ? (
-                <p className="dictionary-download-note">{t('dictionaryDownloadNote')}</p>
+              {description.qualityNote ? (
+                <p className="dictionary-quality-note">{t(description.qualityNote)}</p>
+              ) : null}
+              {description.downloadNote && !installed ? (
+                <p className="dictionary-download-note">{t(description.downloadNote)}</p>
               ) : null}
             </article>
           );
