@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "bergamot-en-zh-2025-11-21",
+  "name": "Mozilla Bergamot English–Chinese",
+  "sourceLanguage": "en",
+  "targetLanguage": "zh",
+  "architecture": "base-memory",
+  "releaseStatus": "Release",
+  "license": {
+    "spdx": "MPL-2.0",
+    "name": "Mozilla Public License 2.0",
+    "url": "https://www.mozilla.org/MPL/2.0/"
+  },
+  "source": "https://github.com/mozilla/firefox-translations-models",
+  "registry": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json",
+  "files": [
+    {
+      "part": "shortlist",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-zh%2Fllmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g%2Fexported%2Flex.50.50.enzh.s2t.bin.gz?alt=media",
+      "compressedSize": 2536039,
+      "compressedSha256": "806f75821c0b838f4a8f4afe5bab3db8289cb7e5187753ba04c3bceadd75687a",
+      "size": 4485184,
+      "sha256": "8575d8daa10e2dbff316dcdf8e1ce475357bcc2c92bdc63b736a2d5add22f681"
+    },
+    {
+      "part": "model",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-zh%2Fllmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g%2Fexported%2Fmodel.enzh.intgemm.alphas.bin.gz?alt=media",
+      "compressedSize": 33375922,
+      "compressedSha256": "7f255403b3bb2502f08ac4d5ca397a8a5a13f899d2f2e987a4934e089d241d16",
+      "size": 43849787,
+      "sha256": "4e5accc141373565ddc8fa1565bceaa8d0c3482a82cab8131c719ebcc6c2157c"
+    },
+    {
+      "part": "sourceVocab",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-zh%2Fllmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g%2Fexported%2Fsrcvocab.enzh.spm.gz?alt=media",
+      "compressedSize": 407784,
+      "compressedSha256": "7846e3c236388390f4e5d321f8413d67f34c1bab5f066165eeb673bfd07607cc",
+      "size": 806952,
+      "sha256": "bd9b65504acc6d9726dd281f7defc2adb7c2c22d0688fe2f84697de25197c8c5"
+    },
+    {
+      "part": "targetVocab",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-zh%2Fllmaat_finetune10M_qe8_f2_ByQcSxGXQRqGi-UTxYE43g%2Fexported%2Ftrgvocab.enzh.spm.gz?alt=media",
+      "compressedSize": 425748,
+      "compressedSha256": "4d641ce165b1f8478ee2ffb5149d2d46fab3779dc8fa1e9b97f9af1d2206c091",
+      "size": 772004,
+      "sha256": "aded6993c36e440284d11cec3f6b8aef9c0e43188a772d80be342a713adf223d"
+    }
+  ],
+  "downloadSize": 36745593,
+  "installedSize": 49913927,
+  "attribution": "Mozilla Firefox Translations contributors · Bergamot/Marian NMT"
+}

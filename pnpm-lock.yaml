@@ -4,6 +4,12 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@browsermt/bergamot-translator':
+      specifier: 0.4.9
+      version: 0.4.9
+
 overrides:
   '@electron/rebuild': 4.0.4
   '@xmldom/xmldom': 0.8.13
@@ -89,6 +95,9 @@ importers:
       '@electron/fuses':
         specifier: 1.8.0
         version: 1.8.0
+      '@lexianchor/translation':
+        specifier: workspace:*
+        version: link:../../packages/translation
       '@types/react':
         specifier: 19.2.17
         version: 19.2.17
@@ -126,6 +135,9 @@ importers:
         specifier: 7.4.1
         version: 7.4.1
     devDependencies:
+      '@lexianchor/translation':
+        specifier: workspace:*
+        version: link:../../packages/translation
       '@types/react':
         specifier: 19.2.17
         version: 19.2.17
@@ -174,6 +186,9 @@ importers:
       '@lexianchor/test-fixtures':
         specifier: workspace:*
         version: link:../test-fixtures
+      '@lexianchor/translation':
+        specifier: workspace:*
+        version: link:../translation
       '@lexianchor/ui':
         specifier: workspace:*
         version: link:../ui
@@ -278,6 +293,16 @@ importers:
         version: 6.0.3
 
   packages/test-fixtures:
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/translation:
+    dependencies:
+      '@browsermt/bergamot-translator':
+        specifier: 'catalog:'
+        version: 0.4.9
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -797,6 +822,9 @@ packages:
   '@bcoe/v8-coverage@1.0.2':
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
+
+  '@browsermt/bergamot-translator@0.4.9':
+    resolution: {integrity: sha512-bNuuCwM/JnsIYQCKXcYKFT4Qc5vLMoB8Nbvz8ReIgs7xzebK8Sa+R8iEK8mLvNBe/WaZ6zrPaUQilLsRT/ea8Q==}
 
   '@electron-forge/cli@7.11.2':
     resolution: {integrity: sha512-c+C4ndLfHbxwZuCn9G8iT9wD/woLdaVkoSVjAIbj+0nJhi8UmiVsz/+Gxlj4cvhMRTzBMBxudstLU7RocMikfg==}
@@ -4828,6 +4856,8 @@ snapshots:
       '@babel/helper-validator-identifier': 7.29.7
 
   '@bcoe/v8-coverage@1.0.2': {}
+
+  '@browsermt/bergamot-translator@0.4.9': {}
 
   '@electron-forge/cli@7.11.2(lightningcss@1.33.0)(postcss@8.5.22)(supports-color@8.1.1)':
     dependencies:

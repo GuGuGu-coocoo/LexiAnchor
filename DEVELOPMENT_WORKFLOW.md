@@ -140,7 +140,8 @@ Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimenta
       见 `docs/spikes/0003-sqlite-opfs.md` 与 ADR-0002；
 - [x] WordNet 3.1 英英词典包：完整资源、离线查询、manifest 与许可门禁通过，
       见 `docs/spikes/0004-wordnet.md` 与 ADR-0004；
-- [ ] 本地翻译模型；
+- [x] Bergamot EN→FR/EN→ZH 本地翻译：按需安装、完整性校验、Worker 推理与断网复用通过，
+      见 `docs/spikes/0008-bergamot-local-translation.md` 与 ADR-0004；
 - [ ] 无签名桌面包实机记录。
 
 每个 Spike：
@@ -217,7 +218,7 @@ Phase 1 结束前不大规模开发阅读 UI。
 - [x] EPUB/PDF 选词结果面板；
 - [x] 在线翻译首次使用提示与 Search on Web；
 - [x] 用户 StarDict 词典导入（未压缩 `.ifo + .idx + .dict`）；
-- [ ] EN→FR、EN→ZH 本地句子翻译。
+- [x] EN→FR、EN→ZH Bergamot 本地句子翻译。
 
 完成门：
 
@@ -421,7 +422,7 @@ Issue 满足以下条件才进入开发：
 
 - 使用自动化工具提出升级 PR；
 - 每次只升级相关依赖组；
-- 阅读 renderer、PDF.js、EPUB、Electron 和 ONNX Runtime 属于高风险依赖；
+- 阅读 renderer、PDF.js、EPUB、Electron 和 Bergamot WASM 属于高风险依赖；
 - 高风险升级必须运行真实书籍和模型回归；
 - 不因追求最新版本而绕过稳定性验证。
 

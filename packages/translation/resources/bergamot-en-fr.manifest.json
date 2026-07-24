@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "bergamot-en-fr-2025-11-21",
+  "name": "Mozilla Bergamot English–French",
+  "sourceLanguage": "en",
+  "targetLanguage": "fr",
+  "architecture": "base-memory",
+  "releaseStatus": "Release",
+  "license": {
+    "spdx": "MPL-2.0",
+    "name": "Mozilla Public License 2.0",
+    "url": "https://www.mozilla.org/MPL/2.0/"
+  },
+  "source": "https://github.com/mozilla/firefox-translations-models",
+  "registry": "https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/db/models.json",
+  "files": [
+    {
+      "part": "shortlist",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-fr%2Fretrain_hr_NLIxDbE1TBGyOTI-zwZagw%2Fexported%2Flex.50.50.enfr.s2t.bin.gz?alt=media",
+      "compressedSize": 2297334,
+      "compressedSha256": "055987f0b585b61c4914fb4469e2392fda0b25d3f7784275974f920e7b631997",
+      "size": 4372936,
+      "sha256": "2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059"
+    },
+    {
+      "part": "model",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-fr%2Fretrain_hr_NLIxDbE1TBGyOTI-zwZagw%2Fexported%2Fmodel.enfr.intgemm.alphas.bin.gz?alt=media",
+      "compressedSize": 23045432,
+      "compressedSha256": "22cdaf3dc9a1da6e5818b5576737182467f3cd97e6fd6f94e4273eb7b56d1e3f",
+      "size": 31561787,
+      "sha256": "6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68"
+    },
+    {
+      "part": "vocab",
+      "url": "https://www.googleapis.com/download/storage/v1/b/moz-fx-translations-data--303e-prod-translations-data/o/models%2Fen-fr%2Fretrain_hr_NLIxDbE1TBGyOTI-zwZagw%2Fexported%2Fvocab.enfr.spm.gz?alt=media",
+      "compressedSize": 409706,
+      "compressedSha256": "5dcadaad8191fb4eb7677bce07098a20221dec95976a4db796f3a17cc82b4541",
+      "size": 814404,
+      "sha256": "783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a"
+    }
+  ],
+  "downloadSize": 25752472,
+  "installedSize": 36749127,
+  "attribution": "Mozilla Firefox Translations contributors · Bergamot/Marian NMT"
+}

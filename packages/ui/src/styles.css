@@ -884,6 +884,52 @@ button {
   font-size: 8px;
 }
 
+.local-translation-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.local-translation-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.local-translation-heading select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.local-translation-action {
+  width: 100%;
+}
+
+.local-translation-result {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface-raised));
+}
+
+.local-translation-result p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.local-translation-result span {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
 .selection-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1055,6 +1101,29 @@ button {
   gap: 14px;
 }
 
+.settings-section-heading {
+  margin-top: 34px;
+  margin-bottom: 14px;
+}
+
+.settings-section-heading h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.settings-section-heading p {
+  max-width: 680px;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+}
+
+.translation-model-size {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .dictionary-settings-card {
   padding: 20px;
   border: 1px solid var(--line);
@@ -1074,7 +1143,8 @@ button {
   justify-content: flex-start;
 }
 
-.dictionary-settings-title h2 {
+.dictionary-settings-title h2,
+.dictionary-settings-title h3 {
   margin: 0;
   font-size: 17px;
 }

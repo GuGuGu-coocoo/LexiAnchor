@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   FreeDictEnglishChineseProvider,
@@ -30,6 +30,13 @@ import {
   type WordCardRecord,
 } from '@lexianchor/storage';
 import { epubSpikeUrl, pdfScanUrl, pdfTextUrl } from '@lexianchor/test-fixtures';
+import {
+  BergamotTranslationProvider,
+  translationModelResources,
+  type TranslationModelInstallStatus,
+  type TranslationModelProgress,
+  type TranslationTargetLanguage,
+} from '@lexianchor/translation';
 import '@lexianchor/ui/styles.css';
 
 import type { WordCardDraft } from './selection-tools';
@@ -44,6 +51,9 @@ type DictionaryId =
   | 'user-stardict';
 type DownloadableDictionaryId = 'freedict-eng-fra-0.1.6' | 'freedict-eng-zho-2025.11.23';
 type DictionaryInstallState = Readonly<Record<DownloadableDictionaryId, boolean>>;
+type TranslationInstallState = Readonly<
+  Record<TranslationTargetLanguage, TranslationModelInstallStatus>
+>;
 
 interface DictionaryPreferences {
   readonly order: readonly DictionaryId[];
@@ -110,6 +120,7 @@ const wordNetProvider = new WordNetProvider();
 const freeDictFrenchProvider = new FreeDictEnglishFrenchProvider();
 const freeDictChineseProvider = new FreeDictEnglishChineseProvider();
 const userStarDictProvider = new StarDictProvider();
+const localTranslationProvider = new BergamotTranslationProvider();
 const downloadableDictionaryIds: readonly DownloadableDictionaryId[] = [
   'freedict-eng-fra-0.1.6',
   'freedict-eng-zho-2025.11.23',
@@ -128,6 +139,13 @@ const dictionaryIds: readonly DictionaryId[] = [
   ...downloadableDictionaryIds,
   'user-stardict',
 ];
+const emptyTranslationStatus: TranslationModelInstallStatus = {
+  installed: false,
+  partial: false,
+  installedParts: 0,
+  totalParts: 0,
+  storedBytes: 0,
+};
 
 let bookRepository: SqliteBookRepository | undefined;
 const contentStore = new OpfsContentStore();
@@ -269,6 +287,15 @@ export function App({ platform }: AppProps) {
     null,
   );
   const [userStarDict, setUserStarDict] = useState<StarDictInstallStatus | null>(null);
+  const [translationModels, setTranslationModels] = useState<TranslationInstallState>({
+    fr: emptyTranslationStatus,
+    zh: emptyTranslationStatus,
+  });
+  const [installingTranslationModel, setInstallingTranslationModel] =
+    useState<TranslationTargetLanguage | null>(null);
+  const [translationModelProgress, setTranslationModelProgress] =
+    useState<TranslationModelProgress | null>(null);
+  const translationInstallAbort = useRef<AbortController | null>(null);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
   const dictionaryProviders = useMemo<readonly DictionaryProvider[]>(() => {
@@ -328,6 +355,36 @@ export function App({ platform }: AppProps) {
           setStorageStatus(nextStatus);
           setLibrary(entries);
           setWordCards(cards);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setStatusMessage(error instanceof Error ? error.message : String(error));
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void Promise.all(
+      (['fr', 'zh'] as const).map(async (target) => [
+        target,
+        await localTranslationProvider.manager.status(target),
+      ]),
+    )
+      .then((entries) => {
+        if (isActive) {
+          setTranslationModels(
+            Object.fromEntries(entries) as Record<
+              TranslationTargetLanguage,
+              TranslationModelInstallStatus
+            >,
+          );
         }
       })
       .catch((error: unknown) => {
@@ -649,6 +706,59 @@ export function App({ platform }: AppProps) {
     }
   }
 
+  async function installTranslationModel(targetLanguage: TranslationTargetLanguage) {
+    const controller = new AbortController();
+    translationInstallAbort.current = controller;
+    setInstallingTranslationModel(targetLanguage);
+    setTranslationModelProgress(null);
+    setStatusMessage(t('downloadingTranslationModel'));
+
+    try {
+      const status = await localTranslationProvider.manager.install(targetLanguage, {
+        signal: controller.signal,
+        onProgress: setTranslationModelProgress,
+      });
+      setTranslationModels((current) => ({ ...current, [targetLanguage]: status }));
+      setStatusMessage(t('translationModelInstalled'));
+    } catch (error) {
+      const status = await localTranslationProvider.manager.status(targetLanguage);
+      setTranslationModels((current) => ({ ...current, [targetLanguage]: status }));
+      setStatusMessage(
+        error instanceof DOMException && error.name === 'AbortError'
+          ? t('translationDownloadPaused')
+          : error instanceof Error
+            ? error.message
+            : String(error),
+      );
+    } finally {
+      translationInstallAbort.current = null;
+      setInstallingTranslationModel(null);
+      setTranslationModelProgress(null);
+    }
+  }
+
+  function cancelTranslationInstall() {
+    translationInstallAbort.current?.abort();
+  }
+
+  async function removeTranslationModel(targetLanguage: TranslationTargetLanguage) {
+    if (!globalThis.confirm(t('removeTranslationModelConfirm'))) {
+      return;
+    }
+
+    try {
+      await localTranslationProvider.dispose();
+      await localTranslationProvider.manager.remove(targetLanguage);
+      setTranslationModels((current) => ({
+        ...current,
+        [targetLanguage]: emptyTranslationStatus,
+      }));
+      setStatusMessage(t('translationModelRemoved'));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function toggleDictionary(id: DictionaryId, enabled: boolean) {
     setDictionaryPreferences((current) => ({
       ...current,
@@ -714,6 +824,13 @@ export function App({ platform }: AppProps) {
           onOpenExternal={(url) => platform.openExternal(url)}
           onAddWordCard={addWordCard}
           dictionaryProviders={dictionaryProviders}
+          localTranslationProvider={localTranslationProvider}
+          installedTranslationTargets={(
+            Object.entries(translationModels) as [
+              TranslationTargetLanguage,
+              TranslationModelInstallStatus,
+            ][]
+          ).flatMap(([target, status]) => (status.installed ? [target] : []))}
         />
       </Suspense>
     );
@@ -830,6 +947,9 @@ export function App({ platform }: AppProps) {
             installedDictionaries={installedDictionaries}
             installingDictionary={installingDictionary}
             userStarDict={userStarDict}
+            translationModels={translationModels}
+            installingTranslationModel={installingTranslationModel}
+            translationModelProgress={translationModelProgress}
             t={t}
             onToggleDictionary={toggleDictionary}
             onMoveDictionary={moveDictionary}
@@ -837,6 +957,9 @@ export function App({ platform }: AppProps) {
             onRemoveFreeDict={removeFreeDict}
             onImportStarDict={importStarDict}
             onRemoveStarDict={removeStarDict}
+            onInstallTranslationModel={installTranslationModel}
+            onCancelTranslationInstall={cancelTranslationInstall}
+            onRemoveTranslationModel={removeTranslationModel}
             onOpenExternal={(url) => platform.openExternal(url)}
           />
         )}
@@ -1275,6 +1398,9 @@ interface SettingsPageProps {
   readonly installedDictionaries: DictionaryInstallState;
   readonly installingDictionary: DownloadableDictionaryId | null;
   readonly userStarDict: StarDictInstallStatus | null;
+  readonly translationModels: TranslationInstallState;
+  readonly installingTranslationModel: TranslationTargetLanguage | null;
+  readonly translationModelProgress: TranslationModelProgress | null;
   readonly t: (key: MessageKey) => string;
   readonly onToggleDictionary: (id: DictionaryId, enabled: boolean) => void;
   readonly onMoveDictionary: (id: DictionaryId, direction: -1 | 1) => void;
@@ -1282,6 +1408,9 @@ interface SettingsPageProps {
   readonly onRemoveFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
   readonly onImportStarDict: (files: readonly File[]) => Promise<void>;
   readonly onRemoveStarDict: () => Promise<void>;
+  readonly onInstallTranslationModel: (targetLanguage: TranslationTargetLanguage) => Promise<void>;
+  readonly onCancelTranslationInstall: () => void;
+  readonly onRemoveTranslationModel: (targetLanguage: TranslationTargetLanguage) => Promise<void>;
   readonly onOpenExternal: (url: string) => Promise<void>;
 }
 
@@ -1290,6 +1419,9 @@ function SettingsPage({
   installedDictionaries,
   installingDictionary,
   userStarDict,
+  translationModels,
+  installingTranslationModel,
+  translationModelProgress,
   t,
   onToggleDictionary,
   onMoveDictionary,
@@ -1297,6 +1429,9 @@ function SettingsPage({
   onRemoveFreeDict,
   onImportStarDict,
   onRemoveStarDict,
+  onInstallTranslationModel,
+  onCancelTranslationInstall,
+  onRemoveTranslationModel,
   onOpenExternal,
 }: SettingsPageProps) {
   const descriptions: Readonly<
@@ -1479,6 +1614,97 @@ function SettingsPage({
               {isUserDictionary && !installed ? (
                 <p className="dictionary-download-note">{t('starDictImportNote')}</p>
               ) : null}
+            </article>
+          );
+        })}
+      </div>
+
+      <header className="settings-section-heading">
+        <h2>{t('localTranslationModels')}</h2>
+        <p>{t('localTranslationModelsDescription')}</p>
+      </header>
+
+      <div className="dictionary-settings-list">
+        {(['fr', 'zh'] as const).map((targetLanguage) => {
+          const resource = translationModelResources[targetLanguage];
+          const status = translationModels[targetLanguage];
+          const isInstalling = installingTranslationModel === targetLanguage;
+          const percent =
+            isInstalling && translationModelProgress
+              ? Math.round(
+                  (translationModelProgress.downloadedBytes / translationModelProgress.totalBytes) *
+                    100,
+                )
+              : 0;
+
+          return (
+            <article
+              className="dictionary-settings-card"
+              data-translation-model={targetLanguage}
+              key={targetLanguage}
+            >
+              <div className="dictionary-settings-main">
+                <div>
+                  <div className="dictionary-settings-title">
+                    <h3>{resource.name}</h3>
+                    <span className="dictionary-language">EN → {targetLanguage.toUpperCase()}</span>
+                  </div>
+                  <p>
+                    {status.installed
+                      ? t('installed')
+                      : status.partial
+                        ? t('partiallyDownloaded')
+                        : t('notInstalled')}{' '}
+                    · {resource.license}
+                  </p>
+                </div>
+                <span className="translation-model-size">
+                  {(resource.downloadSize / 1_000_000).toFixed(1)} MB
+                </span>
+              </div>
+
+              <div className="dictionary-settings-actions">
+                <button type="button" onClick={() => void onOpenExternal(resource.sourceUrl)}>
+                  {t('source')}
+                </button>
+                <button type="button" onClick={() => void onOpenExternal(resource.licenseUrl)}>
+                  {t('license')}
+                </button>
+                {isInstalling ? (
+                  <button
+                    className="dictionary-remove"
+                    type="button"
+                    onClick={onCancelTranslationInstall}
+                  >
+                    {t('pauseDownload')} · {percent}%
+                  </button>
+                ) : status.installed ? (
+                  <button
+                    className="dictionary-remove"
+                    type="button"
+                    onClick={() => void onRemoveTranslationModel(targetLanguage)}
+                  >
+                    {t('removeDictionary')}
+                  </button>
+                ) : (
+                  <button
+                    className="dictionary-install"
+                    type="button"
+                    disabled={installingTranslationModel !== null}
+                    onClick={() => void onInstallTranslationModel(targetLanguage)}
+                  >
+                    {status.partial ? t('resumeDownload') : t('installModel')}
+                  </button>
+                )}
+              </div>
+
+              <p className="dictionary-download-note">
+                {t(
+                  targetLanguage === 'fr'
+                    ? 'frenchTranslationModelNote'
+                    : 'chineseTranslationModelNote',
+                )}
+              </p>
             </article>
           );
         })}

@@ -3,6 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
 import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
+import type {
+  BergamotTranslationProvider,
+  TranslationTargetLanguage,
+} from '@lexianchor/translation';
 import {
   PdfJsReaderEngine,
   type PdfDocumentInfo,
@@ -21,6 +25,8 @@ interface PdfReaderPageProps {
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
   readonly dictionaryProviders: readonly DictionaryProvider[];
+  readonly localTranslationProvider: BergamotTranslationProvider;
+  readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
 }
 
 interface StoredPdfView {
@@ -60,6 +66,8 @@ export function PdfReaderPage({
   onOpenExternal,
   onAddWordCard,
   dictionaryProviders,
+  localTranslationProvider,
+  installedTranslationTargets,
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
@@ -267,6 +275,8 @@ export function PdfReaderPage({
             onOpenExternal={onOpenExternal}
             onAddWordCard={onAddWordCard}
             providers={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={installedTranslationTargets}
           />
         </aside>
 

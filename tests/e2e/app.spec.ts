@@ -121,6 +121,30 @@ test('moves between the library and word-card sections', async ({ page }) => {
   ).toBeVisible();
 });
 
+test('shows optional English-French and English-Chinese local translation models', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+
+  const frenchModel = page.locator('article[data-translation-model="fr"]');
+  const chineseModel = page.locator('article[data-translation-model="zh"]');
+
+  await expect(frenchModel).toContainText('Mozilla Bergamot English–French');
+  await expect(frenchModel).toContainText(/25\.8 MB/);
+  await expect(frenchModel).toContainText(/MPL|Mozilla Public License/);
+  await expect(
+    frenchModel.getByRole('button', { name: /Install model|安装模型|Installer le modèle/ }),
+  ).toBeVisible();
+
+  await expect(chineseModel).toContainText('Mozilla Bergamot English–Chinese');
+  await expect(chineseModel).toContainText(/36\.7 MB/);
+  await expect(chineseModel).toContainText(/MPL|Mozilla Public License/);
+  await expect(
+    chineseModel.getByRole('button', { name: /Install model|安装模型|Installer le modèle/ }),
+  ).toBeVisible();
+});
+
 test('opens the EPUB spike and validates selection and focus markup', async ({ page }) => {
   await page.goto('/');
 
@@ -147,6 +171,15 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   );
   await expect(page.getByText(/giving care or attention/i)).toBeVisible();
   await expect(page.locator('.dictionary-attribution')).toContainText('WordNet');
+  await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
+  await expect(
+    page.getByRole('combobox', { name: /Translation target|翻译目标语言|Langue cible/ }),
+  ).toHaveValue(/zh|fr/);
+  await expect(
+    page.getByText(
+      /Install this language model in Settings|请先在设置中安装|Installez ce modèle linguistique/,
+    ),
+  ).toBeVisible();
 
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).check();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();

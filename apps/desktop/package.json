@@ -25,6 +25,7 @@
     "@electron-forge/plugin-vite": "7.11.2",
     "@electron-forge/shared-types": "7.11.2",
     "@electron/fuses": "1.8.0",
+    "@lexianchor/translation": "workspace:*",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.4",

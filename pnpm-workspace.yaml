@@ -22,3 +22,6 @@ overrides:
   # GHSA-x6wf, and GHSA-j759.
   '@xmldom/xmldom': 0.8.13
   tmp: 0.2.7
+
+catalog:
+  '@browsermt/bergamot-translator': 0.4.9

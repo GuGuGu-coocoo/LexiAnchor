@@ -12,8 +12,9 @@ English–French dictionary plus an optional FreeDict/WikDict English–Chinese 
 offline. Users can also import an uncompressed StarDict `.ifo + .idx + .dict` set.
 They can enable dictionaries and change result order in Settings, while
 explicit online translation and Web search remain available. Dictionary results can be
-saved as persistent, searchable word cards with their reading context. Local sentence
-translation remains in development.
+saved as persistent, searchable word cards with their reading context. Optional Mozilla
+Bergamot English–French and English–Chinese models can be installed for private,
+on-device sentence translation and reused while offline.
 
 ## Requirements
 
@@ -51,6 +52,7 @@ pnpm test:e2e
 - [FreeDict English–French spike](./docs/spikes/0005-freedict-eng-fra.md)
 - [FreeDict/WikDict English–Chinese spike](./docs/spikes/0006-freedict-eng-zho.md)
 - [StarDict user dictionary import spike](./docs/spikes/0007-stardict-import.md)
+- [Bergamot local translation spike](./docs/spikes/0008-bergamot-local-translation.md)
 
 ## Project status
 

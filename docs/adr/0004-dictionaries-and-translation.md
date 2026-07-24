@@ -22,8 +22,8 @@
 
 - 单词优先词典；
 - EN→FR、EN→ZH 句子模型按需下载；
-- Desktop 使用 ONNX Runtime Node；
-- Web 使用 ONNX Runtime Web，WebGPU 优先、WASM 回退；
+- v0.1 使用 Mozilla Bergamot/Marian 量化模型与 WASM；
+- Desktop renderer 与 Web 共用同一个 Web Worker 推理后端和 OPFS 模型存储；
 - 在线翻译必须由用户主动选择。
 
 ## 资源门禁
@@ -123,3 +123,20 @@ v0.1 支持用户选择一组同名、未压缩的 `.ifo + .idx + .dict`。导�
 负责。压缩变体、64 位索引、二进制媒体和多本用户词典不属于 v0.1 兼容范围。
 
 完整证据见 [StarDict 用户词典导入 Spike](../spikes/0007-stardict-import.md)。
+
+## Bergamot 本地句子翻译实现结果
+
+原先计划的 ONNX Runtime/Transformers.js 只是模型 Spike 前的占位路线。实测后，v0.1 改为
+体积更小、面向浏览器本地机器翻译的 Mozilla Bergamot：
+
+- 固定 `@browsermt/bergamot-translator` 0.4.9；
+- 选择 Mozilla registry 中 `Release` 状态的 EN→FR、EN→ZH `base-memory` 模型；
+- 两个模型分别下载约 25.8 MB、36.7 MB，解压后约占 36.7 MB、49.9 MB；
+- 每个 gzip 和解压文件均校验固定大小与 SHA-256；
+- 完整文件支持复用，所有部件完成后才标记安装成功；
+- 设置页提供安装、暂停/继续、来源、许可证和删除；
+- 选文面板的目标语言独立于 UI 语言，并始终保留主动触发的在线翻译和网页搜索；
+- 两个真实模型均通过安装、推理、重载和断网复用验证。
+
+ONNX Runtime 保留为未来更多语言方向的替代 Provider，不再是 v0.1 的运行依赖。完整证据见
+[Mozilla Bergamot 本地句子翻译 Spike](../spikes/0008-bergamot-local-translation.md)。

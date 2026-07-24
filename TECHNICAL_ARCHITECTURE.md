@@ -20,7 +20,7 @@ LexiAnchor 采用 TypeScript 优先的跨平台架构：
 - 桌面与 Web 使用相同 SQLite schema、迁移和 Repository API；
 - SQLite 在 Worker 中运行，持久化到 OPFS；
 - 大型书籍、词典和模型通过统一 ContentStore 接口管理；
-- 本地翻译在桌面 Utility Process 或 Web Worker 中执行；
+- v0.1 本地翻译在桌面/Web 共用的 Bergamot Web Worker 中执行；
 - 离线资源优先级为英英、英法、英汉；
 - 研发期使用私有 GitHub 仓库；
 - 桌面构建不签名，以便携压缩包为主，但接受系统安全警告这一限制。
@@ -52,8 +52,8 @@ LexiAnchor 采用 TypeScript 优先的跨平台架构：
 | 数据持久化 | OPFS `opfs-sahpool` | 已确定（v0.1） | 单写连接；不依赖 COOP/COEP；提供能力检测 |
 | 桌面文件 | Electron main process | 已确定 | 书籍、词典和模型存放于应用数据目录 |
 | Web 文件 | OPFS | 已确定 | 受浏览器配额和清理策略限制 |
-| 本地推理 | ONNX Runtime | 已确定方向 | 桌面 Node backend、Web WASM/WebGPU |
-| 模型封装 | Transformers.js | 待模型 Spike | 统一模型加载、tokenizer 和推理流程 |
+| 本地推理 | Mozilla Bergamot WASM 0.4.9 | 已确定（v0.1） | 桌面/Web 共用 Worker；Provider 隔离未来后端 |
+| 翻译模型 | Mozilla Firefox Translations | 已确定（v0.1） | EN→FR/EN→ZH `Release`、`base-memory` 量化模型 |
 | 单元测试 | Vitest | 已确定 | 领域逻辑、格式转换、迁移 |
 | E2E | Playwright | 已确定 | Web 与 Electron 核心流程 |
 | CI | GitHub Actions | 已确定 | Windows、macOS、Web 构建和测试 |
@@ -104,10 +104,9 @@ flowchart TB
     CONTENT --> DESKTOP_FS[Desktop App Data]
     CONTENT --> WEB_OPFS[Web OPFS]
 
-    TRANS --> DESKTOP_ML[Electron Utility Process]
-    TRANS --> WEB_ML[Web Worker]
-    DESKTOP_ML --> ONNX[ONNX Models]
-    WEB_ML --> ONNX
+    TRANS --> ML_WORKER[Bergamot Web Worker]
+    ML_WORKER --> WASM[Bergamot WASM]
+    ML_WORKER --> MODELS[Marian EN-FR / EN-ZH Models]
 ```
 
 ## 5. Monorepo 结构
@@ -162,7 +161,6 @@ apps → app/ui → domain/ports → adapters
 - 管理桌面应用数据目录；
 - 打开系统浏览器；
 - 管理便携构建和版本信息；
-- 创建翻译 Utility Process；
 - 通过白名单 IPC 暴露最小平台能力。
 
 #### Preload
@@ -180,20 +178,16 @@ apps → app/ui → domain/ports → adapters
 - EPUB 内容运行在受限 iframe；
 - 只通过 preload API 访问桌面能力。
 
-#### Utility Process
-
-- 执行本地翻译和其他高 CPU/内存任务；
-- 模型崩溃或内存不足不得使主窗口退出；
-- 通过消息协议返回进度、结果、取消和错误。
-
 ### 6.2 Web Worker
 
-Web 使用独立 Worker：
+Web 与 Electron renderer 使用独立 Worker：
 
 - SQLite Worker；
-- 翻译 Worker；
-- 未来可增加词典导入 Worker；
+- Bergamot 翻译 Worker；
+- StarDict 导入 Worker；
 - 所有长任务支持取消和进度事件。
+
+Utility Process 是 Electron 后续隔离大内存任务的预留手段，不属于 v0.1 已实现基线。
 
 ## 7. 阅读内核
 
@@ -399,38 +393,34 @@ ECDICT 仓库本身标记 MIT，但 README 描述其释义和音标由多种资�
 
 ### 10.2 执行后端
 
-#### Desktop
+v0.1 的 Web/PWA 与 Electron renderer 共用：
 
-- Electron Utility Process；
-- ONNX Runtime Node execution provider；
-- 模型保存在应用数据目录；
-- 进程级内存和超时保护。
+- `@browsermt/bergamot-translator` 0.4.9；
+- 独立 Web Worker 与约 5.2 MB WASM；
+- Mozilla Firefox Translations 的量化 Marian 模型；
+- OPFS 模型存储、模型 manifest、语言路由和 `BergamotTranslationProvider`；
+- 能力不足或模型未安装时的在线翻译与 Search on Web 降级。
 
-#### Web
-
-- Web Worker；
-- 首选 WebGPU；
-- 回退 WASM；
-- 能力不足时提示并提供在线翻译。
-
-桌面和 Web 共用：
-
-- 模型 manifest；
-- tokenizer/pre-post processing；
-- TranslationProvider 接口；
-- 语言检测和路由规则；
-- 测试语料。
+这使两端模型文件、推理结果和存储生命周期保持一致。若后续 Electron 出现必须隔离的内存或
+崩溃问题，可把同一 Provider 后端迁移到 Utility Process；产品 UI 不直接依赖 Worker 或
+Bergamot。ONNX Runtime/Transformers.js 只保留为未来增加语言方向时的候选实现。
 
 ### 10.3 模型管理
 
 - 模型按需下载，不进入 Git；
-- 允许数百 MB 的语言包；
 - 首批句子翻译方向为英→法、英→简中；
-- 支持暂停、继续、取消、校验和删除；
+- EN→FR 下载 25.8 MB、解压约 36.7 MB；
+- EN→ZH 下载 36.7 MB、解压约 49.9 MB；
+- 每个压缩与解压文件都核对固定大小和 SHA-256；
+- 支持暂停、完成文件复用、继续、取消和删除；
 - 下载前显示体积、许可证和预计磁盘占用；
-- 具体模型必须通过质量、速度、许可证和浏览器兼容 Spike 后确定。
+- 完整资源通过真实浏览器安装、推理、重载和断网复用验证。
 
 “英英”通过词典释义实现，不把生成式英语改写当成权威词典结果。
+
+实现与审计证据见
+[Mozilla Bergamot 本地句子翻译 Spike](./docs/spikes/0008-bergamot-local-translation.md) 与
+[ADR-0004](./docs/adr/0004-dictionaries-and-translation.md)。
 
 ## 11. UI 与状态
 
@@ -548,8 +538,8 @@ Spike 代码可以丢弃；结论必须进入 `docs/spikes/` 和 ADR。
 - [EPUB.js](https://github.com/futurepress/epub.js/)
 - [SQLite WebAssembly](https://sqlite.org/wasm/doc/trunk/index.md)
 - [SQLite OPFS 持久化](https://sqlite.org/wasm/doc/tip/persistence.md)
-- [ONNX Runtime Web](https://onnxruntime.ai/docs/tutorials/web/)
-- [Transformers.js](https://huggingface.co/docs/transformers.js/main/index)
+- [Bergamot Translator](https://github.com/browsermt/bergamot-translator)
+- [Firefox Translations models](https://github.com/mozilla/firefox-translations-models)
 - [Princeton WordNet 许可证](https://wordnet.princeton.edu/license-and-commercial-use)
 - [FreeDict 许可证说明](https://freedict.org/documentation/)
 - [WikDict 下载与许可证](https://www.wikdict.com/page/download)

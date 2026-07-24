@@ -10,6 +10,10 @@ import {
 import { EpubJsReaderEngine } from '@lexianchor/reader-epub';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
+import type {
+  BergamotTranslationProvider,
+  TranslationTargetLanguage,
+} from '@lexianchor/translation';
 
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 
@@ -28,6 +32,8 @@ interface ReaderPageProps {
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
   readonly dictionaryProviders: readonly DictionaryProvider[];
+  readonly localTranslationProvider: BergamotTranslationProvider;
+  readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
 }
 
 function storageKey(source: ReaderSource): string {
@@ -78,6 +84,8 @@ function EpubReaderPage({
   onOpenExternal,
   onAddWordCard,
   dictionaryProviders,
+  localTranslationProvider,
+  installedTranslationTargets,
 }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
@@ -273,6 +281,8 @@ function EpubReaderPage({
             onOpenExternal={onOpenExternal}
             onAddWordCard={onAddWordCard}
             providers={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={installedTranslationTargets}
           />
         </aside>
 

@@ -961,7 +961,8 @@ LexiAnchor 的默认路线：
 5. Web 与桌面使用相同 SQLite schema、migration 和 Repository。
 6. SQLite WASM 在 Worker 中运行并使用 OPFS 持久化。
 7. 大型文件通过平台 ContentStore 保存，用户可见行为和导出格式一致。
-8. 本地翻译使用 ONNX Runtime 路线，模型按需下载。
+8. v0.1 本地翻译使用 Mozilla Bergamot WASM 路线，EN→FR、EN→ZH 模型按需下载；
+   ONNX Runtime 保留为未来可替换 Provider 候选。
 9. 离线资源优先级为英英、英法、英汉。
 10. 研发期使用私有 GitHub 仓库。
 11. MVP 桌面包不签名，以便携 ZIP 交付，并接受系统安全警告限制。

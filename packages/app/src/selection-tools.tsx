@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   type DictionaryPartOfSpeech,
@@ -7,6 +7,11 @@ import {
 } from '@lexianchor/dictionary';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { ReaderSelection } from '@lexianchor/reader-core';
+import type {
+  BergamotTranslationProvider,
+  LocalTranslationResult,
+  TranslationTargetLanguage,
+} from '@lexianchor/translation';
 
 interface SelectionToolsProps {
   readonly selection: ReaderSelection | null;
@@ -16,6 +21,8 @@ interface SelectionToolsProps {
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
   readonly providers: readonly DictionaryProvider[];
+  readonly localTranslationProvider: BergamotTranslationProvider;
+  readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
 }
 
 export interface WordCardDraft {
@@ -34,6 +41,14 @@ interface LookupState {
   readonly error: string;
 }
 
+interface LocalTranslationState {
+  readonly text: string;
+  readonly targetLanguage: TranslationTargetLanguage;
+  readonly status: 'idle' | 'translating' | 'translated' | 'error';
+  readonly result: LocalTranslationResult | null;
+  readonly error: string;
+}
+
 function isSingleWord(value: string): boolean {
   return /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?$/.test(value.trim());
 }
@@ -44,10 +59,10 @@ function searchUrl(text: string): string {
   return url.href;
 }
 
-function translationUrl(text: string, locale: Locale): string {
+function translationUrl(text: string, targetLanguage: TranslationTargetLanguage): string {
   const url = new URL('https://translate.google.com/');
   url.searchParams.set('sl', 'auto');
-  url.searchParams.set('tl', locale === 'zh-CN' ? 'zh-CN' : locale);
+  url.searchParams.set('tl', targetLanguage === 'zh' ? 'zh-CN' : 'fr');
   url.searchParams.set('text', text);
   url.searchParams.set('op', 'translate');
   return url.href;
@@ -61,6 +76,8 @@ export function SelectionTools({
   onOpenExternal,
   onAddWordCard,
   providers,
+  localTranslationProvider,
+  installedTranslationTargets,
 }: SelectionToolsProps) {
   const selectedText = selection?.text.trim() ?? '';
   const canUseDictionary = isSingleWord(selectedText);
@@ -70,6 +87,18 @@ export function SelectionTools({
     error: '',
   });
   const [showTranslationConsent, setShowTranslationConsent] = useState(false);
+  const [translationTarget, setTranslationTarget] = useState<TranslationTargetLanguage>(() => {
+    const stored = globalThis.localStorage?.getItem('lexianchor:translation-target');
+    return stored === 'fr' || stored === 'zh' ? stored : locale === 'fr' ? 'fr' : 'zh';
+  });
+  const [localTranslation, setLocalTranslation] = useState<LocalTranslationState>({
+    text: '',
+    targetLanguage: translationTarget,
+    status: 'idle',
+    result: null,
+    error: '',
+  });
+  const translationAbort = useRef<AbortController | null>(null);
   const [cardSaveState, setCardSaveState] = useState<{
     readonly term: string;
     readonly status: 'saving' | 'saved' | 'error';
@@ -78,6 +107,11 @@ export function SelectionTools({
   const error = lookupState.term === selectedText ? lookupState.error : '';
   const isLoading = Boolean(selectedText && canUseDictionary) && lookupState.term !== selectedText;
   const cardState = cardSaveState?.term === selectedText ? cardSaveState.status : ('idle' as const);
+  const activeTranslation =
+    localTranslation.text === selectedText && localTranslation.targetLanguage === translationTarget
+      ? localTranslation
+      : null;
+  const localModelInstalled = installedTranslationTargets.includes(translationTarget);
 
   useEffect(() => {
     let isActive = true;
@@ -109,6 +143,17 @@ export function SelectionTools({
     };
   }, [canUseDictionary, providers, selectedText, t]);
 
+  useEffect(() => {
+    globalThis.localStorage?.setItem('lexianchor:translation-target', translationTarget);
+    translationAbort.current?.abort();
+    translationAbort.current = null;
+
+    return () => {
+      translationAbort.current?.abort();
+      translationAbort.current = null;
+    };
+  }, [selectedText, translationTarget]);
+
   async function openTranslation() {
     const consentKey = 'lexianchor:external-consent:google-translate';
 
@@ -117,13 +162,55 @@ export function SelectionTools({
       return;
     }
 
-    await onOpenExternal(translationUrl(selectedText, locale));
+    await onOpenExternal(translationUrl(selectedText, translationTarget));
   }
 
   async function confirmTranslation() {
     globalThis.localStorage?.setItem('lexianchor:external-consent:google-translate', 'granted');
     setShowTranslationConsent(false);
-    await onOpenExternal(translationUrl(selectedText, locale));
+    await onOpenExternal(translationUrl(selectedText, translationTarget));
+  }
+
+  async function translateLocally() {
+    const controller = new AbortController();
+    translationAbort.current?.abort();
+    translationAbort.current = controller;
+    setLocalTranslation({
+      text: selectedText,
+      targetLanguage: translationTarget,
+      status: 'translating',
+      result: null,
+      error: '',
+    });
+
+    try {
+      const result = await localTranslationProvider.translate(
+        selectedText,
+        translationTarget,
+        controller.signal,
+      );
+      setLocalTranslation({
+        text: selectedText,
+        targetLanguage: translationTarget,
+        status: 'translated',
+        result,
+        error: '',
+      });
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setLocalTranslation({
+          text: selectedText,
+          targetLanguage: translationTarget,
+          status: 'error',
+          result: null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } finally {
+      if (translationAbort.current === controller) {
+        translationAbort.current = null;
+      }
+    }
   }
 
   async function addWordCard() {
@@ -176,9 +263,6 @@ export function SelectionTools({
 
       {isLoading ? <p className="dictionary-status">{t('lookingUpWord')}</p> : null}
       {error ? <p className="dictionary-error">{error}</p> : null}
-      {!canUseDictionary ? (
-        <p className="dictionary-status">{t('localTranslationUnavailable')}</p>
-      ) : null}
       {canUseDictionary && !isLoading && !error && results.length === 0 ? (
         <p className="dictionary-status">{t('noDictionaryEntry')}</p>
       ) : null}
@@ -232,6 +316,52 @@ export function SelectionTools({
           <p className="dictionary-attribution">{result.source.attribution}</p>
         </article>
       ))}
+
+      <section className="local-translation-panel" aria-labelledby="local-translation-title">
+        <div className="local-translation-heading">
+          <strong id="local-translation-title">{t('localTranslation')}</strong>
+          <label>
+            <span className="sr-only">{t('translationTarget')}</span>
+            <select
+              value={translationTarget}
+              onChange={(event) =>
+                setTranslationTarget(event.target.value as TranslationTargetLanguage)
+              }
+            >
+              <option value="zh">{t('simplifiedChinese')}</option>
+              <option value="fr">{t('french')}</option>
+            </select>
+          </label>
+        </div>
+
+        {localModelInstalled ? (
+          <button
+            className="dictionary-action local-translation-action"
+            type="button"
+            disabled={selectedText.length > 2_000 || activeTranslation?.status === 'translating'}
+            onClick={() => void translateLocally()}
+          >
+            {activeTranslation?.status === 'translating'
+              ? t('translatingLocally')
+              : t('translateLocally')}
+          </button>
+        ) : (
+          <p className="dictionary-status">{t('localModelNotInstalled')}</p>
+        )}
+
+        {selectedText.length > 2_000 ? (
+          <p className="dictionary-error">{t('translationSelectionTooLong')}</p>
+        ) : null}
+        {activeTranslation?.result ? (
+          <div className="local-translation-result">
+            <p>{activeTranslation.result.translatedText}</p>
+            <span>{activeTranslation.result.model.attribution}</span>
+          </div>
+        ) : null}
+        {activeTranslation?.status === 'error' ? (
+          <p className="dictionary-error">{activeTranslation.error}</p>
+        ) : null}
+      </section>
 
       {cardResult ? (
         <button

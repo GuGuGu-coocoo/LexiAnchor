@@ -19,6 +19,7 @@
     "@lexianchor/reader-pdf": "workspace:*",
     "@lexianchor/storage": "workspace:*",
     "@lexianchor/test-fixtures": "workspace:*",
+    "@lexianchor/translation": "workspace:*",
     "@lexianchor/ui": "workspace:*",
     "react": "19.2.8"
   },
