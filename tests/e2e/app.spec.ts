@@ -209,6 +209,10 @@ test('persists an imported book and its reading progress in local SQLite and OPF
     .first();
   await expect(recentBook).toBeVisible();
   await expect(recentBook.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
+
+  await page.context().setOffline(true);
+  await page.reload();
+  await expect(recentBook).toBeVisible();
   await recentBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
 });

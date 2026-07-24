@@ -5,9 +5,9 @@ Its primary goals are comfortable reading, offline dictionaries and translation,
 and turning words encountered in books into useful word cards.
 
 The project is in active development. The shared Web/PWA and Electron application
-can now import and read DRM-free EPUB 2/3 and PDF files. Reader progress is still
-stored as an experiment; a persistent library, dictionaries, translation, and word
-cards are the next product slices.
+can now import and read DRM-free EPUB 2/3 and PDF files. Imported books and reading
+progress persist locally through SQLite WASM and OPFS. Dictionaries, translation,
+and word cards are the next product slices.
 
 ## Requirements
 
@@ -40,6 +40,7 @@ pnpm test:e2e
 - [Current reader status](./docs/PHASE_1_READER_STATUS.md)
 - [EPUB engine spike](./docs/spikes/0001-epub-engine.md)
 - [PDF engine spike](./docs/spikes/0002-pdf-engine.md)
+- [SQLite and OPFS spike](./docs/spikes/0003-sqlite-opfs.md)
 
 ## Project status
 

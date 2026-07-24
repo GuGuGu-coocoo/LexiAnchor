@@ -136,7 +136,8 @@ Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimenta
       `docs/spikes/0001-epub-engine.md` 与 ADR-0003；
 - [x] PDF.js 文本层与 PDF 核心阅读切片：见
       `docs/spikes/0002-pdf-engine.md` 与 ADR-0003；100MB 压力验证仍待完成；
-- [ ] SQLite WASM + OPFS；
+- [x] SQLite WASM + OPFS：`opfs-sahpool`、schema v1、书库与进度恢复通过，
+      见 `docs/spikes/0003-sqlite-opfs.md` 与 ADR-0002；
 - [ ] 词典包；
 - [ ] 本地翻译模型；
 - [ ] 无签名桌面包实机记录。

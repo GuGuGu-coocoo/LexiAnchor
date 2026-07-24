@@ -48,8 +48,8 @@ LexiAnchor 采用 TypeScript 优先的跨平台架构：
 | Web | PWA | 已确定 | Service Worker 缓存应用壳与离线资源清单 |
 | PDF | PDF.js 6.1.200 | 已确定（v0.1） | display layer、文本层、选词；通过 adapter 隔离 |
 | EPUB | EPUB.js 0.3.93 | 已确定（v0.1） | 本地文件直读；通过 adapter 隔离并保留 Readium 迁移能力 |
-| 数据库 | SQLite WASM | 已确定 | 桌面/Web 使用相同 schema 和迁移 |
-| 数据持久化 | OPFS | 已确定 | 数据库运行于 Worker；提供能力检测和导出 |
+| 数据库 | SQLite WASM 3.53.0 | 已确定（v0.1） | 自有 Worker；桌面/Web 使用相同 schema 和迁移 |
+| 数据持久化 | OPFS `opfs-sahpool` | 已确定（v0.1） | 单写连接；不依赖 COOP/COEP；提供能力检测 |
 | 桌面文件 | Electron main process | 已确定 | 书籍、词典和模型存放于应用数据目录 |
 | Web 文件 | OPFS | 已确定 | 受浏览器配额和清理策略限制 |
 | 本地推理 | ONNX Runtime | 已确定方向 | 桌面 Node backend、Web WASM/WebGPU |
@@ -285,6 +285,12 @@ Web 与桌面必须保持：
 - 迁移在应用启动时、打开业务页面前执行；
 - 迁移失败进入只读恢复界面；
 - 不直接同步 `.sqlite3` 文件。
+
+存储 Spike 已完成，见
+[SQLite WASM + OPFS 存储 Spike](./docs/spikes/0003-sqlite-opfs.md) 与
+[ADR-0002](./docs/adr/0002-local-first-storage.md)。v0.1 使用
+`@sqlite.org/sqlite-wasm` 3.53.0-build1 的 `opfs-sahpool`，避免普通 OPFS VFS
+对 COOP/COEP 响应头的要求。持久化不可用时只允许明确的内存降级。
 
 ### 8.3 大文件
 
