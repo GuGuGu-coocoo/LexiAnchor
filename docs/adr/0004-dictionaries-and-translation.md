@@ -13,7 +13,7 @@
 
 初始候选：
 
-- 英英：Princeton WordNet；
+- 英英：Princeton WordNet 3.1；
 - 英法：FreeDict `eng-fra`；
 - 英汉：ECDICT，发布前进行来源和许可证抽查；
 - 词根/词源：Wiktionary/Kaikki 独立可选包。
@@ -52,3 +52,21 @@
 - 词典只读 SQLite 转换；
 - TranslationProvider 降级链；
 - 不把模型和完整词典提交到 Git。
+
+## WordNet 实现结果
+
+英英基线已经实现：
+
+- 固定 `wordnet-db` 3.1.14，随应用分发完整 WordNet 3.1；
+- 通过 `DictionaryProvider` 隔离产品 UI 与具体数据格式；
+- 浏览器直接查询原始 WordNet index/data，并按命中词性延迟加载 data；
+- PWA 预缓存全部数据文件，断网查询通过；
+- 资源 manifest 记录包 integrity、各文件大小和 SHA-256；
+- 仓库保留完整 Princeton 声明，结果面板显示来源署名；
+- 选择 EPUB/PDF 单词后本地查询，在线翻译与网页搜索只由用户主动触发。
+
+完整证据见 [WordNet 离线英英词典 Spike](../spikes/0004-wordnet.md)。
+
+内置 WordNet 暂不转换为 SQLite：其有序索引和字节偏移已经适合只读查询，直接分发可避免
+维护一份派生数据库。后续 FreeDict、英汉和用户词典仍统一转换为只读 SQLite 包；上层继续
+使用同一个 Provider，因此该差异不会进入产品 UI。

@@ -336,7 +336,7 @@ lexianchor-export.zip
 
 | 类型 | 首选候选 | 分发策略 | 状态 |
 | --- | --- | --- | --- |
-| 英英 | Princeton WordNet | 可随应用或首次启动安装 | 许可证初审通过，需保留声明 |
+| 英英 | Princeton WordNet 3.1 | 随应用分发 | 已实现并通过离线查询、许可与完整性验证 |
 | 英法 | FreeDict `eng-fra` | 应用内按需下载 | 每个词典单独核对 TEI header |
 | 英汉 | ECDICT | 应用内按需下载 | MIT 标识存在，仍需溯源抽查 |
 | 词根/词源补充 | Wiktionary/Kaikki 数据 | 独立可选包 | 需处理署名和 ShareAlike |
@@ -353,13 +353,22 @@ lexianchor-export.zip
 
 ### 9.3 包格式
 
-LexiAnchor 官方词典统一转换为只读 SQLite 包。用户导入优先支持：
+WordNet 3.1 的内置基线保留上游有序 index/data 文件，通过字节偏移只读查询。它由
+`@lexianchor/dictionary` 的 `DictionaryProvider` 隔离，结果结构不暴露具体格式；PWA
+预缓存完整资源，Electron 使用相同构建资产。资源清单和完整声明分别保存在
+`packages/dictionary/resources` 与 `docs/licenses`。
+
+其他 LexiAnchor 官方词典统一转换为只读 SQLite 包。用户导入优先支持：
 
 1. StarDict；
 2. LexiAnchor Dictionary Package；
 3. MDX/MDD 在 P1 调研。
 
 导入在 Worker 中完成，并写入新的临时数据库；只有校验和索引成功后才原子替换。
+
+实现与验收证据见
+[WordNet 离线英英词典 Spike](./docs/spikes/0004-wordnet.md) 与
+[ADR-0004](./docs/adr/0004-dictionaries-and-translation.md)。
 
 ## 10. 翻译架构
 

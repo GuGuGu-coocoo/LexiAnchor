@@ -6,8 +6,10 @@ and turning words encountered in books into useful word cards.
 
 The project is in active development. The shared Web/PWA and Electron application
 can now import and read DRM-free EPUB 2/3 and PDF files. Imported books and reading
-progress persist locally through SQLite WASM and OPFS. Dictionaries, translation,
-and word cards are the next product slices.
+progress persist locally through SQLite WASM and OPFS. Selecting an English word
+queries the bundled Princeton WordNet 3.1 offline, with explicit online translation
+and Web search fallbacks. Bilingual dictionaries, local sentence translation, and
+word cards remain in development.
 
 ## Requirements
 
@@ -41,6 +43,7 @@ pnpm test:e2e
 - [EPUB engine spike](./docs/spikes/0001-epub-engine.md)
 - [PDF engine spike](./docs/spikes/0002-pdf-engine.md)
 - [SQLite and OPFS spike](./docs/spikes/0003-sqlite-opfs.md)
+- [WordNet offline dictionary spike](./docs/spikes/0004-wordnet.md)
 
 ## Project status
 

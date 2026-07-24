@@ -138,7 +138,8 @@ Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimenta
       `docs/spikes/0002-pdf-engine.md` 与 ADR-0003；100MB 压力验证仍待完成；
 - [x] SQLite WASM + OPFS：`opfs-sahpool`、schema v1、书库与进度恢复通过，
       见 `docs/spikes/0003-sqlite-opfs.md` 与 ADR-0002；
-- [ ] 词典包；
+- [x] WordNet 3.1 英英词典包：完整资源、离线查询、manifest 与许可门禁通过，
+      见 `docs/spikes/0004-wordnet.md` 与 ADR-0004；
 - [ ] 本地翻译模型；
 - [ ] 无签名桌面包实机记录。
 
@@ -206,6 +207,16 @@ Phase 1 结束前不大规模开发阅读 UI。
 7. EN→ZH 本地句子翻译；
 8. 在线翻译 adapter；
 9. Search on Web。
+
+当前进度：
+
+- [x] WordNet 3.1 英英查询；
+- [x] EPUB/PDF 选词结果面板；
+- [x] 在线翻译首次使用提示与 Search on Web；
+- [ ] FreeDict 英法；
+- [ ] 英汉词典；
+- [ ] 词典顺序与用户词典导入；
+- [ ] EN→FR、EN→ZH 本地句子翻译。
 
 完成门：
 

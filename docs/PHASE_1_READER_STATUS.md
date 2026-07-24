@@ -4,7 +4,7 @@
 >
 > 分支：`main`
 >
-> 状态：EPUB/PDF 核心阅读与本地持久化路径已进入 `main`
+> 状态：EPUB/PDF、持久化和离线英英查词核心路径已进入 `main`
 
 ## 当前可实际操作的能力
 
@@ -20,14 +20,20 @@
 - Home 和书库显示真实导入书籍；
 - Web 断网重载后可继续打开已导入 PDF；
 - Web/PWA 与 Electron 使用同一 React 阅读界面和 adapter。
+- EPUB/PDF 选择英文单词后自动查询完整 WordNet 3.1；
+- 显示词性、英语释义、相关词、例句和可见来源署名；
+- PWA 预缓存词典，断网后仍可查词；
+- 在线翻译首次使用前提示发送的最小选中文本；
+- 始终提供由用户主动触发的 Search on Web；
+- 词典资源具有固定版本、许可证、大小和 SHA-256 清单。
 
 ## 验证基线
 
 | 检查 | 结果 |
 | --- | --- |
 | `pnpm check` | 通过 |
-| Vitest | 3 个文件、9 个测试通过 |
-| Playwright | 9 个 Chromium 场景通过 |
+| Vitest | 4 个文件、14 个测试通过 |
+| Playwright | 11 个 Chromium 场景通过 |
 | `pnpm build:web` | 通过，PDF、SQLite worker 和 WASM 均形成生产资源 |
 | `pnpm build:desktop` | 通过，生成 macOS arm64 `.app` |
 | `pnpm audit --audit-level high` | 无已知漏洞 |
@@ -47,7 +53,9 @@ Playwright 当前覆盖：
 
 ## 仍未达到首个可用版本的部分
 
-- 查词弹层、离线词典、在线翻译和 Search on Web 尚未实现；
+- 英法、英汉词典和用户词典导入尚未实现；
+- 本地 EN→FR、EN→ZH 句子翻译模型尚未实现；
+- 词典启停和查询顺序设置尚未实现；
 - 词卡创建、搜索、删除和来源上下文尚未实现；
 - EPUB 目录和 PDF annotation layer 尚未实现；
 - 100MB PDF 压力测试、Windows 实机启动和无签名分发验证尚未完成；
@@ -56,11 +64,10 @@ Playwright 当前覆盖：
 
 ## 下一步
 
-进入词典与选择操作垂直切片：
+进入词卡垂直切片：
 
 ```text
-选择单词 → 本地英英查询 → 结果面板 → 在线翻译/Search on Web 入口 → 添加词卡
+选择单词 → 本地英英查询 → 添加词卡 → 搜索 → 删除/撤销
 ```
 
-首个资源使用可审计的开源英英词典；英法、英汉和用户词典导入随后接入相同 provider
-边界。
+随后让 FreeDict 英法、英汉和用户词典导入接入现有 provider 边界。
