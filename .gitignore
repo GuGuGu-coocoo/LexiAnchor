@@ -1,0 +1,129 @@
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+.yarn/
+.pnp.*
+
+# Build and bundler output
+dist/
+build/
+out/
+release/
+.vite/
+.turbo/
+.cache/
+*.tsbuildinfo
+*.asar
+
+# Packaged desktop applications
+*.app/
+*.dmg
+*.exe
+*.msi
+*.AppImage
+*.deb
+*.rpm
+
+# Tests and coverage
+coverage/
+htmlcov/
+playwright-report/
+test-results/
+blob-report/
+.nyc_output/
+
+# Logs and diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+electron-debug.log*
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+.npmrc
+!.npmrc.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Python helper tooling
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# Local runtime data
+.local/
+local-data/
+user-data/
+app-data/
+library/
+downloads/
+backups/
+dictionaries/downloaded/
+models/
+
+# Imported books, dictionaries, models, and databases
+*.epub
+*.pdf
+*.mobi
+*.azw
+*.azw3
+*.dict
+*.dict.dz
+*.idx
+*.ifo
+*.syn
+*.onnx
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# Explicitly allow repository-owned generated test fixtures
+!test-fixtures/**/*.epub
+!test-fixtures/**/*.pdf
+!test-fixtures/**/*.sqlite
+!test-fixtures/**/*.sqlite3
+!packages/test-fixtures/**/*.epub
+!packages/test-fixtures/**/*.pdf
+!packages/test-fixtures/**/*.sqlite
+!packages/test-fixtures/**/*.sqlite3
+
+# IDE and editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating-system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# Temporary files and archives
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.zip
+*.tar
+*.tar.gz
