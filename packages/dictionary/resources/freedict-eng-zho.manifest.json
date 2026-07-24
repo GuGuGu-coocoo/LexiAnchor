@@ -8,8 +8,8 @@
   "distribution": {
     "type": "downloaded-tei",
     "downloadUrl": "https://download.wikdict.com/dictionaries/tei/no-infl/eng-zho.tei",
-    "size": 14016229,
-    "sha256": "a942ed0aaf609b60fecda19b23a4e737dd69c809e2bd9a3d44ffcf2a12050cec"
+    "size": 13913829,
+    "sha256": "76e15cbc8497b479ebd3834259d52366f051e16eca44c3b50fced7a78f191fb3"
   },
   "source": {
     "project": "https://www.wikdict.com/",
