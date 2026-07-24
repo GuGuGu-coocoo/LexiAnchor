@@ -69,6 +69,33 @@ async function installFreeDictFixtures(page: Page) {
   );
 }
 
+function starDictFixtureFiles() {
+  const article = Buffer.from('A careful reader who gives close attention.', 'utf8');
+  const term = Buffer.from('attentive', 'utf8');
+  const index = Buffer.alloc(term.byteLength + 1 + 8);
+  term.copy(index);
+  index.writeUInt32BE(0, term.byteLength + 1);
+  index.writeUInt32BE(article.byteLength, term.byteLength + 5);
+  const info = Buffer.from(
+    [
+      "StarDict's dict ifo file",
+      'version=2.4.2',
+      'bookname=My Reading Dictionary',
+      'wordcount=1',
+      `idxfilesize=${index.byteLength}`,
+      'sametypesequence=m',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  return [
+    { name: 'my-reader.ifo', mimeType: 'text/plain', buffer: info },
+    { name: 'my-reader.idx', mimeType: 'application/octet-stream', buffer: index },
+    { name: 'my-reader.dict', mimeType: 'application/octet-stream', buffer: article },
+  ];
+}
+
 test('shows the shared LexiAnchor home surface', async ({ page }) => {
   await page.goto('/');
 
@@ -532,6 +559,53 @@ test('reorders, disables, and uses installed bilingual dictionaries offline', as
   page.once('dialog', (dialog) => dialog.accept());
   await chineseDictionaryCard.getByRole('button', { name: /Remove|移除|Supprimer/ }).click();
   await expect(chineseDictionaryCard).toContainText(/Not installed|未安装|Non installé/);
+});
+
+test('imports, queries, and removes a user StarDict dictionary', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  const card = page.locator('article[data-dictionary-id="user-stardict"]');
+  await expect(card).toContainText(/Not installed|未安装|Non installé/);
+
+  await card.locator('input[type="file"]').setInputFiles(starDictFixtureFiles());
+  await expect(card).toContainText('My Reading Dictionary');
+  await expect(card).toContainText(/Installed|已安装|Installé/);
+  await expect(card.getByRole('checkbox')).toBeChecked();
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: 'test-results/stardict-settings.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
+
+  await page.reload();
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  await expect(card).toContainText('My Reading Dictionary');
+
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
+    .click();
+  const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
+  const attentive = bookFrame.locator('em');
+  await expect(attentive).toBeVisible();
+  await attentive.evaluate((element) => {
+    const selection = element.ownerDocument.defaultView?.getSelection();
+    const range = element.ownerDocument.createRange();
+    range.selectNodeContents(element);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    element.ownerDocument.dispatchEvent(new Event('selectionchange'));
+  });
+  await expect(
+    page.locator('.dictionary-result').filter({ hasText: 'My Reading Dictionary' }),
+  ).toContainText('A careful reader who gives close attention.');
+
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await card.getByRole('button', { name: /Remove|移除|Supprimer/ }).click();
+  await expect(card).toContainText(/Not installed|未安装|Non installé/);
 });
 
 test('saves, searches, and deletes a persistent word card', async ({ page }) => {

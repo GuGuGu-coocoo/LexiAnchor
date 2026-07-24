@@ -1115,7 +1115,8 @@ button {
   margin-top: 16px;
 }
 
-.dictionary-settings-actions button {
+.dictionary-settings-actions button,
+.dictionary-settings-actions .dictionary-import {
   min-height: 34px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -1132,12 +1133,31 @@ button {
     transform 120ms var(--ease-out);
 }
 
+.dictionary-settings-actions .dictionary-import {
+  display: inline-flex;
+  align-items: center;
+}
+
+.dictionary-import input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.dictionary-import:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--accent) 36%, transparent);
+  outline-offset: 2px;
+}
+
 .dictionary-settings-actions button:disabled {
   cursor: default;
   opacity: 0.45;
 }
 
-.dictionary-settings-actions .dictionary-install {
+.dictionary-settings-actions .dictionary-install,
+.dictionary-settings-actions .dictionary-import {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--surface-raised);
@@ -1442,7 +1462,8 @@ button {
     color: #a6463e;
   }
 
-  .dictionary-settings-actions button:not(:disabled):hover {
+  .dictionary-settings-actions button:not(:disabled):hover,
+  .dictionary-settings-actions .dictionary-import:hover {
     border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
     background: var(--surface-muted);
     color: var(--text);

@@ -17,6 +17,15 @@ export {
   type DictionarySource,
 } from './wordnet';
 export {
+  OpfsStarDictAssetStore,
+  StarDictProvider,
+  parseStarDictInfo,
+  type StarDictAssetStore,
+  type StarDictFiles,
+  type StarDictInfo,
+  type StarDictInstallStatus,
+} from './stardict';
+export {
   findIndexLine,
   lineAtByteOffset,
   morphologyCandidates,

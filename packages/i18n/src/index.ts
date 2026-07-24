@@ -136,9 +136,22 @@ const english = {
   dictionaryDownloadNote:
     'Downloads 3.2 MB from FreeDict. The file is verified before it is stored locally.',
   chineseDictionaryDownloadNote:
-    'Downloads 14.0 MB from FreeDict/WikDict. The file is verified before it is stored locally.',
+    'Downloads 13.9 MB from FreeDict/WikDict. The file is verified before it is stored locally.',
   automatedDictionaryNote:
     'Automatically generated from Wiktionary data. Chinese translations can be incomplete or inaccurate.',
+  userStarDict: 'Your StarDict dictionary',
+  userDictionary: 'USER DICTIONARY',
+  userSupplied: 'User supplied',
+  userDictionaryResponsibility:
+    'LexiAnchor does not redistribute this data. You are responsible for the dictionary content and its license.',
+  importDictionary: 'Import StarDict',
+  replaceDictionary: 'Replace files',
+  importingDictionary: 'Checking and importing the dictionary…',
+  starDictImportNote:
+    'Select one matching, uncompressed .ifo, .idx, and .dict set. .dict.dz and .idx.gz are not supported yet.',
+  starDictFilesRequired: 'Select exactly one .ifo, one .idx, and one uncompressed .dict file.',
+  starDictNamesMustMatch: 'The .ifo, .idx, and .dict files must have the same base name.',
+  removeUserDictionaryConfirm: 'Remove your imported StarDict dictionary from this device?',
   noun: 'noun',
   verb: 'verb',
   adjective: 'adjective',
@@ -272,8 +285,20 @@ const simplifiedChinese: Record<MessageKey, string> = {
   removeDictionaryConfirm: '从本机移除这个已下载的词典？',
   dictionaryRemoved: '词典已移除。',
   dictionaryDownloadNote: '将从 FreeDict 下载 3.2 MB；校验通过后才会保存到本机。',
-  chineseDictionaryDownloadNote: '将从 FreeDict/WikDict 下载 14.0 MB；校验通过后才会保存到本机。',
+  chineseDictionaryDownloadNote: '将从 FreeDict/WikDict 下载 13.9 MB；校验通过后才会保存到本机。',
   automatedDictionaryNote: '该词典由 Wiktionary 数据自动生成，中文翻译可能不完整或不准确。',
+  userStarDict: '你的 StarDict 词典',
+  userDictionary: '用户词典',
+  userSupplied: '用户自行提供',
+  userDictionaryResponsibility: 'LexiAnchor 不会分发这些数据；词典内容及其许可证由你自行负责。',
+  importDictionary: '导入 StarDict',
+  replaceDictionary: '替换文件',
+  importingDictionary: '正在检查并导入词典…',
+  starDictImportNote:
+    '请选择一组同名且未压缩的 .ifo、.idx 和 .dict 文件；暂不支持 .dict.dz 与 .idx.gz。',
+  starDictFilesRequired: '请正好选择一个 .ifo、一个 .idx 和一个未压缩的 .dict 文件。',
+  starDictNamesMustMatch: '.ifo、.idx 和 .dict 文件必须使用相同的基础文件名。',
+  removeUserDictionaryConfirm: '从本机移除你导入的 StarDict 词典？',
   noun: '名词',
   verb: '动词',
   adjective: '形容词',
@@ -418,9 +443,23 @@ const french: Record<MessageKey, string> = {
   dictionaryDownloadNote:
     "Télécharge 3,2 Mo depuis FreeDict. Le fichier est vérifié avant d'être stocké localement.",
   chineseDictionaryDownloadNote:
-    "Télécharge 14,0 Mo depuis FreeDict/WikDict. Le fichier est vérifié avant d'être stocké localement.",
+    "Télécharge 13,9 Mo depuis FreeDict/WikDict. Le fichier est vérifié avant d'être stocké localement.",
   automatedDictionaryNote:
     'Généré automatiquement depuis Wiktionary. Les traductions chinoises peuvent être incomplètes ou inexactes.',
+  userStarDict: 'Votre dictionnaire StarDict',
+  userDictionary: 'DICTIONNAIRE UTILISATEUR',
+  userSupplied: 'Fourni par l’utilisateur',
+  userDictionaryResponsibility:
+    'LexiAnchor ne redistribue pas ces données. Le contenu et sa licence restent sous votre responsabilité.',
+  importDictionary: 'Importer StarDict',
+  replaceDictionary: 'Remplacer les fichiers',
+  importingDictionary: 'Vérification et importation du dictionnaire…',
+  starDictImportNote:
+    'Sélectionnez un ensemble .ifo, .idx et .dict non compressé portant le même nom. .dict.dz et .idx.gz ne sont pas encore pris en charge.',
+  starDictFilesRequired:
+    'Sélectionnez exactement un fichier .ifo, un .idx et un .dict non compressé.',
+  starDictNamesMustMatch: 'Les fichiers .ifo, .idx et .dict doivent porter le même nom de base.',
+  removeUserDictionaryConfirm: 'Supprimer votre dictionnaire StarDict importé de cet appareil ?',
   noun: 'nom',
   verb: 'verbe',
   adjective: 'adjectif',

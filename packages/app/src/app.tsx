@@ -3,9 +3,11 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import {
   FreeDictEnglishChineseProvider,
   FreeDictEnglishFrenchProvider,
+  StarDictProvider,
   type FreeDictTeiProvider,
   WordNetProvider,
   type DictionaryProvider,
+  type StarDictInstallStatus,
 } from '@lexianchor/dictionary';
 import { normalizeProgress } from '@lexianchor/domain';
 import type { RecentBook } from '@lexianchor/domain';
@@ -36,8 +38,11 @@ type Section = 'home' | 'library' | 'cards' | 'settings';
 type Theme = 'system' | 'light' | 'dark' | 'eye-care';
 type IconName = Section | 'expand' | 'lock' | 'book-open';
 type DictionaryId =
-  'princeton-wordnet-3.1' | 'freedict-eng-fra-0.1.6' | 'freedict-eng-zho-2025.11.23';
-type DownloadableDictionaryId = Exclude<DictionaryId, 'princeton-wordnet-3.1'>;
+  | 'princeton-wordnet-3.1'
+  | 'freedict-eng-fra-0.1.6'
+  | 'freedict-eng-zho-2025.11.23'
+  | 'user-stardict';
+type DownloadableDictionaryId = 'freedict-eng-fra-0.1.6' | 'freedict-eng-zho-2025.11.23';
 type DictionaryInstallState = Readonly<Record<DownloadableDictionaryId, boolean>>;
 
 interface DictionaryPreferences {
@@ -59,6 +64,10 @@ interface OpenBookSession {
   readonly bookId?: string;
   readonly initialLocator?: ReaderLocator;
 }
+
+type StarDictImportResponse =
+  | { readonly ok: true; readonly status: StarDictInstallStatus }
+  | { readonly ok: false; readonly error: string };
 
 const demoRecentBook: RecentBook = {
   id: 'phase-zero-demo',
@@ -100,6 +109,7 @@ const ReaderPage = lazy(() =>
 const wordNetProvider = new WordNetProvider();
 const freeDictFrenchProvider = new FreeDictEnglishFrenchProvider();
 const freeDictChineseProvider = new FreeDictEnglishChineseProvider();
+const userStarDictProvider = new StarDictProvider();
 const downloadableDictionaryIds: readonly DownloadableDictionaryId[] = [
   'freedict-eng-fra-0.1.6',
   'freedict-eng-zho-2025.11.23',
@@ -111,10 +121,12 @@ const freeDictProviders: Readonly<Record<DownloadableDictionaryId, FreeDictTeiPr
 const dictionaryProvidersById: Readonly<Record<DictionaryId, DictionaryProvider>> = {
   'princeton-wordnet-3.1': wordNetProvider,
   ...freeDictProviders,
+  'user-stardict': userStarDictProvider,
 };
 const dictionaryIds: readonly DictionaryId[] = [
   'princeton-wordnet-3.1',
   ...downloadableDictionaryIds,
+  'user-stardict',
 ];
 
 let bookRepository: SqliteBookRepository | undefined;
@@ -173,6 +185,7 @@ function readDictionaryPreferences(): DictionaryPreferences {
       'princeton-wordnet-3.1': true,
       'freedict-eng-fra-0.1.6': true,
       'freedict-eng-zho-2025.11.23': true,
+      'user-stardict': true,
     },
   };
   const stored = globalThis.localStorage?.getItem('lexianchor:dictionary-preferences');
@@ -197,6 +210,7 @@ function readDictionaryPreferences(): DictionaryPreferences {
         'freedict-eng-zho-2025.11.23':
           parsed.enabled?.['freedict-eng-zho-2025.11.23'] ??
           fallback.enabled['freedict-eng-zho-2025.11.23'],
+        'user-stardict': parsed.enabled?.['user-stardict'] ?? fallback.enabled['user-stardict'],
       },
     };
   } catch {
@@ -205,7 +219,33 @@ function readDictionaryPreferences(): DictionaryPreferences {
 }
 
 function isDownloadableDictionary(id: DictionaryId): id is DownloadableDictionaryId {
-  return id !== 'princeton-wordnet-3.1';
+  return downloadableDictionaryIds.some((candidate) => candidate === id);
+}
+
+function installStarDictInWorker(
+  ifo: string,
+  idx: ArrayBuffer,
+  dict: ArrayBuffer,
+): Promise<StarDictInstallStatus> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./stardict-import.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+
+    worker.onmessage = (event: MessageEvent<StarDictImportResponse>) => {
+      worker.terminate();
+      if (event.data.ok) {
+        resolve(event.data.status);
+      } else {
+        reject(new Error(event.data.error));
+      }
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || 'The StarDict import worker failed.'));
+    };
+    worker.postMessage({ ifo, idx, dict }, [idx, dict]);
+  });
 }
 
 export function App({ platform }: AppProps) {
@@ -228,16 +268,18 @@ export function App({ platform }: AppProps) {
   const [installingDictionary, setInstallingDictionary] = useState<DownloadableDictionaryId | null>(
     null,
   );
+  const [userStarDict, setUserStarDict] = useState<StarDictInstallStatus | null>(null);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
   const dictionaryProviders = useMemo<readonly DictionaryProvider[]>(() => {
     return dictionaryPreferences.order.flatMap((id) =>
       dictionaryPreferences.enabled[id] &&
-      (!isDownloadableDictionary(id) || installedDictionaries[id])
+      (!isDownloadableDictionary(id) || installedDictionaries[id]) &&
+      (id !== 'user-stardict' || userStarDict?.installed)
         ? [dictionaryProvidersById[id]]
         : [],
     );
-  }, [dictionaryPreferences, installedDictionaries]);
+  }, [dictionaryPreferences, installedDictionaries, userStarDict]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -286,6 +328,27 @@ export function App({ platform }: AppProps) {
           setStorageStatus(nextStatus);
           setLibrary(entries);
           setWordCards(cards);
+        }
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setStatusMessage(error instanceof Error ? error.message : String(error));
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void userStarDictProvider
+      .status()
+      .then((status) => {
+        if (isActive) {
+          setUserStarDict(status.installed ? status : null);
         }
       })
       .catch((error: unknown) => {
@@ -534,6 +597,58 @@ export function App({ platform }: AppProps) {
     }
   }
 
+  async function importStarDict(files: readonly File[]) {
+    try {
+      setStatusMessage(t('importingDictionary'));
+      const ifoFile = files.find((file) => file.name.toLowerCase().endsWith('.ifo'));
+      const idxFile = files.find((file) => file.name.toLowerCase().endsWith('.idx'));
+      const dictFile = files.find((file) => file.name.toLowerCase().endsWith('.dict'));
+
+      if (files.length !== 3 || !ifoFile || !idxFile || !dictFile) {
+        throw new Error(t('starDictFilesRequired'));
+      }
+
+      const baseNames = [
+        ifoFile.name.replace(/\.ifo$/i, ''),
+        idxFile.name.replace(/\.idx$/i, ''),
+        dictFile.name.replace(/\.dict$/i, ''),
+      ];
+
+      if (!baseNames.every((name) => name === baseNames[0])) {
+        throw new Error(t('starDictNamesMustMatch'));
+      }
+
+      const [ifo, idx, dict] = await Promise.all([
+        ifoFile.text(),
+        idxFile.arrayBuffer(),
+        dictFile.arrayBuffer(),
+      ]);
+      const status = await installStarDictInWorker(ifo, idx, dict);
+      setUserStarDict(status);
+      setDictionaryPreferences((current) => ({
+        ...current,
+        enabled: { ...current.enabled, 'user-stardict': true },
+      }));
+      setStatusMessage(t('dictionaryInstalled'));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function removeStarDict() {
+    if (!globalThis.confirm(t('removeUserDictionaryConfirm'))) {
+      return;
+    }
+
+    try {
+      await userStarDictProvider.remove();
+      setUserStarDict(null);
+      setStatusMessage(t('dictionaryRemoved'));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function toggleDictionary(id: DictionaryId, enabled: boolean) {
     setDictionaryPreferences((current) => ({
       ...current,
@@ -714,11 +829,14 @@ export function App({ platform }: AppProps) {
             dictionaryPreferences={dictionaryPreferences}
             installedDictionaries={installedDictionaries}
             installingDictionary={installingDictionary}
+            userStarDict={userStarDict}
             t={t}
             onToggleDictionary={toggleDictionary}
             onMoveDictionary={moveDictionary}
             onInstallFreeDict={installFreeDict}
             onRemoveFreeDict={removeFreeDict}
+            onImportStarDict={importStarDict}
+            onRemoveStarDict={removeStarDict}
             onOpenExternal={(url) => platform.openExternal(url)}
           />
         )}
@@ -1156,11 +1274,14 @@ interface SettingsPageProps {
   readonly dictionaryPreferences: DictionaryPreferences;
   readonly installedDictionaries: DictionaryInstallState;
   readonly installingDictionary: DownloadableDictionaryId | null;
+  readonly userStarDict: StarDictInstallStatus | null;
   readonly t: (key: MessageKey) => string;
   readonly onToggleDictionary: (id: DictionaryId, enabled: boolean) => void;
   readonly onMoveDictionary: (id: DictionaryId, direction: -1 | 1) => void;
   readonly onInstallFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
   readonly onRemoveFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
+  readonly onImportStarDict: (files: readonly File[]) => Promise<void>;
+  readonly onRemoveStarDict: () => Promise<void>;
   readonly onOpenExternal: (url: string) => Promise<void>;
 }
 
@@ -1168,11 +1289,14 @@ function SettingsPage({
   dictionaryPreferences,
   installedDictionaries,
   installingDictionary,
+  userStarDict,
   t,
   onToggleDictionary,
   onMoveDictionary,
   onInstallFreeDict,
   onRemoveFreeDict,
+  onImportStarDict,
+  onRemoveStarDict,
   onOpenExternal,
 }: SettingsPageProps) {
   const descriptions: Readonly<
@@ -1182,8 +1306,8 @@ function SettingsPage({
         readonly name: string;
         readonly languages: string;
         readonly license: string;
-        readonly source: string;
-        readonly licenseUrl: string;
+        readonly source?: string;
+        readonly licenseUrl?: string;
         readonly downloadNote?: MessageKey;
         readonly qualityNote?: MessageKey;
       }
@@ -1214,6 +1338,12 @@ function SettingsPage({
       downloadNote: 'chineseDictionaryDownloadNote',
       qualityNote: 'automatedDictionaryNote',
     },
+    'user-stardict': {
+      name: userStarDict?.name || t('userStarDict'),
+      languages: t('userDictionary'),
+      license: t('userSupplied'),
+      qualityNote: 'userDictionaryResponsibility',
+    },
   };
 
   return (
@@ -1232,7 +1362,12 @@ function SettingsPage({
         {dictionaryPreferences.order.map((id, index) => {
           const description = descriptions[id];
           const downloadableId = isDownloadableDictionary(id) ? id : null;
-          const installed = downloadableId ? installedDictionaries[downloadableId] : true;
+          const isUserDictionary = id === 'user-stardict';
+          const installed = downloadableId
+            ? installedDictionaries[downloadableId]
+            : isUserDictionary
+              ? Boolean(userStarDict?.installed)
+              : true;
 
           return (
             <article className="dictionary-settings-card" data-dictionary-id={id} key={id}>
@@ -1274,12 +1409,19 @@ function SettingsPage({
                 >
                   ↓ {t('moveDown')}
                 </button>
-                <button type="button" onClick={() => void onOpenExternal(description.source)}>
-                  {t('source')}
-                </button>
-                <button type="button" onClick={() => void onOpenExternal(description.licenseUrl)}>
-                  {t('license')}
-                </button>
+                {description.source ? (
+                  <button type="button" onClick={() => void onOpenExternal(description.source!)}>
+                    {t('source')}
+                  </button>
+                ) : null}
+                {description.licenseUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => void onOpenExternal(description.licenseUrl!)}
+                  >
+                    {t('license')}
+                  </button>
+                ) : null}
                 {downloadableId ? (
                   installed ? (
                     <button
@@ -1301,6 +1443,31 @@ function SettingsPage({
                         : t('installDictionary')}
                     </button>
                   )
+                ) : isUserDictionary ? (
+                  <>
+                    <label className="dictionary-import">
+                      {installed ? t('replaceDictionary') : t('importDictionary')}
+                      <input
+                        type="file"
+                        multiple
+                        accept=".ifo,.idx,.dict"
+                        onChange={(event) => {
+                          const files = [...(event.currentTarget.files ?? [])];
+                          event.currentTarget.value = '';
+                          void onImportStarDict(files);
+                        }}
+                      />
+                    </label>
+                    {installed ? (
+                      <button
+                        className="dictionary-remove"
+                        type="button"
+                        onClick={() => void onRemoveStarDict()}
+                      >
+                        {t('removeDictionary')}
+                      </button>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
               {description.qualityNote ? (
@@ -1308,6 +1475,9 @@ function SettingsPage({
               ) : null}
               {description.downloadNote && !installed ? (
                 <p className="dictionary-download-note">{t(description.downloadNote)}</p>
+              ) : null}
+              {isUserDictionary && !installed ? (
+                <p className="dictionary-download-note">{t('starDictImportNote')}</p>
               ) : null}
             </article>
           );
