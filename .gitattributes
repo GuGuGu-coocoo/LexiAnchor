@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Reader fixtures are binary artifacts generated from committed source files.
+*.epub binary
+*.pdf binary
