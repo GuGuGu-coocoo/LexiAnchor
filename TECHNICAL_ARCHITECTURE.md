@@ -342,7 +342,7 @@ lexianchor-export.zip
 | --- | --- | --- | --- |
 | 英英 | Princeton WordNet 3.1 | 随应用分发 | 已实现并通过离线查询、许可与完整性验证 |
 | 英法 | FreeDict `eng-fra` 0.1.6 | 应用内按需下载 | 已实现，固定来源、大小与 SHA-256，支持卸载 |
-| 英汉 | ECDICT | 应用内按需下载 | MIT 标识存在，仍需溯源抽查 |
+| 英汉 | FreeDict/WikDict `eng-zho` 2024.10.10 | 应用内按需下载 | 已实现，CC-BY-SA-3.0；自动生成质量提示 |
 | 词根/词源补充 | Wiktionary/Kaikki 数据 | 独立可选包 | 需处理署名和 ShareAlike |
 
 不得将“仓库公开”视为数据可自由再分发。每个包必须携带：
@@ -362,11 +362,16 @@ WordNet 3.1 的内置基线保留上游有序 index/data 文件，通过字节�
 预缓存完整资源，Electron 使用相同构建资产。资源清单和完整声明分别保存在
 `packages/dictionary/resources` 与 `docs/licenses`。
 
-FreeDict `eng-fra` 0.1.6 是 v0.1 的小型按需资源例外：应用从固定 upstream commit
-下载 3,329,108 字节 TEI，在写入 OPFS 前核对大小与 SHA-256，并验证能够解析出词条。
-安装后仅从 OPFS 读取，首次查询按会话解析并缓存索引；完整 8,799 词条在当前开发机的解析
-耗时约 43 ms。若后续双语包体积或数量明显增加，再在资源构建阶段转换为只读 SQLite，
-上层 `DictionaryProvider` 无需变化。
+FreeDict `eng-fra` 0.1.6 与 FreeDict/WikDict `eng-zho` 2024.10.10 是 v0.1 的按需 TEI
+资源例外：应用从固定 upstream commit 下载，在写入 OPFS 前核对大小与 SHA-256，并验证能够
+解析出词条。安装后仅从 OPFS 读取，首次查询按会话解析并缓存索引。完整英法 8,799 词条在
+当前开发机约 43 ms；英汉 24,242 个源词条中 24,225 个有可显示翻译，解析约 177 ms。
+若后续双语包体积或数量继续增加，将解析迁移到 Worker 或在资源构建阶段转换为只读
+SQLite，上层 `DictionaryProvider` 无需变化。
+
+ECDICT 仓库本身标记 MIT，但 README 描述其释义和音标由多种资料、网络抓取与网友词库汇总，
+没有为每类数据提供足够清晰的权利链。它不进入 LexiAnchor 官方下载清单；未来只能作为用户
+自行导入的外部资源候选，不能用仓库级许可证替代数据来源审计。
 
 其他较大 LexiAnchor 官方词典仍统一转换为只读 SQLite 包。用户导入优先支持：
 
@@ -379,6 +384,7 @@ FreeDict `eng-fra` 0.1.6 是 v0.1 的小型按需资源例外：应用从固定 
 实现与验收证据见
 [WordNet 离线英英词典 Spike](./docs/spikes/0004-wordnet.md) 与
 [FreeDict 英法词典 Spike](./docs/spikes/0005-freedict-eng-fra.md) 以及
+[FreeDict/WikDict 英汉词典 Spike](./docs/spikes/0006-freedict-eng-zho.md)、
 [ADR-0004](./docs/adr/0004-dictionaries-and-translation.md)。
 
 ## 10. 翻译架构
@@ -545,4 +551,5 @@ Spike 代码可以丢弃；结论必须进入 `docs/spikes/` 和 ADR。
 - [Transformers.js](https://huggingface.co/docs/transformers.js/main/index)
 - [Princeton WordNet 许可证](https://wordnet.princeton.edu/license-and-commercial-use)
 - [FreeDict 许可证说明](https://freedict.org/documentation/)
-- [ECDICT](https://github.com/skywind3000/ECDICT)
+- [WikDict 下载与许可证](https://www.wikdict.com/page/download)
+- [ECDICT（已审计但不进入官方清单）](https://github.com/skywind3000/ECDICT)

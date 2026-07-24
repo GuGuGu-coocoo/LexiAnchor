@@ -200,7 +200,7 @@ Phase 1 结束前不大规模开发阅读 UI。
 
 1. WordNet 英英；
 2. FreeDict 英法；
-3. 英汉候选审计与导入；
+3. FreeDict/WikDict 英汉；
 4. 词典顺序设置；
 5. StarDict 用户导入；
 6. EN→FR 本地句子翻译；
@@ -212,10 +212,10 @@ Phase 1 结束前不大规模开发阅读 UI。
 
 - [x] WordNet 3.1 英英查询；
 - [x] FreeDict 0.1.6 英法按需安装、校验、卸载与断网查询；
+- [x] FreeDict/WikDict 2024.10.10 英汉按需安装、校验、卸载与断网查询；
 - [x] 内置/已安装词典启停和结果顺序设置；
 - [x] EPUB/PDF 选词结果面板；
 - [x] 在线翻译首次使用提示与 Search on Web；
-- [ ] 英汉词典；
 - [ ] 用户 StarDict 词典导入；
 - [ ] EN→FR、EN→ZH 本地句子翻译。
 

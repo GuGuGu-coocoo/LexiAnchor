@@ -8,11 +8,11 @@ The project is in active development. The shared Web/PWA and Electron applicatio
 can now import and read DRM-free EPUB 2/3 and PDF files. Imported books and reading
 progress persist locally through SQLite WASM and OPFS. Selecting an English word
 queries the bundled Princeton WordNet 3.1 and an optional, installable FreeDict
-English–French dictionary offline. Users can enable dictionaries and change result
-order in Settings, while explicit online translation and Web search remain available.
-Dictionary results can be saved as persistent, searchable word cards with their
-reading context. English–Chinese dictionaries, user dictionary import and local
-sentence translation remain in development.
+English–French dictionary plus an optional FreeDict/WikDict English–Chinese dictionary
+offline. Users can enable dictionaries and change result order in Settings, while
+explicit online translation and Web search remain available. Dictionary results can be
+saved as persistent, searchable word cards with their reading context. User dictionary
+import and local sentence translation remain in development.
 
 ## Requirements
 
@@ -48,6 +48,7 @@ pnpm test:e2e
 - [SQLite and OPFS spike](./docs/spikes/0003-sqlite-opfs.md)
 - [WordNet offline dictionary spike](./docs/spikes/0004-wordnet.md)
 - [FreeDict English–French spike](./docs/spikes/0005-freedict-eng-fra.md)
+- [FreeDict/WikDict English–Chinese spike](./docs/spikes/0006-freedict-eng-zho.md)
 
 ## Project status
 

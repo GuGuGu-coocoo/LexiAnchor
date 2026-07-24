@@ -15,7 +15,7 @@
 
 - 英英：Princeton WordNet 3.1；
 - 英法：FreeDict `eng-fra`；
-- 英汉：ECDICT，发布前进行来源和许可证抽查；
+- 英汉：FreeDict/WikDict `eng-zho` 2025.11.23；
 - 词根/词源：Wiktionary/Kaikki 独立可选包。
 
 翻译：
@@ -68,8 +68,9 @@
 完整证据见 [WordNet 离线英英词典 Spike](../spikes/0004-wordnet.md)。
 
 内置 WordNet 暂不转换为 SQLite：其有序索引和字节偏移已经适合只读查询，直接分发可避免
-维护一份派生数据库。后续 FreeDict、英汉和用户词典仍统一转换为只读 SQLite 包；上层继续
-使用同一个 Provider，因此该差异不会进入产品 UI。
+维护一份派生数据库。v0.1 的 FreeDict 英法和 FreeDict/WikDict 英汉保留原始 TEI，并由
+同一个 Provider 解析；更大的官方包和用户词典仍优先转换为只读 SQLite。格式差异不会进入
+产品 UI。
 
 ## FreeDict 英法实现结果
 
@@ -90,3 +91,24 @@ FreeDict 0.1.6 仅极少数词条携带词性，因此缺失值明确显示为�
 v0.1 例外。后续大词典仍按架构基线转换为只读 SQLite。
 
 完整证据见 [FreeDict English–French Spike](../spikes/0005-freedict-eng-fra.md)。
+
+## FreeDict/WikDict 英汉实现结果
+
+英汉基线已经实现：
+
+- 选择 FreeDict/WikDict `eng-zho` 2025.11.23，共 26,660 个源 headword；
+- 数据由 WikDict 从 Wiktionary 经 DBnary 自动生成，TEI header 明确为 CC-BY-SA-3.0；
+- 从 Debian FreeDict 团队 Salsa 仓库的固定 commit 通过 CORS API 下载，内容与 FreeDict
+  WikDict 下载文件通过固定大小与 SHA-256 校验，并与 FreeDict 2025.11.23 源码归档交叉审计；
+- manifest 记录版本、来源、许可证、12,535,861 字节大小和 SHA-256；
+- 设置页提供安装、删除、启停、来源、许可证、顺序与自动生成质量警告；
+- 查询显示中文翻译和数据自带的英语释义；WordNet 仍保持默认第一顺序；
+- 完整资源中 24,225 个词条有可显示翻译，当前开发机完整解析约 177 ms；
+- Web 真实跨域下载、完整安装、OPFS 持久化和断网查询通过。
+
+ECDICT 不进入官方分发清单。尽管仓库标记 MIT，其 README 说明内容来自多类资料、抓取和
+网友词库，缺少足够细粒度的数据权利链；这不满足本 ADR 的资源门禁。未来用户可自行通过
+通用词典导入功能加载其合法持有的数据，但 LexiAnchor 不代为下载或再分发。
+
+完整证据见
+[FreeDict/WikDict English–Chinese Spike](../spikes/0006-freedict-eng-zho.md)。
