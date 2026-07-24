@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@lexianchor/dictionary": "workspace:*",
     "@lexianchor/domain": "workspace:*",
     "@lexianchor/i18n": "workspace:*",
     "@lexianchor/platform": "workspace:*",

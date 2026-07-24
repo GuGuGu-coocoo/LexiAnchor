@@ -147,6 +147,9 @@ importers:
 
   packages/app:
     dependencies:
+      '@lexianchor/dictionary':
+        specifier: workspace:*
+        version: link:../dictionary
       '@lexianchor/domain':
         specifier: workspace:*
         version: link:../domain
@@ -181,6 +184,16 @@ importers:
       '@types/react':
         specifier: 19.2.17
         version: 19.2.17
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/dictionary:
+    dependencies:
+      wordnet-db:
+        specifier: 3.1.14
+        version: 3.1.14
+    devDependencies:
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -4043,6 +4056,10 @@ packages:
   word-wrap@1.2.5:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
+
+  wordnet-db@3.1.14:
+    resolution: {integrity: sha512-zVyFsvE+mq9MCmwXUWHIcpfbrHHClZWZiVOzKSxNJruIcFn2RbY55zkhiAMMxM8zCVSmtNiViq8FsAZSFpMYag==}
+    engines: {node: '>=0.6.0'}
 
   workbox-background-sync@7.4.1:
     resolution: {integrity: sha512-HhT7KE8tOWDm02wRNshXUnUPofMlhenF2DBdUnDPOubhizzPeItkYTmAB6td1Z2cjYPa98vzEiPLEuzn5hN66g==}
@@ -8344,6 +8361,8 @@ snapshots:
       stackback: 0.0.2
 
   word-wrap@1.2.5: {}
+
+  wordnet-db@3.1.14: {}
 
   workbox-background-sync@7.4.1:
     dependencies:

@@ -321,9 +321,11 @@ export function App({ platform }: AppProps) {
           key={`${openBook.source.format}:${openBook.source.name}`}
           source={openBook.source}
           initialLocator={openBook.initialLocator}
+          locale={locale}
           t={t}
           onClose={closeReader}
           onLocationChange={persistLocation}
+          onOpenExternal={(url) => platform.openExternal(url)}
         />
       </Suspense>
     );

@@ -84,6 +84,22 @@ const english = {
   imageOnlyDescription:
     'This page has no selectable text. It remains readable as an image; OCR is not included yet.',
   pdfSelectionHint: 'Select a word or phrase on the page to inspect its sentence.',
+  localDictionary: 'Offline English dictionary',
+  lookingUpWord: 'Looking up this word locally…',
+  dictionaryUnavailable: 'The offline dictionary could not be loaded.',
+  noDictionaryEntry: 'No local entry was found for this word.',
+  localTranslationUnavailable:
+    'Local sentence translation is not installed yet. Online translation remains available.',
+  synonyms: 'Related words',
+  onlineTranslation: 'Online translation',
+  searchOnWeb: 'Search on Web',
+  externalTranslationNotice: 'Google Translate will receive only the selected text:',
+  cancel: 'Cancel',
+  continueExternal: 'Continue',
+  noun: 'noun',
+  verb: 'verb',
+  adjective: 'adjective',
+  adverb: 'adverb',
 } as const;
 
 export type MessageKey = keyof typeof english;
@@ -164,6 +180,21 @@ const simplifiedChinese: Record<MessageKey, string> = {
   imageOnlyPdf: '纯图片页面',
   imageOnlyDescription: '这一页没有可选文本，仍可按图片阅读；当前版本暂不包含 OCR。',
   pdfSelectionHint: '在页面中选中单词或短语，这里会显示所在原句。',
+  localDictionary: '离线英英词典',
+  lookingUpWord: '正在本地查询这个单词…',
+  dictionaryUnavailable: '无法加载离线词典。',
+  noDictionaryEntry: '本地词典中没有找到这个单词。',
+  localTranslationUnavailable: '尚未安装本地句子翻译模型，但仍可选择在线翻译。',
+  synonyms: '相关词语',
+  onlineTranslation: '在线翻译',
+  searchOnWeb: '在网页中搜索',
+  externalTranslationNotice: 'Google 翻译只会收到你选中的文字：',
+  cancel: '取消',
+  continueExternal: '继续',
+  noun: '名词',
+  verb: '动词',
+  adjective: '形容词',
+  adverb: '副词',
 };
 
 const french: Record<MessageKey, string> = {
@@ -250,6 +281,22 @@ const french: Record<MessageKey, string> = {
   imageOnlyDescription:
     'Cette page ne contient aucun texte sélectionnable. Elle reste lisible comme image ; l’OCR n’est pas encore inclus.',
   pdfSelectionHint: 'Sélectionnez un mot ou un passage pour afficher sa phrase.',
+  localDictionary: 'Dictionnaire anglais hors ligne',
+  lookingUpWord: 'Recherche locale du mot…',
+  dictionaryUnavailable: "Le dictionnaire hors ligne n'a pas pu être chargé.",
+  noDictionaryEntry: "Aucune entrée locale n'a été trouvée pour ce mot.",
+  localTranslationUnavailable:
+    "La traduction locale des phrases n'est pas encore installée. La traduction en ligne reste disponible.",
+  synonyms: 'Mots associés',
+  onlineTranslation: 'Traduction en ligne',
+  searchOnWeb: 'Rechercher sur le Web',
+  externalTranslationNotice: 'Google Traduction recevra uniquement le texte sélectionné :',
+  cancel: 'Annuler',
+  continueExternal: 'Continuer',
+  noun: 'nom',
+  verb: 'verbe',
+  adjective: 'adjectif',
+  adverb: 'adverbe',
 };
 
 const dictionaries: Record<Locale, Record<MessageKey, string>> = {

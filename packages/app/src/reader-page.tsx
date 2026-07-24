@@ -8,7 +8,9 @@ import {
   type ReaderSource,
 } from '@lexianchor/reader-core';
 import { EpubJsReaderEngine } from '@lexianchor/reader-epub';
-import type { MessageKey } from '@lexianchor/i18n';
+import type { Locale, MessageKey } from '@lexianchor/i18n';
+
+import { SelectionTools } from './selection-tools';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -18,9 +20,11 @@ const PdfReaderPage = lazy(async () => {
 interface ReaderPageProps {
   readonly source: ReaderSource;
   readonly initialLocator?: ReaderLocator;
+  readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
+  readonly onOpenExternal: (url: string) => Promise<void>;
 }
 
 function storageKey(source: ReaderSource): string {
@@ -61,7 +65,15 @@ export function ReaderPage(props: ReaderPageProps) {
   return <EpubReaderPage {...props} />;
 }
 
-function EpubReaderPage({ source, initialLocator, t, onClose, onLocationChange }: ReaderPageProps) {
+function EpubReaderPage({
+  source,
+  initialLocator,
+  locale,
+  t,
+  onClose,
+  onLocationChange,
+  onOpenExternal,
+}: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
@@ -247,17 +259,14 @@ function EpubReaderPage({ source, initialLocator, t, onClose, onLocationChange }
             />
           </label>
 
-          <div className="selection-inspector" aria-live="polite">
-            <p className="reader-setting-title">{t('selectedText')}</p>
-            {selection ? (
-              <>
-                <p className="selection-word">{selection.text}</p>
-                <p className="selection-sentence">{selection.sentence}</p>
-              </>
-            ) : (
-              <p className="reader-setting-copy">{t('selectionHint')}</p>
-            )}
-          </div>
+          <SelectionTools
+            key={selection?.text ?? 'empty'}
+            selection={selection}
+            emptyHint={t('selectionHint')}
+            locale={locale}
+            t={t}
+            onOpenExternal={onOpenExternal}
+          />
         </aside>
 
         <div className="reader-stage">

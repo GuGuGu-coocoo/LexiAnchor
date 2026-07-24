@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { MessageKey } from '@lexianchor/i18n';
+import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
 import {
   PdfJsReaderEngine,
@@ -8,12 +8,16 @@ import {
   type PdfPageResult,
 } from '@lexianchor/reader-pdf';
 
+import { SelectionTools } from './selection-tools';
+
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
   readonly initialLocator?: ReaderLocator;
+  readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
+  readonly onOpenExternal: (url: string) => Promise<void>;
 }
 
 interface StoredPdfView {
@@ -46,9 +50,11 @@ function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): S
 export function PdfReaderPage({
   source,
   initialLocator,
+  locale,
   t,
   onClose,
   onLocationChange,
+  onOpenExternal,
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
@@ -247,19 +253,14 @@ export function PdfReaderPage({
             </div>
           ) : null}
 
-          <div className="selection-inspector" aria-live="polite">
-            <p className="reader-setting-title">{t('selectedText')}</p>
-            {selection ? (
-              <>
-                <p className="selection-word">{selection.text}</p>
-                <p className="selection-sentence">{selection.sentence}</p>
-              </>
-            ) : (
-              <p className="reader-setting-copy">
-                {hasText ? t('pdfSelectionHint') : t('imageOnlyDescription')}
-              </p>
-            )}
-          </div>
+          <SelectionTools
+            key={selection?.text ?? 'empty'}
+            selection={selection}
+            emptyHint={hasText ? t('pdfSelectionHint') : t('imageOnlyDescription')}
+            locale={locale}
+            t={t}
+            onOpenExternal={onOpenExternal}
+          />
         </aside>
 
         <div className="reader-stage pdf-reader-stage">

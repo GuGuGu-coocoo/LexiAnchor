@@ -25,6 +25,20 @@ function registerPlatformHandlers() {
     targetWindow.setFullScreen(enabled);
     return targetWindow.isFullScreen();
   });
+
+  ipcMain.handle(platformChannels.openExternal, async (_event, url: unknown) => {
+    if (typeof url !== 'string') {
+      throw new TypeError('External URL must be a string.');
+    }
+
+    const target = new URL(url);
+
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+      throw new TypeError('Only HTTP and HTTPS links can be opened.');
+    }
+
+    await shell.openExternal(target.href);
+  });
 }
 
 function createWindow() {

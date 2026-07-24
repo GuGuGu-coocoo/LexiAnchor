@@ -41,7 +41,14 @@ function normalizedText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function sentenceForSelection(pageText: string, selectedText: string): string {
+function sentenceForSelection(pageSegments: readonly string[], selectedText: string): string {
+  const exactSegment = pageSegments.find((segment) => segment.includes(selectedText));
+
+  if (exactSegment) {
+    return exactSegment;
+  }
+
+  const pageText = pageSegments.join(' ');
   const sentences = pageText.split(/(?<=[.!?。！？])\s+/);
   const exactSentence = sentences.find((sentence) => sentence.includes(selectedText));
 
@@ -117,7 +124,7 @@ function applyFocusMarkup(textLayer: HTMLElement, pageElement: HTMLElement): voi
 
 function listenForSelection(
   container: HTMLElement,
-  pageText: string,
+  pageSegments: readonly string[],
   pageNumber: number,
   onSelection: PdfReaderCallbacks['onSelection'],
 ): () => void {
@@ -138,7 +145,7 @@ function listenForSelection(
 
     onSelection({
       text: selectedText,
-      sentence: sentenceForSelection(pageText, selectedText),
+      sentence: sentenceForSelection(pageSegments, selectedText),
       pageNumber,
     });
   };
@@ -237,8 +244,9 @@ export class PdfJsReaderEngine {
 
       const textItems = textContent.items
         .map((item) => ('str' in item ? item.str : ''))
+        .map(normalizedText)
         .filter(Boolean);
-      const pageText = normalizedText(textItems.join(' '));
+      const pageText = textItems.join(' ');
       const hasText = pageText.length > 0;
 
       if (hasText) {
@@ -256,7 +264,7 @@ export class PdfJsReaderEngine {
 
         this.removeSelectionListener = listenForSelection(
           textLayerElement,
-          pageText,
+          textItems,
           safePageNumber,
           this.callbacks.onSelection,
         );

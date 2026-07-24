@@ -1,5 +1,19 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
+
+async function ensureServiceWorkerControl(page: Page) {
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+
+  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
+    await page.reload();
+  }
+
+  await expect
+    .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
+    .toBe(true);
+}
 
 test('shows the shared LexiAnchor home surface', async ({ page }) => {
   await page.goto('/');
@@ -50,6 +64,8 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expect(page.locator('.selection-sentence')).toContainText(
     'Select the word attentive, or select this entire sentence',
   );
+  await expect(page.getByText(/giving care or attention/i)).toBeVisible();
+  await expect(page.locator('.dictionary-attribution')).toContainText('WordNet');
 
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).check();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();
@@ -133,6 +149,35 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await expect(page.locator('.selection-sentence')).toContainText(
     'A resilient reader keeps the page steady',
   );
+  await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Online translation|在线翻译|Traduction/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Search on Web|网页搜索|Rechercher/ }),
+  ).toBeVisible();
+  await expect(page.getByText('recovering readily from adversity')).toBeVisible();
+  await expect(page.locator('.dictionary-attribution')).toContainText(
+    'Princeton WordNet 3.1 database · © 2006 Princeton University.',
+  );
+  await page.screenshot({ path: 'test-results/dictionary-panel.png', fullPage: true });
+
+  await page
+    .getByRole('button', { name: /Online translation|在线翻译|Traduction en ligne/ })
+    .click();
+  await expect(page.getByRole('alert')).toContainText('resilient');
+  await page.getByRole('button', { name: /Cancel|取消|Annuler/ }).click();
+
+  await page
+    .context()
+    .route('https://www.google.com/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Search</title>' }),
+    );
+  const popupPromise = page.waitForEvent('popup');
+  await page.getByRole('button', { name: /Search on Web|在网页中搜索|Rechercher/ }).click();
+  const searchPage = await popupPromise;
+  await expect(searchPage).toHaveURL(/google\.com\/search\?q=resilient/);
+  await searchPage.close();
 
   const focusToggle = page.getByRole('checkbox', {
     name: /Focus emphasis|焦点加粗|Mise en évidence/,
@@ -210,6 +255,7 @@ test('persists an imported book and its reading progress in local SQLite and OPF
   await expect(recentBook).toBeVisible();
   await expect(recentBook.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
 
+  await ensureServiceWorkerControl(page);
   await page.context().setOffline(true);
   await page.reload();
   await expect(recentBook).toBeVisible();
@@ -257,4 +303,80 @@ test('keeps the PDF reader usable in a narrow window', async ({ page }) => {
   await expect(page.getByRole('slider', { name: /Zoom|缩放/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Next|下一页|Suivant/ })).toBeVisible();
   await page.screenshot({ path: 'test-results/pdf-reader-narrow.png', fullPage: true });
+});
+
+test('looks up a WordNet entry while the Web app is offline', async ({ page }) => {
+  await page.goto('/');
+  await ensureServiceWorkerControl(page);
+  await page.context().setOffline(true);
+
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const samplePdf = page.getByRole('article').filter({ hasText: 'Anchored Pages' });
+  await samplePdf.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+
+  const textLayer = page.locator('.pdf-text-layer');
+  await expect(textLayer.locator('span').first()).toBeVisible();
+  await textLayer
+    .locator('span', { hasText: 'resilient' })
+    .first()
+    .evaluate((element) => {
+      const textNode = [...element.childNodes].find(
+        (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes('resilient'),
+      );
+
+      if (!textNode?.textContent) {
+        throw new Error('The resilient text run was not found.');
+      }
+
+      const start = textNode.textContent.indexOf('resilient');
+      const range = element.ownerDocument.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + 'resilient'.length);
+      const selection = element.ownerDocument.defaultView?.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+
+  await expect(page.getByText('recovering readily from adversity')).toBeVisible();
+});
+
+test('looks up a selected word from the full offline WordNet package', async ({
+  context,
+  page,
+}) => {
+  await page.goto('/');
+  await ensureServiceWorkerControl(page);
+  await context.setOffline(true);
+
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const samplePdfCard = page.locator('article').filter({ hasText: 'Anchored Pages' });
+  await samplePdfCard.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+
+  const textLayer = page.locator('.pdf-text-layer');
+  await expect(textLayer.locator('span').first()).toBeVisible();
+  await textLayer
+    .locator('span', { hasText: 'resilient' })
+    .first()
+    .evaluate((element) => {
+      const textNode = [...element.childNodes].find(
+        (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes('resilient'),
+      );
+
+      if (!textNode?.textContent) {
+        throw new Error('The resilient text run was not found.');
+      }
+
+      const start = textNode.textContent.indexOf('resilient');
+      const range = element.ownerDocument.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + 'resilient'.length);
+      const selection = element.ownerDocument.defaultView?.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+
+  await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
+  await expect(page.locator('.dictionary-attribution')).toContainText('Princeton WordNet');
 });

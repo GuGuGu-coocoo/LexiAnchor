@@ -8,6 +8,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icon.svg'],
+      workbox: {
+        globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,wasm,epub,pdf,noun,verb,adj,adv}'],
+        maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
+      },
       manifest: {
         name: 'LexiAnchor',
         short_name: 'LexiAnchor',

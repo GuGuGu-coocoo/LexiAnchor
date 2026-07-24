@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "princeton-wordnet-3.1",
+  "name": "Princeton WordNet",
+  "version": "3.1",
+  "languages": ["en", "en"],
+  "distribution": {
+    "type": "bundled-npm-package",
+    "package": "wordnet-db",
+    "packageVersion": "3.1.14",
+    "packageIntegrity": "sha512-zVyFsvE+mq9MCmwXUWHIcpfbrHHClZWZiVOzKSxNJruIcFn2RbY55zkhiAMMxM8zCVSmtNiViq8FsAZSFpMYag=="
+  },
+  "source": "https://wordnet.princeton.edu/",
+  "license": {
+    "name": "Princeton WordNet License",
+    "url": "https://wordnet.princeton.edu/license-and-commercial-use",
+    "notice": "../../../docs/licenses/WORDNET-3.1.txt"
+  },
+  "attribution": "Princeton WordNet 3.1 database · © 2006 Princeton University.",
+  "dataUpdatedAt": null,
+  "files": [
+    {
+      "path": "dict/data.adj",
+      "size": 3167437,
+      "sha256": "ca1033bf627eb95f6cbb2864f8990be8e6a01a3c182e7d7c7094ccf8ead242cc"
+    },
+    {
+      "path": "dict/data.adv",
+      "size": 520168,
+      "sha256": "aea301f39ac1b24be9a880dbc6cc6331bc5391f58c7525a1b298a13c922f2ed3"
+    },
+    {
+      "path": "dict/data.noun",
+      "size": 15325523,
+      "sha256": "2cad22fe43461ee7ae61a564ae6a518c57445c8597e53542caddb5c26a6a5d94"
+    },
+    {
+      "path": "dict/data.verb",
+      "size": 2778475,
+      "sha256": "eb1cf196dab6e1b815a1c86fa20c909fb7413b2f34250d7fe60a0fb35ef59e03"
+    },
+    {
+      "path": "dict/index.adj",
+      "size": 825353,
+      "sha256": "7d2b4d4037f0571ca309ce2ebadbe860a1607d494a70cd40f9bd61bc25a57016"
+    },
+    {
+      "path": "dict/index.adv",
+      "size": 162795,
+      "sha256": "0ea0811bb06eeeb973805ab0b066cb724ebc9dc01f07583582b59579a5b4a36c"
+    },
+    {
+      "path": "dict/index.noun",
+      "size": 4792749,
+      "sha256": "799fad7c8084eb0f6f2a32ec737a251c85f51adb8b2603eb02bfebc4ce5ffa3d"
+    },
+    {
+      "path": "dict/index.verb",
+      "size": 524435,
+      "sha256": "e65b2d67274c8a5f9ba6f696fdc73f4546db2a138b362a3be582e3787c879c7a"
+    }
+  ]
+}
