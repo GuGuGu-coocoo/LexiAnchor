@@ -8,7 +8,7 @@ import {
   type PdfPageResult,
 } from '@lexianchor/reader-pdf';
 
-import { SelectionTools } from './selection-tools';
+import { SelectionTools, type WordCardDraft } from './selection-tools';
 
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
@@ -18,6 +18,7 @@ interface PdfReaderPageProps {
   readonly onClose: () => void;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
   readonly onOpenExternal: (url: string) => Promise<void>;
+  readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
 }
 
 interface StoredPdfView {
@@ -55,6 +56,7 @@ export function PdfReaderPage({
   onClose,
   onLocationChange,
   onOpenExternal,
+  onAddWordCard,
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
@@ -260,6 +262,7 @@ export function PdfReaderPage({
             locale={locale}
             t={t}
             onOpenExternal={onOpenExternal}
+            onAddWordCard={onAddWordCard}
           />
         </aside>
 

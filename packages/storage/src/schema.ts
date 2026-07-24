@@ -43,6 +43,39 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    sql: `
+      CREATE TABLE word_cards (
+        id TEXT PRIMARY KEY,
+        term TEXT NOT NULL,
+        normalized_term TEXT NOT NULL,
+        part_of_speech TEXT NOT NULL,
+        definition TEXT NOT NULL,
+        root_or_etymology TEXT,
+        dictionary_source TEXT NOT NULL,
+        source_book_id TEXT REFERENCES books(id) ON DELETE SET NULL,
+        source_book_title TEXT NOT NULL,
+        source_sentence TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1)
+      );
+
+      CREATE INDEX word_cards_recent_idx
+        ON word_cards(created_at DESC)
+        WHERE deleted_at IS NULL;
+
+      CREATE INDEX word_cards_term_idx
+        ON word_cards(normalized_term COLLATE NOCASE)
+        WHERE deleted_at IS NULL;
+
+      CREATE UNIQUE INDEX word_cards_context_unique
+        ON word_cards(normalized_term, source_book_title, source_sentence)
+        WHERE deleted_at IS NULL;
+    `,
+  },
 ] as const;
 
 export function applyMigrations(db: Pick<Database, 'exec'>, appliedAt = new Date().toISOString()) {

@@ -380,3 +380,87 @@ test('looks up a selected word from the full offline WordNet package', async ({
   await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
   await expect(page.locator('.dictionary-attribution')).toContainText('Princeton WordNet');
 });
+
+test('saves, searches, and deletes a persistent word card', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const samplePdfCard = page.locator('article').filter({ hasText: 'Anchored Pages' });
+  await samplePdfCard.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+
+  const textLayer = page.locator('.pdf-text-layer');
+  await expect(textLayer.locator('span').first()).toBeVisible();
+  await textLayer
+    .locator('span', { hasText: 'resilient' })
+    .first()
+    .evaluate((element) => {
+      const textNode = [...element.childNodes].find(
+        (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.includes('resilient'),
+      );
+
+      if (!textNode?.textContent) {
+        throw new Error('The resilient text run was not found.');
+      }
+
+      const start = textNode.textContent.indexOf('resilient');
+      const range = element.ownerDocument.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, start + 'resilient'.length);
+      const selection = element.ownerDocument.defaultView?.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+
+  await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
+  await page
+    .getByRole('button', { name: /Add to word cards|添加到词卡|Ajouter aux fiches/ })
+    .click();
+  await expect(
+    page.getByRole('button', {
+      name: /Saved to word cards|已添加到词卡|Enregistré dans les fiches/,
+    }),
+  ).toBeDisabled();
+
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await page.getByRole('button', { name: /Word cards|词卡|Fiches de mots/ }).click();
+
+  const savedCard = page.locator('article[data-word-card-id]').filter({ hasText: 'resilient' });
+  await expect(savedCard).toBeVisible();
+  await expect(savedCard).toContainText('recovering readily from adversity');
+  await expect(savedCard).toContainText('Anchored Pages');
+  await expect(savedCard).toContainText('A resilient reader keeps the page steady');
+  await expect(savedCard).toContainText('Princeton WordNet 3.1');
+  await expect(savedCard).toContainText(
+    /Not provided by this dictionary|该词典未提供|Non fourni par ce dictionnaire/,
+  );
+  await page.screenshot({ path: 'test-results/word-cards.png', fullPage: true });
+
+  await ensureServiceWorkerControl(page);
+  await page.context().setOffline(true);
+  await page.reload();
+  await page.getByRole('button', { name: /Word cards|词卡|Fiches de mots/ }).click();
+  await expect(savedCard).toBeVisible();
+
+  const search = page.getByRole('searchbox', {
+    name: /Search word cards|搜索词卡|Rechercher dans les fiches/,
+  });
+  await search.fill('adversity');
+  await expect(savedCard).toBeVisible();
+  await search.fill('does-not-exist');
+  await expect(
+    page.getByRole('heading', {
+      name: /No matching word cards|没有匹配的词卡|Aucune fiche correspondante/,
+    }),
+  ).toBeVisible();
+  await search.fill('');
+  await expect(savedCard).toBeVisible();
+
+  await savedCard
+    .getByRole('button', { name: /Delete resilient|删除 resilient|Supprimer resilient/ })
+    .click();
+  await expect(savedCard).toHaveCount(0);
+
+  await page.reload();
+  await page.getByRole('button', { name: /Word cards|词卡|Fiches de mots/ }).click();
+  await expect(page.locator('article[data-word-card-id]')).toHaveCount(0);
+});

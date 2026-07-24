@@ -18,9 +18,12 @@ import {
   type BookRecord,
   type ReadingProgressRecord,
   type StorageStatus,
+  type WordCardRecord,
 } from '@lexianchor/storage';
 import { epubSpikeUrl, pdfScanUrl, pdfTextUrl } from '@lexianchor/test-fixtures';
 import '@lexianchor/ui/styles.css';
+
+import type { WordCardDraft } from './selection-tools';
 
 type Section = 'home' | 'library' | 'cards';
 type Theme = 'system' | 'light' | 'dark' | 'eye-care';
@@ -136,6 +139,8 @@ export function App({ platform }: AppProps) {
   const [statusMessage, setStatusMessage] = useState('');
   const [storageStatus, setStorageStatus] = useState<StorageStatus>();
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
+  const [wordCards, setWordCards] = useState<WordCardRecord[]>([]);
+  const [cardSearch, setCardSearch] = useState('');
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
 
@@ -173,11 +178,12 @@ export function App({ platform }: AppProps) {
       .initialize()
       .then(async (nextStatus) => {
         document.documentElement.dataset.storage = nextStatus.persistence;
-        const entries = await loadLibrary();
+        const [entries, cards] = await Promise.all([loadLibrary(), repository().listWordCards()]);
 
         if (isActive) {
           setStorageStatus(nextStatus);
           setLibrary(entries);
+          setWordCards(cards);
         }
       })
       .catch((error: unknown) => {
@@ -190,6 +196,23 @@ export function App({ platform }: AppProps) {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeSection !== 'cards') {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void repository()
+        .listWordCards(cardSearch)
+        .then(setWordCards)
+        .catch((error: unknown) =>
+          setStatusMessage(error instanceof Error ? error.message : String(error)),
+        );
+    }, 120);
+
+    return () => window.clearTimeout(timeout);
+  }, [activeSection, cardSearch]);
 
   const refreshLibrary = useCallback(async () => {
     setLibrary(await loadLibrary());
@@ -294,6 +317,40 @@ export function App({ platform }: AppProps) {
     void refreshLibrary();
   }, [refreshLibrary]);
 
+  const addWordCard = useCallback(
+    async (draft: WordCardDraft) => {
+      if (!openBook) {
+        throw new Error('A book must be open before saving a word card.');
+      }
+
+      const now = new Date().toISOString();
+      await repository().saveWordCard({
+        id: `card-${crypto.randomUUID()}`,
+        ...draft,
+        sourceBookId: openBook.bookId ?? null,
+        sourceBookTitle: openBook.source.name.replace(/\.(epub|pdf)$/i, ''),
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+        version: 1,
+      });
+      setWordCards(await repository().listWordCards(cardSearch));
+    },
+    [cardSearch, openBook],
+  );
+
+  const deleteWordCard = useCallback(
+    async (cardId: string) => {
+      try {
+        await repository().deleteWordCard(cardId, new Date().toISOString());
+        setWordCards(await repository().listWordCards(cardSearch));
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [cardSearch],
+  );
+
   async function toggleFullscreen() {
     setStatusMessage('');
 
@@ -326,6 +383,7 @@ export function App({ platform }: AppProps) {
           onClose={closeReader}
           onLocationChange={persistLocation}
           onOpenExternal={(url) => platform.openExternal(url)}
+          onAddWordCard={addWordCard}
         />
       </Suspense>
     );
@@ -426,7 +484,14 @@ export function App({ platform }: AppProps) {
             onOpenStored={openStoredBook}
           />
         ) : (
-          <EmptyPage t={t} />
+          <CardsPage
+            cards={wordCards}
+            query={cardSearch}
+            locale={locale}
+            t={t}
+            onQueryChange={setCardSearch}
+            onDelete={deleteWordCard}
+          />
         )}
         <p className="sr-only" aria-live="polite">
           {statusMessage}
@@ -742,11 +807,16 @@ function StoredBookCard({ entry, headingLevel, t, onOpen }: StoredBookCardProps)
   );
 }
 
-interface EmptyPageProps {
+interface CardsPageProps {
+  readonly cards: readonly WordCardRecord[];
+  readonly query: string;
+  readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
+  readonly onQueryChange: (query: string) => void;
+  readonly onDelete: (cardId: string) => Promise<void>;
 }
 
-function EmptyPage({ t }: EmptyPageProps) {
+function CardsPage({ cards, query, locale, t, onQueryChange, onDelete }: CardsPageProps) {
   return (
     <section className="page" aria-labelledby="cards-title">
       <header className="page-header">
@@ -755,15 +825,78 @@ function EmptyPage({ t }: EmptyPageProps) {
           <h1 className="page-title" id="cards-title">
             {t('cardsTitle')}
           </h1>
+          <p className="page-description">{t('cardsDescription')}</p>
         </div>
       </header>
-      <div className="empty-state">
-        <div className="empty-icon">
-          <Icon name="cards" />
+
+      <label className="card-search">
+        <span>{t('cardsSearch')}</span>
+        <input
+          type="search"
+          value={query}
+          placeholder={t('cardsSearchPlaceholder')}
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+      </label>
+
+      {cards.length > 0 ? (
+        <div className="word-card-grid">
+          {cards.map((card) => (
+            <article className="word-card" data-word-card-id={card.id} key={card.id}>
+              <div className="word-card-heading">
+                <div>
+                  <span className="badge">{card.partOfSpeech}</span>
+                  <h2>{card.term}</h2>
+                </div>
+                <button
+                  className="word-card-delete"
+                  type="button"
+                  aria-label={`${t('deleteCard')} ${card.term}`}
+                  onClick={() => void onDelete(card.id)}
+                >
+                  {t('deleteCard')}
+                </button>
+              </div>
+              <p className="word-card-definition">{card.definition}</p>
+              <dl className="word-card-metadata">
+                <div>
+                  <dt>{t('wordRoot')}</dt>
+                  <dd>{card.rootOrEtymology ?? t('notProvided')}</dd>
+                </div>
+                <div>
+                  <dt>{t('sourceBook')}</dt>
+                  <dd>{card.sourceBookTitle}</dd>
+                </div>
+                <div>
+                  <dt>{t('originalSentence')}</dt>
+                  <dd>“{card.sourceSentence}”</dd>
+                </div>
+                <div>
+                  <dt>{t('dictionarySource')}</dt>
+                  <dd>{card.dictionarySource}</dd>
+                </div>
+                <div>
+                  <dt>{t('createdAt')}</dt>
+                  <dd>
+                    {new Intl.DateTimeFormat(locale, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    }).format(new Date(card.createdAt))}
+                  </dd>
+                </div>
+              </dl>
+            </article>
+          ))}
         </div>
-        <h2 className="empty-title">{t('cardsEmptyTitle')}</h2>
-        <p className="empty-copy">{t('cardsEmptyBody')}</p>
-      </div>
+      ) : (
+        <div className="empty-state">
+          <div className="empty-icon">
+            <Icon name="cards" />
+          </div>
+          <h2 className="empty-title">{query ? t('noCardsFound') : t('cardsEmptyTitle')}</h2>
+          <p className="empty-copy">{query ? t('noCardsFoundDescription') : t('cardsEmptyBody')}</p>
+        </div>
+      )}
     </section>
   );
 }

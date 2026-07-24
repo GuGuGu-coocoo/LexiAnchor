@@ -1,4 +1,4 @@
-import type { BookRecord, ReadingProgressRecord, StorageStatus } from './types';
+import type { BookRecord, ReadingProgressRecord, StorageStatus, WordCardRecord } from './types';
 
 export type DatabaseRequest =
   | { readonly id: number; readonly type: 'initialize' }
@@ -10,13 +10,22 @@ export type DatabaseRequest =
       readonly type: 'save-progress';
       readonly progress: ReadingProgressRecord;
     }
+  | { readonly id: number; readonly type: 'list-word-cards'; readonly query: string }
+  | { readonly id: number; readonly type: 'save-word-card'; readonly card: WordCardRecord }
+  | {
+      readonly id: number;
+      readonly type: 'delete-word-card';
+      readonly cardId: string;
+      readonly deletedAt: string;
+    }
   | { readonly id: number; readonly type: 'close' };
 
 export type DatabaseResponse =
   | {
       readonly id: number;
       readonly ok: true;
-      readonly result: StorageStatus | BookRecord[] | ReadingProgressRecord | null | undefined;
+      readonly result:
+        StorageStatus | BookRecord[] | ReadingProgressRecord | WordCardRecord[] | null | undefined;
     }
   | {
       readonly id: number;

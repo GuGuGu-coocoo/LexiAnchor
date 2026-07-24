@@ -1,5 +1,12 @@
 import type { DatabaseRequest, DatabaseResponse } from './protocol';
-import type { BookRecord, BookRepository, ReadingProgressRecord, StorageStatus } from './types';
+import type {
+  BookRecord,
+  BookRepository,
+  ReadingProgressRecord,
+  StorageStatus,
+  WordCardRecord,
+  WordCardRepository,
+} from './types';
 
 type RequestInput =
   | Omit<Extract<DatabaseRequest, { type: 'initialize' }>, 'id'>
@@ -7,9 +14,12 @@ type RequestInput =
   | Omit<Extract<DatabaseRequest, { type: 'save-book' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'get-progress' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'save-progress' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'list-word-cards' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'save-word-card' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'delete-word-card' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'close' }>, 'id'>;
 
-export class SqliteBookRepository implements BookRepository {
+export class SqliteBookRepository implements BookRepository, WordCardRepository {
   private readonly worker = new Worker(new URL('./database.worker.ts', import.meta.url), {
     type: 'module',
     name: 'lexianchor-sqlite',
@@ -67,6 +77,18 @@ export class SqliteBookRepository implements BookRepository {
 
   saveProgress(progress: ReadingProgressRecord): Promise<void> {
     return this.request({ type: 'save-progress', progress });
+  }
+
+  listWordCards(query = ''): Promise<WordCardRecord[]> {
+    return this.request({ type: 'list-word-cards', query });
+  }
+
+  saveWordCard(card: WordCardRecord): Promise<void> {
+    return this.request({ type: 'save-word-card', card });
+  }
+
+  deleteWordCard(cardId: string, deletedAt: string): Promise<void> {
+    return this.request({ type: 'delete-word-card', cardId, deletedAt });
   }
 
   async close(): Promise<void> {

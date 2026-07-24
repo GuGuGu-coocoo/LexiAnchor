@@ -10,7 +10,7 @@ import {
 import { EpubJsReaderEngine } from '@lexianchor/reader-epub';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 
-import { SelectionTools } from './selection-tools';
+import { SelectionTools, type WordCardDraft } from './selection-tools';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -25,6 +25,7 @@ interface ReaderPageProps {
   readonly onClose: () => void;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
   readonly onOpenExternal: (url: string) => Promise<void>;
+  readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
 }
 
 function storageKey(source: ReaderSource): string {
@@ -73,6 +74,7 @@ function EpubReaderPage({
   onClose,
   onLocationChange,
   onOpenExternal,
+  onAddWordCard,
 }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
@@ -266,6 +268,7 @@ function EpubReaderPage({
             locale={locale}
             t={t}
             onOpenExternal={onOpenExternal}
+            onAddWordCard={onAddWordCard}
           />
         </aside>
 

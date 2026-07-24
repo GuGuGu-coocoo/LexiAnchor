@@ -4,7 +4,7 @@ import sqlite3InitModule, { type Database } from '@sqlite.org/sqlite-wasm';
 
 import type { DatabaseRequest, DatabaseResponse } from './protocol';
 import { applyMigrations } from './schema';
-import type { BookRecord, ReadingProgressRecord, StorageStatus } from './types';
+import type { BookRecord, ReadingProgressRecord, StorageStatus, WordCardRecord } from './types';
 
 interface BookRow {
   readonly id: string;
@@ -32,6 +32,23 @@ interface ProgressRow {
   readonly percentage: number;
   readonly updated_at: string;
   readonly device_id: string;
+  readonly version: number;
+}
+
+interface WordCardRow {
+  readonly id: string;
+  readonly term: string;
+  readonly normalized_term: string;
+  readonly part_of_speech: string;
+  readonly definition: string;
+  readonly root_or_etymology: string | null;
+  readonly dictionary_source: string;
+  readonly source_book_id: string | null;
+  readonly source_book_title: string;
+  readonly source_sentence: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly deleted_at: string | null;
   readonly version: number;
 }
 
@@ -108,6 +125,30 @@ function mapProgress(row: ProgressRow): ReadingProgressRecord {
     deviceId: row.device_id,
     version: row.version,
   };
+}
+
+function mapWordCard(row: WordCardRow): WordCardRecord {
+  return {
+    id: row.id,
+    term: row.term,
+    normalizedTerm: row.normalized_term,
+    partOfSpeech: row.part_of_speech,
+    definition: row.definition,
+    rootOrEtymology: row.root_or_etymology,
+    dictionarySource: row.dictionary_source,
+    sourceBookId: row.source_book_id,
+    sourceBookTitle: row.source_book_title,
+    sourceSentence: row.source_sentence,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    version: row.version,
+  };
+}
+
+function likePattern(query: string): string {
+  const escaped = query.trim().toLocaleLowerCase('en-US').replaceAll('\\', '\\\\');
+  return `%${escaped.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
 }
 
 const contextPromise = createDatabase();
@@ -222,6 +263,81 @@ async function handleRequest(request: DatabaseRequest) {
       }
       return undefined;
     }
+    case 'list-word-cards': {
+      const query = request.query.trim();
+      const rows = context.db.exec({
+        sql: query
+          ? `
+              SELECT * FROM word_cards
+              WHERE deleted_at IS NULL
+                AND (
+                  normalized_term LIKE ? ESCAPE '\\'
+                  OR LOWER(definition) LIKE ? ESCAPE '\\'
+                  OR LOWER(source_book_title) LIKE ? ESCAPE '\\'
+                  OR LOWER(source_sentence) LIKE ? ESCAPE '\\'
+                )
+              ORDER BY created_at DESC, term COLLATE NOCASE
+            `
+          : `
+              SELECT * FROM word_cards
+              WHERE deleted_at IS NULL
+              ORDER BY created_at DESC, term COLLATE NOCASE
+            `,
+        bind: query ? Array(4).fill(likePattern(query)) : undefined,
+        rowMode: 'object',
+        returnValue: 'resultRows',
+      }) as unknown as WordCardRow[];
+      return rows.map(mapWordCard);
+    }
+    case 'save-word-card': {
+      const card = request.card;
+      context.db.exec({
+        sql: `
+          INSERT INTO word_cards (
+            id, term, normalized_term, part_of_speech, definition, root_or_etymology,
+            dictionary_source, source_book_id, source_book_title, source_sentence,
+            created_at, updated_at, deleted_at, version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT DO UPDATE SET
+            term = excluded.term,
+            part_of_speech = excluded.part_of_speech,
+            definition = excluded.definition,
+            root_or_etymology = excluded.root_or_etymology,
+            dictionary_source = excluded.dictionary_source,
+            source_book_id = COALESCE(excluded.source_book_id, word_cards.source_book_id),
+            updated_at = excluded.updated_at,
+            deleted_at = NULL,
+            version = word_cards.version + 1
+        `,
+        bind: [
+          card.id,
+          card.term,
+          card.normalizedTerm,
+          card.partOfSpeech,
+          card.definition,
+          card.rootOrEtymology,
+          card.dictionarySource,
+          card.sourceBookId,
+          card.sourceBookTitle,
+          card.sourceSentence,
+          card.createdAt,
+          card.updatedAt,
+          card.deletedAt,
+          card.version,
+        ],
+      });
+      return undefined;
+    }
+    case 'delete-word-card':
+      context.db.exec({
+        sql: `
+          UPDATE word_cards
+          SET deleted_at = ?, updated_at = ?, version = version + 1
+          WHERE id = ? AND deleted_at IS NULL
+        `,
+        bind: [request.deletedAt, request.deletedAt, request.cardId],
+      });
+      return undefined;
     case 'close':
       context.db.close();
       return undefined;

@@ -9,4 +9,6 @@ export type {
   StorageStatus,
   SyncChange,
   SyncProvider,
+  WordCardRecord,
+  WordCardRepository,
 } from './types';

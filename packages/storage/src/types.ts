@@ -29,6 +29,23 @@ export interface ReadingProgressRecord {
   readonly version: number;
 }
 
+export interface WordCardRecord {
+  readonly id: string;
+  readonly term: string;
+  readonly normalizedTerm: string;
+  readonly partOfSpeech: string;
+  readonly definition: string;
+  readonly rootOrEtymology: string | null;
+  readonly dictionarySource: string;
+  readonly sourceBookId: string | null;
+  readonly sourceBookTitle: string;
+  readonly sourceSentence: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly deletedAt: string | null;
+  readonly version: number;
+}
+
 export interface StorageStatus {
   readonly sqliteVersion: string;
   readonly persistence: 'opfs-sahpool' | 'memory';
@@ -41,6 +58,12 @@ export interface BookRepository {
   getProgress(bookId: string): Promise<ReadingProgressRecord | null>;
   saveProgress(progress: ReadingProgressRecord): Promise<void>;
   close(): Promise<void>;
+}
+
+export interface WordCardRepository {
+  listWordCards(query?: string): Promise<WordCardRecord[]>;
+  saveWordCard(card: WordCardRecord): Promise<void>;
+  deleteWordCard(id: string, deletedAt: string): Promise<void>;
 }
 
 export interface ContentStore {

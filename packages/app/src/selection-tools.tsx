@@ -14,6 +14,17 @@ interface SelectionToolsProps {
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onOpenExternal: (url: string) => Promise<void>;
+  readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
+}
+
+export interface WordCardDraft {
+  readonly term: string;
+  readonly normalizedTerm: string;
+  readonly partOfSpeech: WordNetPartOfSpeech;
+  readonly definition: string;
+  readonly rootOrEtymology: string | null;
+  readonly dictionarySource: string;
+  readonly sourceSentence: string;
 }
 
 const wordNet = new WordNetProvider();
@@ -43,6 +54,7 @@ export function SelectionTools({
   locale,
   t,
   onOpenExternal,
+  onAddWordCard,
 }: SelectionToolsProps) {
   const selectedText = selection?.text.trim() ?? '';
   const canUseDictionary = isSingleWord(selectedText);
@@ -50,6 +62,7 @@ export function SelectionTools({
   const [isLoading, setIsLoading] = useState(Boolean(selectedText && canUseDictionary));
   const [error, setError] = useState('');
   const [showTranslationConsent, setShowTranslationConsent] = useState(false);
+  const [cardState, setCardState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   useEffect(() => {
     let isActive = true;
@@ -93,6 +106,31 @@ export function SelectionTools({
     globalThis.localStorage?.setItem('lexianchor:external-consent:google-translate', 'granted');
     setShowTranslationConsent(false);
     await onOpenExternal(translationUrl(selectedText, locale));
+  }
+
+  async function addWordCard() {
+    const primarySense = result?.senses[0];
+
+    if (!result || !primarySense) {
+      return;
+    }
+
+    setCardState('saving');
+
+    try {
+      await onAddWordCard({
+        term: selectedText,
+        normalizedTerm: result.lemma.toLocaleLowerCase('en-US'),
+        partOfSpeech: primarySense.partOfSpeech,
+        definition: primarySense.definition,
+        rootOrEtymology: result.rootOrEtymology,
+        dictionarySource: `${result.source.name} ${result.source.version}`,
+        sourceSentence: selection?.sentence ?? '',
+      });
+      setCardState('saved');
+    } catch {
+      setCardState('error');
+    }
   }
 
   if (!selection) {
@@ -146,6 +184,23 @@ export function SelectionTools({
             ))}
           </ol>
           <p className="dictionary-attribution">{result.source.attribution}</p>
+          <button
+            className="add-card-action"
+            type="button"
+            disabled={cardState === 'saving' || cardState === 'saved'}
+            onClick={() => void addWordCard()}
+          >
+            {cardState === 'saving'
+              ? t('savingCard')
+              : cardState === 'saved'
+                ? t('savedToCards')
+                : t('addToCards')}
+          </button>
+          {cardState === 'error' ? (
+            <p className="dictionary-error" role="alert">
+              {t('cardSaveFailed')}
+            </p>
+          ) : null}
         </>
       ) : null}
 
