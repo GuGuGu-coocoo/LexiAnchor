@@ -46,8 +46,8 @@
 | 检查 | 结果 |
 | --- | --- |
 | `pnpm check` | 通过 |
-| Vitest | 5 个文件、20 个测试通过 |
-| Playwright | 13 个 Chromium 场景通过 |
+| Vitest | 6 个文件、25 个测试通过 |
+| Playwright | 14 个 Chromium 场景通过 |
 | `pnpm build:web` | 通过，PDF、SQLite worker 和 WASM 均形成生产资源 |
 | `pnpm build:desktop` | 通过，生成 macOS arm64 `.app` |
 | `pnpm audit --audit-level high` | 无已知漏洞 |
@@ -71,7 +71,6 @@ Playwright 当前覆盖：
 
 ## 仍未达到首个可用版本的部分
 
-- 用户可导入一组未压缩 StarDict `.ifo + .idx + .dict`，后台完成校验并持久保存；
 - 本地 EN→FR、EN→ZH 句子翻译模型尚未实现；
 - 词卡编辑、导入/导出和大数据量压力测试尚未实现；
 - EPUB 目录和 PDF annotation layer 尚未实现；
