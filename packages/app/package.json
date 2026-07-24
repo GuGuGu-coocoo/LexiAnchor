@@ -13,6 +13,9 @@
     "@lexianchor/domain": "workspace:*",
     "@lexianchor/i18n": "workspace:*",
     "@lexianchor/platform": "workspace:*",
+    "@lexianchor/reader-core": "workspace:*",
+    "@lexianchor/reader-epub": "workspace:*",
+    "@lexianchor/test-fixtures": "workspace:*",
     "@lexianchor/ui": "workspace:*",
     "react": "19.2.8"
   },

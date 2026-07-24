@@ -1,0 +1,20 @@
+{
+  "name": "@lexianchor/reader-readium-probe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@readium/navigator": "2.6.1",
+    "@readium/navigator-html-injectables": "2.6.1",
+    "@readium/shared": "2.3.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import { normalizeProgress } from '@lexianchor/domain';
 import type { RecentBook } from '@lexianchor/domain';
@@ -10,6 +10,8 @@ import {
   type MessageKey,
 } from '@lexianchor/i18n';
 import type { PlatformBridge } from '@lexianchor/platform';
+import type { ReaderSource } from '@lexianchor/reader-core';
+import { epubSpikeUrl } from '@lexianchor/test-fixtures';
 import '@lexianchor/ui/styles.css';
 
 type Section = 'home' | 'library' | 'cards';
@@ -35,6 +37,10 @@ const localeLabels: Record<Locale, string> = {
   fr: 'Français',
 };
 
+const ReaderPage = lazy(() =>
+  import('./reader-page').then((module) => ({ default: module.ReaderPage })),
+);
+
 function readStoredLocale(): Locale {
   const stored = globalThis.localStorage?.getItem('lexianchor:locale');
   return supportedLocales.find((locale) => locale === stored) ?? detectSystemLocale();
@@ -53,6 +59,7 @@ export function App({ platform }: AppProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [appVersion, setAppVersion] = useState('0.1.0');
   const [statusMessage, setStatusMessage] = useState('');
+  const [openBook, setOpenBook] = useState<ReaderSource | null>(null);
   const t = (key: MessageKey) => translate(locale, key);
 
   useEffect(() => {
@@ -101,6 +108,14 @@ export function App({ platform }: AppProps) {
     { id: 'library', label: t('library') },
     { id: 'cards', label: t('cards') },
   ];
+
+  if (openBook) {
+    return (
+      <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
+        <ReaderPage source={openBook} t={t} onClose={() => setOpenBook(null)} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -180,9 +195,12 @@ export function App({ platform }: AppProps) {
             platform={platform}
             t={t}
             onToggleFullscreen={toggleFullscreen}
+            onOpenBook={setOpenBook}
           />
+        ) : activeSection === 'library' ? (
+          <LibraryPage t={t} onOpenBook={setOpenBook} />
         ) : (
-          <EmptyPage section={activeSection} t={t} />
+          <EmptyPage t={t} />
         )}
         <p className="sr-only" aria-live="polite">
           {statusMessage}
@@ -198,9 +216,17 @@ interface HomePageProps {
   readonly platform: PlatformBridge;
   readonly t: (key: MessageKey) => string;
   readonly onToggleFullscreen: () => Promise<void>;
+  readonly onOpenBook: (source: ReaderSource) => void;
 }
 
-function HomePage({ appVersion, isFullscreen, platform, t, onToggleFullscreen }: HomePageProps) {
+function HomePage({
+  appVersion,
+  isFullscreen,
+  platform,
+  t,
+  onToggleFullscreen,
+  onOpenBook,
+}: HomePageProps) {
   const progress = normalizeProgress(demoRecentBook.progressPercent);
 
   return (
@@ -252,7 +278,11 @@ function HomePage({ appVersion, isFullscreen, platform, t, onToggleFullscreen }:
             >
               <div className="progress-fill" style={{ width: `${progress}%` }} />
             </div>
-            <button className="book-action" type="button">
+            <button
+              className="book-action"
+              type="button"
+              onClick={() => onOpenBook({ data: epubSpikeUrl, name: 'Anchored Reading.epub' })}
+            >
               {t('openBook')} →
             </button>
           </div>
@@ -278,33 +308,99 @@ function HomePage({ appVersion, isFullscreen, platform, t, onToggleFullscreen }:
   );
 }
 
-interface EmptyPageProps {
-  readonly section: Exclude<Section, 'home'>;
+interface LibraryPageProps {
   readonly t: (key: MessageKey) => string;
+  readonly onOpenBook: (source: ReaderSource) => void;
 }
 
-function EmptyPage({ section, t }: EmptyPageProps) {
-  const isLibrary = section === 'library';
-  const title = isLibrary ? t('libraryTitle') : t('cardsTitle');
-  const emptyTitle = isLibrary ? t('libraryEmptyTitle') : t('cardsEmptyTitle');
-  const emptyBody = isLibrary ? t('libraryEmptyBody') : t('cardsEmptyBody');
+function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
+  async function importEpub(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    onOpenBook({ data: await file.arrayBuffer(), name: file.name });
+  }
 
   return (
-    <section className="page" aria-labelledby={`${section}-title`}>
+    <section className="page" aria-labelledby="library-title">
       <header className="page-header">
         <div>
           <p className="eyebrow">LexiAnchor</p>
-          <h1 className="page-title" id={`${section}-title`}>
-            {title}
+          <h1 className="page-title" id="library-title">
+            {t('libraryTitle')}
+          </h1>
+          <p className="page-description">{t('libraryExperimentBody')}</p>
+        </div>
+      </header>
+
+      <div className="library-actions">
+        <label className="import-button">
+          <Icon name="book-open" className="button-icon" />
+          <span>{t('importEpub')}</span>
+          <input
+            type="file"
+            accept=".epub,application/epub+zip"
+            onChange={(event) => void importEpub(event.target.files?.[0])}
+          />
+        </label>
+        <button
+          className="button"
+          type="button"
+          onClick={() => onOpenBook({ data: epubSpikeUrl, name: 'Anchored Reading.epub' })}
+        >
+          {t('openSampleBook')}
+        </button>
+      </div>
+
+      <div className="book-grid">
+        <article className="book-card">
+          <div className="book-cover" aria-hidden="true">
+            A
+          </div>
+          <div className="book-details">
+            <div className="book-badges">
+              <span className="badge">EPUB 3</span>
+              <span className="badge">{t('sampleData')}</span>
+            </div>
+            <h2 className="book-title">Anchored Reading</h2>
+            <p className="book-author">LexiAnchor</p>
+            <p className="fixture-description">{t('sampleBookDescription')}</p>
+            <button
+              className="book-action"
+              type="button"
+              onClick={() => onOpenBook({ data: epubSpikeUrl, name: 'Anchored Reading.epub' })}
+            >
+              {t('openBook')} →
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+interface EmptyPageProps {
+  readonly t: (key: MessageKey) => string;
+}
+
+function EmptyPage({ t }: EmptyPageProps) {
+  return (
+    <section className="page" aria-labelledby="cards-title">
+      <header className="page-header">
+        <div>
+          <p className="eyebrow">LexiAnchor</p>
+          <h1 className="page-title" id="cards-title">
+            {t('cardsTitle')}
           </h1>
         </div>
       </header>
       <div className="empty-state">
         <div className="empty-icon">
-          <Icon name={isLibrary ? 'book-open' : 'cards'} />
+          <Icon name="cards" />
         </div>
-        <h2 className="empty-title">{emptyTitle}</h2>
-        <p className="empty-copy">{emptyBody}</p>
+        <h2 className="empty-title">{t('cardsEmptyTitle')}</h2>
+        <p className="empty-copy">{t('cardsEmptyBody')}</p>
       </div>
     </section>
   );

@@ -1,0 +1,19 @@
+{
+  "name": "@lexianchor/reader-epub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lexianchor/reader-core": "workspace:*",
+    "epubjs": "0.3.93"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}

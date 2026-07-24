@@ -130,6 +130,16 @@ Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimenta
 5. 本地翻译模型；
 6. 无签名桌面包。
 
+当前进度：
+
+- [x] EPUB 内核对比：选择 EPUB.js 0.3.93，见
+      `docs/spikes/0001-epub-engine.md` 与 ADR-0003；
+- [ ] PDF.js 文本层；
+- [ ] SQLite WASM + OPFS；
+- [ ] 词典包；
+- [ ] 本地翻译模型；
+- [ ] 无签名桌面包实机记录。
+
 每个 Spike：
 
 - 设置 timebox；

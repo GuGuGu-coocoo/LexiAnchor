@@ -16,7 +16,7 @@ LexiAnchor 采用 TypeScript 优先的跨平台架构：
 - 使用 Electron 构建 Windows/macOS 桌面应用；
 - 使用 Vite 构建 Web/PWA；
 - PDF 使用 PDF.js；
-- EPUB 通过 3–5 天 Spike 在 Readium Web 与 EPUB.js 之间验证后锁定；
+- EPUB v0.1 使用 EPUB.js 0.3.93，并通过 Reader Core adapter 隔离；
 - 桌面与 Web 使用相同 SQLite schema、迁移和 Repository API；
 - SQLite 在 Worker 中运行，持久化到 OPFS；
 - 大型书籍、词典和模型通过统一 ContentStore 接口管理；
@@ -47,7 +47,7 @@ LexiAnchor 采用 TypeScript 优先的跨平台架构：
 | 桌面打包 | Electron Forge | 已确定 | 生成 Windows/macOS 构建产物 |
 | Web | PWA | 已确定 | Service Worker 缓存应用壳与离线资源清单 |
 | PDF | PDF.js | 已确定 | 解析、渲染、文本层、选词 |
-| EPUB | Readium Web / EPUB.js | 待 Spike | 以稳定位置、样式注入和选词能力决策 |
+| EPUB | EPUB.js 0.3.93 | 已确定（v0.1） | 本地文件直读；通过 adapter 隔离并保留 Readium 迁移能力 |
 | 数据库 | SQLite WASM | 已确定 | 桌面/Web 使用相同 schema 和迁移 |
 | 数据持久化 | OPFS | 已确定 | 数据库运行于 Worker；提供能力检测和导出 |
 | 桌面文件 | Electron main process | 已确定 | 书籍、词典和模型存放于应用数据目录 |
@@ -219,7 +219,9 @@ PDF Spike 必须验证：
 
 ### 7.2 EPUB
 
-不在没有实验数据时锁死内核。Spike 同时验证 Readium Web 和 EPUB.js：
+Spike 已完成，结果记录在
+[EPUB 阅读内核 Spike](./docs/spikes/0001-epub-engine.md) 与
+[ADR-0003](./docs/adr/0003-reader-engines.md)。v0.1 选择 EPUB.js 0.3.93：
 
 | 指标 | 权重 |
 | --- | --- |
@@ -232,11 +234,15 @@ PDF Spike 必须验证：
 | 维护活跃度与许可证 | 高 |
 | Web/Electron 共用难度 | 高 |
 
-Spike 结束后创建 ADR 更新，二选一：
+- 本地 `.epub` 可作为 URL 或 `ArrayBuffer` 直接打开；
+- CFI、分页/滚动、排版样式、选词和焦点加粗通过浏览器测试；
+- EPUB 2 与 EPUB 3 项目自制夹具均通过；
+- 具体 API 只存在于 `@lexianchor/reader-epub`；
+- 默认关闭 EPUB 脚本和弹窗。
 
-- 直接采用某个内核；
-- 采用某个内核并维护最小补丁；
-- 若两者均不满足，明确列出自研最小层的成本后再决策。
+Readium Web 维护更活跃，但其 TypeScript navigator 需要 RWPM、positions list 与 HTTP 资源。
+这与 v0.1 的浏览器本地文件直读边界不匹配。保留编译探针，等项目引入出版物服务或远程书库时
+重新评估。
 
 ### 7.3 焦点加粗
 
