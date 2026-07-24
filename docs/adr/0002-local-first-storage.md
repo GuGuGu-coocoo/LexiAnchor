@@ -20,12 +20,14 @@
 ## 实现结果
 
 - Schema v1 已包含 `schema_migrations`、`books` 和 `reading_progress`；
+- Schema v2 增加 `word_cards`、上下文去重索引、搜索索引与软删除字段；
 - 书籍内容以 SHA-256 为 key 保存在 `OpfsContentStore`，SQLite 只保存引用；
 - 保存进度和更新最近打开时间使用同一事务；
 - EPUB CFI 与 PDF 页码/百分比均可在清空 `localStorage` 后恢复；
 - Web 已验证离线重载和打开导入书籍；
 - Electron 生产 bundle 已验证 `opfs-sahpool`，macOS arm64 打包通过；
 - `SyncProvider` 接口已保留，没有网络实现；
+- 词卡在 Web/Electron 共用 Worker 中保存，可断网搜索和软删除；
 - 详细证据见 [SQLite WASM + OPFS 存储 Spike](../spikes/0003-sqlite-opfs.md)。
 
 ## 一致性定义

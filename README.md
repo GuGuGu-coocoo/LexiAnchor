@@ -8,8 +8,9 @@ The project is in active development. The shared Web/PWA and Electron applicatio
 can now import and read DRM-free EPUB 2/3 and PDF files. Imported books and reading
 progress persist locally through SQLite WASM and OPFS. Selecting an English word
 queries the bundled Princeton WordNet 3.1 offline, with explicit online translation
-and Web search fallbacks. Bilingual dictionaries, local sentence translation, and
-word cards remain in development.
+and Web search fallbacks. Dictionary results can be saved as persistent, searchable
+word cards with their reading context. Bilingual dictionaries and local sentence
+translation remain in development.
 
 ## Requirements
 
