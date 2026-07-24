@@ -11,7 +11,7 @@ import {
 } from '@lexianchor/i18n';
 import type { PlatformBridge } from '@lexianchor/platform';
 import type { ReaderSource } from '@lexianchor/reader-core';
-import { epubSpikeUrl } from '@lexianchor/test-fixtures';
+import { epubSpikeUrl, pdfScanUrl, pdfTextUrl } from '@lexianchor/test-fixtures';
 import '@lexianchor/ui/styles.css';
 
 type Section = 'home' | 'library' | 'cards';
@@ -29,6 +29,24 @@ const demoRecentBook: RecentBook = {
   format: 'EPUB',
   progressPercent: 38,
   updatedAt: '2026-07-24T00:00:00.000Z',
+};
+
+const sampleEpub: ReaderSource = {
+  data: epubSpikeUrl,
+  name: 'Anchored Reading.epub',
+  format: 'epub',
+};
+
+const sampleTextPdf: ReaderSource = {
+  data: pdfTextUrl,
+  name: 'Anchored Pages.pdf',
+  format: 'pdf',
+};
+
+const sampleScanPdf: ReaderSource = {
+  data: pdfScanUrl,
+  name: 'Image-only Sample.pdf',
+  format: 'pdf',
 };
 
 const localeLabels: Record<Locale, string> = {
@@ -112,7 +130,12 @@ export function App({ platform }: AppProps) {
   if (openBook) {
     return (
       <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
-        <ReaderPage source={openBook} t={t} onClose={() => setOpenBook(null)} />
+        <ReaderPage
+          key={`${openBook.format}:${openBook.name}`}
+          source={openBook}
+          t={t}
+          onClose={() => setOpenBook(null)}
+        />
       </Suspense>
     );
   }
@@ -278,11 +301,7 @@ function HomePage({
             >
               <div className="progress-fill" style={{ width: `${progress}%` }} />
             </div>
-            <button
-              className="book-action"
-              type="button"
-              onClick={() => onOpenBook({ data: epubSpikeUrl, name: 'Anchored Reading.epub' })}
-            >
+            <button className="book-action" type="button" onClick={() => onOpenBook(sampleEpub)}>
               {t('openBook')} →
             </button>
           </div>
@@ -314,12 +333,16 @@ interface LibraryPageProps {
 }
 
 function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
-  async function importEpub(file: File | undefined) {
+  async function importBook(file: File | undefined) {
     if (!file) {
       return;
     }
 
-    onOpenBook({ data: await file.arrayBuffer(), name: file.name });
+    onOpenBook({
+      data: await file.arrayBuffer(),
+      name: file.name,
+      format: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'epub',
+    });
   }
 
   return (
@@ -337,18 +360,14 @@ function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
       <div className="library-actions">
         <label className="import-button">
           <Icon name="book-open" className="button-icon" />
-          <span>{t('importEpub')}</span>
+          <span>{t('importBook')}</span>
           <input
             type="file"
-            accept=".epub,application/epub+zip"
-            onChange={(event) => void importEpub(event.target.files?.[0])}
+            accept=".epub,.pdf,application/epub+zip,application/pdf"
+            onChange={(event) => void importBook(event.target.files?.[0])}
           />
         </label>
-        <button
-          className="button"
-          type="button"
-          onClick={() => onOpenBook({ data: epubSpikeUrl, name: 'Anchored Reading.epub' })}
-        >
+        <button className="button" type="button" onClick={() => onOpenBook(sampleEpub)}>
           {t('openSampleBook')}
         </button>
       </div>
@@ -366,11 +385,43 @@ function LibraryPage({ t, onOpenBook }: LibraryPageProps) {
             <h2 className="book-title">Anchored Reading</h2>
             <p className="book-author">LexiAnchor</p>
             <p className="fixture-description">{t('sampleBookDescription')}</p>
-            <button
-              className="book-action"
-              type="button"
-              onClick={() => onOpenBook({ data: epubSpikeUrl, name: 'Anchored Reading.epub' })}
-            >
+            <button className="book-action" type="button" onClick={() => onOpenBook(sampleEpub)}>
+              {t('openBook')} →
+            </button>
+          </div>
+        </article>
+
+        <article className="book-card">
+          <div className="book-cover pdf-cover" aria-hidden="true">
+            P
+          </div>
+          <div className="book-details">
+            <div className="book-badges">
+              <span className="badge">PDF</span>
+              <span className="badge">{t('textLayer')}</span>
+            </div>
+            <h2 className="book-title">Anchored Pages</h2>
+            <p className="book-author">LexiAnchor</p>
+            <p className="fixture-description">{t('sampleTextPdfDescription')}</p>
+            <button className="book-action" type="button" onClick={() => onOpenBook(sampleTextPdf)}>
+              {t('openBook')} →
+            </button>
+          </div>
+        </article>
+
+        <article className="book-card">
+          <div className="book-cover scan-cover" aria-hidden="true">
+            S
+          </div>
+          <div className="book-details">
+            <div className="book-badges">
+              <span className="badge">PDF</span>
+              <span className="badge">{t('imageOnly')}</span>
+            </div>
+            <h2 className="book-title">Image-only Sample</h2>
+            <p className="book-author">LexiAnchor</p>
+            <p className="fixture-description">{t('sampleScanPdfDescription')}</p>
+            <button className="book-action" type="button" onClick={() => onOpenBook(sampleScanPdf)}>
               {t('openBook')} →
             </button>
           </div>

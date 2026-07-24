@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import {
   defaultReaderPreferences,
@@ -9,6 +9,11 @@ import {
 } from '@lexianchor/reader-core';
 import { EpubJsReaderEngine } from '@lexianchor/reader-epub';
 import type { MessageKey } from '@lexianchor/i18n';
+
+const PdfReaderPage = lazy(async () => {
+  const module = await import('./pdf-reader-page');
+  return { default: module.PdfReaderPage };
+});
 
 interface ReaderPageProps {
   readonly source: ReaderSource;
@@ -42,7 +47,19 @@ function readerColors(): Pick<ReaderPreferences, 'foreground' | 'background'> {
   };
 }
 
-export function ReaderPage({ source, t, onClose }: ReaderPageProps) {
+export function ReaderPage(props: ReaderPageProps) {
+  if (props.source.format === 'pdf') {
+    return (
+      <Suspense fallback={<p className="app-loading">{props.t('loadingBook')}</p>}>
+        <PdfReaderPage {...props} />
+      </Suspense>
+    );
+  }
+
+  return <EpubReaderPage {...props} />;
+}
+
+function EpubReaderPage({ source, t, onClose }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({

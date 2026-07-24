@@ -27,10 +27,17 @@ const english = {
   libraryEmptyTitle: 'Your books will live here',
   libraryEmptyBody: 'EPUB and PDF import arrives in the next vertical slice.',
   libraryExperimentBody:
-    'Open the project-owned test book or choose a DRM-free EPUB from this device.',
+    'Open a project-owned test book or choose a DRM-free EPUB or PDF from this device.',
   importEpub: 'Import EPUB',
+  importBook: 'Import EPUB or PDF',
   openSampleBook: 'Open test book',
   sampleBookDescription: 'A small project-owned book for testing reflow, selection, and location.',
+  sampleTextPdfDescription:
+    'A three-page PDF for testing faithful layout, text selection, zoom, and progress.',
+  sampleScanPdfDescription:
+    'An image-only PDF for checking the readable fallback when no text layer exists.',
+  textLayer: 'Text layer',
+  imageOnly: 'Image only',
   cardsTitle: 'Your word cards',
   cardsEmptyTitle: 'Save words without breaking your flow',
   cardsEmptyBody: 'Dictionary results you save will appear here with context.',
@@ -60,6 +67,17 @@ const english = {
   selectionHint: 'Select a word or phrase in the book to inspect its sentence.',
   loadingBook: 'Opening book…',
   readerError: 'The book could not be opened.',
+  pdfReader: 'PDF reader',
+  pdfReaderDescription:
+    'The page keeps its original layout. Zoom and selection use the available PDF text layer.',
+  pdfFocusDescription: 'Emphasize word beginnings on the selectable text layer.',
+  zoom: 'Zoom',
+  page: 'Page',
+  of: 'of',
+  imageOnlyPdf: 'Image-only page',
+  imageOnlyDescription:
+    'This page has no selectable text. It remains readable as an image; OCR is not included yet.',
+  pdfSelectionHint: 'Select a word or phrase on the page to inspect its sentence.',
 } as const;
 
 export type MessageKey = keyof typeof english;
@@ -88,10 +106,15 @@ const simplifiedChinese: Record<MessageKey, string> = {
   libraryTitle: '你的书库',
   libraryEmptyTitle: '书籍会集中保存在这里',
   libraryEmptyBody: 'EPUB 与 PDF 导入将在下一条垂直功能切片中实现。',
-  libraryExperimentBody: '打开项目自制测试书，或从本机选择一本无 DRM 的 EPUB。',
+  libraryExperimentBody: '打开项目自制测试书，或从本机选择无 DRM 的 EPUB 或 PDF。',
   importEpub: '导入 EPUB',
+  importBook: '导入 EPUB 或 PDF',
   openSampleBook: '打开测试书',
   sampleBookDescription: '项目自制的小型 EPUB，用于测试重排、选词和位置保存。',
+  sampleTextPdfDescription: '三页文本型 PDF，用于测试版式还原、选词、缩放和进度保存。',
+  sampleScanPdfDescription: '纯图片 PDF，用于验证没有文本层时仍可阅读的降级体验。',
+  textLayer: '可选文本',
+  imageOnly: '纯图片',
   cardsTitle: '你的词卡',
   cardsEmptyTitle: '查词后保存，不打断阅读节奏',
   cardsEmptyBody: '保存的词典结果会连同原句和来源一起显示在这里。',
@@ -120,6 +143,15 @@ const simplifiedChinese: Record<MessageKey, string> = {
   selectionHint: '在书中选中单词或短语，这里会显示所在原句。',
   loadingBook: '正在打开书籍…',
   readerError: '无法打开这本书。',
+  pdfReader: 'PDF 阅读器',
+  pdfReaderDescription: '页面保留原始版式；缩放与选词使用 PDF 中已有的文本层。',
+  pdfFocusDescription: '在可选文本层中强调每个英文单词的前半部分。',
+  zoom: '缩放',
+  page: '页码',
+  of: '/',
+  imageOnlyPdf: '纯图片页面',
+  imageOnlyDescription: '这一页没有可选文本，仍可按图片阅读；当前版本暂不包含 OCR。',
+  pdfSelectionHint: '在页面中选中单词或短语，这里会显示所在原句。',
 };
 
 const french: Record<MessageKey, string> = {
@@ -147,11 +179,18 @@ const french: Record<MessageKey, string> = {
   libraryEmptyTitle: 'Vos livres seront rassemblés ici',
   libraryEmptyBody: "L'import EPUB et PDF arrive dans la prochaine tranche fonctionnelle.",
   libraryExperimentBody:
-    'Ouvrez le livre test du projet ou choisissez un EPUB sans DRM sur cet appareil.',
+    'Ouvrez un livre test ou choisissez un EPUB ou PDF sans DRM sur cet appareil.',
   importEpub: 'Importer un EPUB',
+  importBook: 'Importer un EPUB ou PDF',
   openSampleBook: 'Ouvrir le livre test',
   sampleBookDescription:
     'Un petit livre du projet pour tester la redistribution, la sélection et la position.',
+  sampleTextPdfDescription:
+    'Un PDF de trois pages pour tester la mise en page, la sélection, le zoom et la progression.',
+  sampleScanPdfDescription:
+    "Un PDF en image pour vérifier la lecture lorsqu'aucune couche de texte n'est disponible.",
+  textLayer: 'Texte sélectionnable',
+  imageOnly: 'Image seule',
   cardsTitle: 'Vos fiches de mots',
   cardsEmptyTitle: 'Enregistrez des mots sans interrompre votre lecture',
   cardsEmptyBody: 'Les résultats enregistrés apparaîtront ici avec leur contexte.',
@@ -181,6 +220,17 @@ const french: Record<MessageKey, string> = {
   selectionHint: 'Sélectionnez un mot ou une phrase pour afficher son contexte.',
   loadingBook: 'Ouverture du livre…',
   readerError: "Le livre n'a pas pu être ouvert.",
+  pdfReader: 'Lecteur PDF',
+  pdfReaderDescription:
+    'La mise en page originale est conservée. Le zoom et la sélection utilisent la couche de texte disponible.',
+  pdfFocusDescription: 'Renforce le début des mots dans la couche de texte sélectionnable.',
+  zoom: 'Zoom',
+  page: 'Page',
+  of: 'sur',
+  imageOnlyPdf: 'Page en image',
+  imageOnlyDescription:
+    'Cette page ne contient aucun texte sélectionnable. Elle reste lisible comme image ; l’OCR n’est pas encore inclus.',
+  pdfSelectionHint: 'Sélectionnez un mot ou un passage pour afficher sa phrase.',
 };
 
 const dictionaries: Record<Locale, Record<MessageKey, string>> = {

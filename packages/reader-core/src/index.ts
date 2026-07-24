@@ -1,10 +1,12 @@
 export type ReaderFlow = 'paginated' | 'scrolled';
+export type DocumentFormat = 'epub' | 'pdf';
 
 export interface ReaderLocator {
   readonly href: string;
   readonly cfi?: string;
   readonly progression?: number;
   readonly totalProgression?: number;
+  readonly pageNumber?: number;
 }
 
 export interface ReaderPreferences {
@@ -20,7 +22,8 @@ export interface ReaderPreferences {
 export interface ReaderSelection {
   readonly text: string;
   readonly sentence: string;
-  readonly cfiRange: string;
+  readonly cfiRange?: string;
+  readonly pageNumber?: number;
 }
 
 export interface ReaderCallbacks {
@@ -32,6 +35,7 @@ export interface ReaderCallbacks {
 export interface ReaderSource {
   readonly data: ArrayBuffer | string;
   readonly name: string;
+  readonly format: DocumentFormat;
 }
 
 export interface ReaderEngine {

@@ -1,0 +1,19 @@
+{
+  "name": "@lexianchor/reader-pdf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lexianchor/reader-core": "workspace:*",
+    "pdfjs-dist": "6.1.200"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  }
+}
