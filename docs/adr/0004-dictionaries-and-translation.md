@@ -70,3 +70,23 @@
 内置 WordNet 暂不转换为 SQLite：其有序索引和字节偏移已经适合只读查询，直接分发可避免
 维护一份派生数据库。后续 FreeDict、英汉和用户词典仍统一转换为只读 SQLite 包；上层继续
 使用同一个 Provider，因此该差异不会进入产品 UI。
+
+## FreeDict 英法实现结果
+
+英法基线已经实现：
+
+- 选择 FreeDict `eng-fra` 0.1.6，共 8,799 个 headword；
+- 不把完整 GPL 数据提交到应用仓库或打进默认安装包；
+- 应用从固定 upstream commit 按需下载 TEI，manifest 记录版本、来源、许可证、
+  文件大小和 SHA-256；
+- 下载完成后先核对大小与 SHA-256，再解析验证，成功后写入 OPFS；
+- 设置页提供安装、删除、启停、来源、许可证和键盘可操作的结果顺序；
+- WordNet 与 FreeDict 通过同一个 `DictionaryProvider` 并发查询，按用户顺序显示；
+- 已安装资源重载和断网后仍可查询；
+- 8,799 个词条完整解析通过，当前开发机约 43 ms。
+
+FreeDict 0.1.6 仅极少数词条携带词性，因此缺失值明确显示为“未知”，不推断或编造。
+该版本直接保留 3.2 MB TEI，而不是预转换 SQLite；这是基于体积和实测解析成本做出的
+v0.1 例外。后续大词典仍按架构基线转换为只读 SQLite。
+
+完整证据见 [FreeDict English–French Spike](../spikes/0005-freedict-eng-fra.md)。

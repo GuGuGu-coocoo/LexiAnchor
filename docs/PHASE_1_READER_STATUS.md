@@ -4,7 +4,7 @@
 >
 > 分支：`main`
 >
-> 状态：EPUB/PDF、持久化和离线英英查词核心路径已进入 `main`
+> 状态：EPUB/PDF、持久化、离线英英/英法查词和词卡核心路径可测试
 
 ## 当前可实际操作的能力
 
@@ -30,14 +30,19 @@
 - 词卡保存词语、词性、英语释义、词根/词源空值、来源书籍、原句、词典来源和创建时间；
 - 词卡支持搜索、上下文去重和软删除；
 - PWA 断网重载后仍可查看、搜索和删除词卡。
+- 可在设置中安装或删除 FreeDict English–French 0.1.6；
+- 下载写入前核对固定文件大小和 SHA-256，并验证 TEI 内容；
+- 英英和英法结果可同时显示，词典支持启停和顺序调整；
+- FreeDict 安装在 OPFS，断网和重载后仍可查英法释义；
+- 结果顺序与启停偏好保存在本地，并在 Web/Electron 共享相同行为。
 
 ## 验证基线
 
 | 检查 | 结果 |
 | --- | --- |
 | `pnpm check` | 通过 |
-| Vitest | 4 个文件、15 个测试通过 |
-| Playwright | 12 个 Chromium 场景通过 |
+| Vitest | 5 个文件、19 个测试通过 |
+| Playwright | 13 个 Chromium 场景通过 |
 | `pnpm build:web` | 通过，PDF、SQLite worker 和 WASM 均形成生产资源 |
 | `pnpm build:desktop` | 通过，生成 macOS arm64 `.app` |
 | `pnpm audit --audit-level high` | 无已知漏洞 |
@@ -54,12 +59,13 @@ Playwright 当前覆盖：
 6. SQLite/OPFS 中的 PDF、EPUB 与进度在清空 `localStorage` 后恢复；
 7. Web 离线重载并打开已导入 PDF；
 8. 390px 窄窗口 PDF 阅读。
+9. WordNet 完整离线查询和词卡持久化闭环；
+10. FreeDict 本地安装状态、词典排序/启停和断网双词典查询。
 
 ## 仍未达到首个可用版本的部分
 
-- 英法、英汉词典和用户词典导入尚未实现；
+- 英汉词典和用户词典导入尚未实现；
 - 本地 EN→FR、EN→ZH 句子翻译模型尚未实现；
-- 词典启停和查询顺序设置尚未实现；
 - 词卡编辑、导入/导出和大数据量压力测试尚未实现；
 - EPUB 目录和 PDF annotation layer 尚未实现；
 - 100MB PDF 压力测试、Windows 实机启动和无签名分发验证尚未完成；
@@ -68,10 +74,10 @@ Playwright 当前覆盖：
 
 ## 下一步
 
-进入双语词典垂直切片：
+继续词典与翻译垂直切片：
 
 ```text
-FreeDict 英法 → 英汉候选审计 → Provider 顺序 → 用户词典导入
+英汉候选审计 → StarDict 用户导入 → 本地句子翻译
 ```
 
 词卡闭环已经达到可测试状态；编辑和导出在稳定化阶段补齐。
