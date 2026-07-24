@@ -1,4 +1,5 @@
 export type WordNetPartOfSpeech = 'noun' | 'verb' | 'adjective' | 'adverb';
+export type DictionaryPartOfSpeech = WordNetPartOfSpeech | 'unknown';
 
 export interface WordNetIndexRecord {
   readonly lemma: string;
@@ -7,10 +8,12 @@ export interface WordNetIndexRecord {
 }
 
 export interface WordNetSense {
-  readonly partOfSpeech: WordNetPartOfSpeech;
+  readonly partOfSpeech: DictionaryPartOfSpeech;
   readonly definition: string;
   readonly synonyms: readonly string[];
   readonly examples: readonly string[];
+  readonly pronunciation?: string;
+  readonly translations?: readonly string[];
 }
 
 const partOfSpeechNames: Readonly<Record<string, WordNetPartOfSpeech>> = {

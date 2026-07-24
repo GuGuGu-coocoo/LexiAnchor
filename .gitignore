@@ -75,6 +75,7 @@ downloads/
 backups/
 dictionaries/downloaded/
 models/
+packages/dictionary/resources/freedict-eng-fra-*/
 
 # Imported books, dictionaries, models, and databases
 *.epub

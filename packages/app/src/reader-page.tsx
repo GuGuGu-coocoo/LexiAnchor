@@ -9,6 +9,7 @@ import {
 } from '@lexianchor/reader-core';
 import { EpubJsReaderEngine } from '@lexianchor/reader-epub';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
+import type { DictionaryProvider } from '@lexianchor/dictionary';
 
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 
@@ -26,6 +27,7 @@ interface ReaderPageProps {
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
+  readonly dictionaryProviders: readonly DictionaryProvider[];
 }
 
 function storageKey(source: ReaderSource): string {
@@ -75,6 +77,7 @@ function EpubReaderPage({
   onLocationChange,
   onOpenExternal,
   onAddWordCard,
+  dictionaryProviders,
 }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
@@ -269,6 +272,7 @@ function EpubReaderPage({
             t={t}
             onOpenExternal={onOpenExternal}
             onAddWordCard={onAddWordCard}
+            providers={dictionaryProviders}
           />
         </aside>
 

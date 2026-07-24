@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Locale, MessageKey } from '@lexianchor/i18n';
+import type { DictionaryProvider } from '@lexianchor/dictionary';
 import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
 import {
   PdfJsReaderEngine,
@@ -19,6 +20,7 @@ interface PdfReaderPageProps {
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
+  readonly dictionaryProviders: readonly DictionaryProvider[];
 }
 
 interface StoredPdfView {
@@ -57,6 +59,7 @@ export function PdfReaderPage({
   onLocationChange,
   onOpenExternal,
   onAddWordCard,
+  dictionaryProviders,
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
@@ -263,6 +266,7 @@ export function PdfReaderPage({
             t={t}
             onOpenExternal={onOpenExternal}
             onAddWordCard={onAddWordCard}
+            providers={dictionaryProviders}
           />
         </aside>
 

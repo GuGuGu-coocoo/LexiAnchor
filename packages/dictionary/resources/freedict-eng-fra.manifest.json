@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "freedict-eng-fra-0.1.6",
+  "name": "English-French FreeDict Dictionary",
+  "version": "0.1.6",
+  "languages": ["en", "fr"],
+  "headwordCount": 8799,
+  "distribution": {
+    "type": "downloaded-tei",
+    "downloadUrl": "https://raw.githubusercontent.com/freedict/fd-dictionaries/5bdceeac8d0dba3298c1bebe734f60d54dad30f7/eng-fra/eng-fra.tei",
+    "size": 3329108,
+    "sha256": "5b7e1f657c5902f10ace0a31a6ffa3702ac0b5a49dfcc66883040c2a5e05a9a6"
+  },
+  "source": {
+    "project": "https://freedict.org/",
+    "repository": "https://github.com/freedict/fd-dictionaries/tree/5bdceeac8d0dba3298c1bebe734f60d54dad30f7/eng-fra",
+    "archive": "https://download.freedict.org/dictionaries/eng-fra/0.1.6/freedict-eng-fra-0.1.6.src.tar.xz",
+    "archiveSize": 212948,
+    "archiveSha256": "22dd26b7ff92007042ced20c2379bd3b182019758c3d58318c24e99206765d0b",
+    "archiveSha512": "7b7decb42f36617958303b8640616acc06e82aecd955e78949b67e083a7dbbdc4c668fee9cfcda20f219897767f64daabc942b3c3c01ed1f5e8d6ee56262e8a7"
+  },
+  "license": {
+    "spdx": "GPL-2.0-or-later",
+    "name": "GNU General Public License version 2.0 or later",
+    "url": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html"
+  },
+  "attribution": "English-French FreeDict Dictionary 0.1.6 · © 1999–2017 FreeDict contributors.",
+  "dataUpdatedAt": "2017-11-30",
+  "removal": "Delete the installed resource from LexiAnchor dictionary settings."
+}

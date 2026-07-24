@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 
 import {
-  WordNetProvider,
+  type DictionaryPartOfSpeech,
+  type DictionaryProvider,
   type DictionaryResult,
-  type WordNetPartOfSpeech,
 } from '@lexianchor/dictionary';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { ReaderSelection } from '@lexianchor/reader-core';
@@ -15,19 +15,24 @@ interface SelectionToolsProps {
   readonly t: (key: MessageKey) => string;
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
+  readonly providers: readonly DictionaryProvider[];
 }
 
 export interface WordCardDraft {
   readonly term: string;
   readonly normalizedTerm: string;
-  readonly partOfSpeech: WordNetPartOfSpeech;
+  readonly partOfSpeech: DictionaryPartOfSpeech;
   readonly definition: string;
   readonly rootOrEtymology: string | null;
   readonly dictionarySource: string;
   readonly sourceSentence: string;
 }
 
-const wordNet = new WordNetProvider();
+interface LookupState {
+  readonly term: string;
+  readonly results: readonly DictionaryResult[];
+  readonly error: string;
+}
 
 function isSingleWord(value: string): boolean {
   return /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?$/.test(value.trim());
@@ -55,14 +60,24 @@ export function SelectionTools({
   t,
   onOpenExternal,
   onAddWordCard,
+  providers,
 }: SelectionToolsProps) {
   const selectedText = selection?.text.trim() ?? '';
   const canUseDictionary = isSingleWord(selectedText);
-  const [result, setResult] = useState<DictionaryResult | null>(null);
-  const [isLoading, setIsLoading] = useState(Boolean(selectedText && canUseDictionary));
-  const [error, setError] = useState('');
+  const [lookupState, setLookupState] = useState<LookupState>({
+    term: '',
+    results: [],
+    error: '',
+  });
   const [showTranslationConsent, setShowTranslationConsent] = useState(false);
-  const [cardState, setCardState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [cardSaveState, setCardSaveState] = useState<{
+    readonly term: string;
+    readonly status: 'saving' | 'saved' | 'error';
+  } | null>(null);
+  const results = lookupState.term === selectedText ? lookupState.results : [];
+  const error = lookupState.term === selectedText ? lookupState.error : '';
+  const isLoading = Boolean(selectedText && canUseDictionary) && lookupState.term !== selectedText;
+  const cardState = cardSaveState?.term === selectedText ? cardSaveState.status : ('idle' as const);
 
   useEffect(() => {
     let isActive = true;
@@ -71,25 +86,28 @@ export function SelectionTools({
       return;
     }
 
-    void wordNet
-      .lookup(selectedText)
-      .then((nextResult) => {
+    void Promise.allSettled(providers.map((provider) => provider.lookup(selectedText))).then(
+      (settled) => {
         if (isActive) {
-          setResult(nextResult);
-          setIsLoading(false);
+          const nextResults = settled.flatMap((item) =>
+            item.status === 'fulfilled' && item.value ? [item.value] : [],
+          );
+          setLookupState({
+            term: selectedText,
+            results: nextResults,
+            error:
+              settled.length > 0 && settled.every((item) => item.status === 'rejected')
+                ? t('dictionaryUnavailable')
+                : '',
+          });
         }
-      })
-      .catch((lookupError: unknown) => {
-        if (isActive) {
-          setError(lookupError instanceof Error ? lookupError.message : String(lookupError));
-          setIsLoading(false);
-        }
-      });
+      },
+    );
 
     return () => {
       isActive = false;
     };
-  }, [canUseDictionary, selectedText]);
+  }, [canUseDictionary, providers, selectedText, t]);
 
   async function openTranslation() {
     const consentKey = 'lexianchor:external-consent:google-translate';
@@ -109,13 +127,14 @@ export function SelectionTools({
   }
 
   async function addWordCard() {
+    const result = results.find((candidate) => candidate.source.languages[1] === 'en');
     const primarySense = result?.senses[0];
 
     if (!result || !primarySense) {
       return;
     }
 
-    setCardState('saving');
+    setCardSaveState({ term: selectedText, status: 'saving' });
 
     try {
       await onAddWordCard({
@@ -127,9 +146,9 @@ export function SelectionTools({
         dictionarySource: `${result.source.name} ${result.source.version}`,
         sourceSentence: selection?.sentence ?? '',
       });
-      setCardState('saved');
+      setCardSaveState({ term: selectedText, status: 'saved' });
     } catch {
-      setCardState('error');
+      setCardSaveState({ term: selectedText, status: 'error' });
     }
   }
 
@@ -142,6 +161,8 @@ export function SelectionTools({
     );
   }
 
+  const cardResult = results.find((candidate) => candidate.source.languages[1] === 'en');
+
   return (
     <div className="selection-inspector dictionary-panel" aria-live="polite">
       <div className="dictionary-heading">
@@ -149,29 +170,48 @@ export function SelectionTools({
           <p className="reader-setting-title">{t('localDictionary')}</p>
           <p className="selection-word">{selectedText}</p>
         </div>
-        <span className="dictionary-language">EN · EN</span>
       </div>
 
       <p className="selection-sentence">{selection.sentence}</p>
 
       {isLoading ? <p className="dictionary-status">{t('lookingUpWord')}</p> : null}
-      {error ? <p className="dictionary-error">{t('dictionaryUnavailable')}</p> : null}
+      {error ? <p className="dictionary-error">{error}</p> : null}
       {!canUseDictionary ? (
         <p className="dictionary-status">{t('localTranslationUnavailable')}</p>
       ) : null}
-      {canUseDictionary && !isLoading && !error && !result ? (
+      {canUseDictionary && !isLoading && !error && results.length === 0 ? (
         <p className="dictionary-status">{t('noDictionaryEntry')}</p>
       ) : null}
 
-      {result ? (
-        <>
+      {results.map((result) => (
+        <article className="dictionary-result" key={result.source.id}>
+          <div className="dictionary-source-heading">
+            <strong>{result.source.name}</strong>
+            <span className="dictionary-language">
+              {result.source.languages.map((language) => language.toUpperCase()).join(' → ')}
+            </span>
+          </div>
           <ol className="dictionary-senses">
             {result.senses.slice(0, 6).map((sense, index) => (
               <li key={`${sense.partOfSpeech}-${sense.definition}`}>
                 <span className="part-of-speech">
                   {index + 1}. {t(partOfSpeechKey(sense.partOfSpeech))}
                 </span>
-                <p>{sense.definition}</p>
+                {sense.pronunciation ? (
+                  <span className="dictionary-pronunciation">/{sense.pronunciation}/</span>
+                ) : null}
+                <p>
+                  {sense.translations?.length ? (
+                    <>
+                      <strong className="dictionary-translation-label">
+                        {t('frenchTranslation')}:
+                      </strong>{' '}
+                      {sense.translations.join(', ')}
+                    </>
+                  ) : (
+                    sense.definition
+                  )}
+                </p>
                 {sense.synonyms.length > 1 ? (
                   <p className="dictionary-detail">
                     <strong>{t('synonyms')}:</strong> {sense.synonyms.join(', ')}
@@ -184,24 +224,27 @@ export function SelectionTools({
             ))}
           </ol>
           <p className="dictionary-attribution">{result.source.attribution}</p>
-          <button
-            className="add-card-action"
-            type="button"
-            disabled={cardState === 'saving' || cardState === 'saved'}
-            onClick={() => void addWordCard()}
-          >
-            {cardState === 'saving'
-              ? t('savingCard')
-              : cardState === 'saved'
-                ? t('savedToCards')
-                : t('addToCards')}
-          </button>
-          {cardState === 'error' ? (
-            <p className="dictionary-error" role="alert">
-              {t('cardSaveFailed')}
-            </p>
-          ) : null}
-        </>
+        </article>
+      ))}
+
+      {cardResult ? (
+        <button
+          className="add-card-action"
+          type="button"
+          disabled={cardState === 'saving' || cardState === 'saved'}
+          onClick={() => void addWordCard()}
+        >
+          {cardState === 'saving'
+            ? t('savingCard')
+            : cardState === 'saved'
+              ? t('savedToCards')
+              : t('addToCards')}
+        </button>
+      ) : null}
+      {cardState === 'error' ? (
+        <p className="dictionary-error" role="alert">
+          {t('cardSaveFailed')}
+        </p>
       ) : null}
 
       <div className="selection-actions">
@@ -236,12 +279,13 @@ export function SelectionTools({
   );
 }
 
-function partOfSpeechKey(partOfSpeech: WordNetPartOfSpeech): MessageKey {
-  const keys: Record<WordNetPartOfSpeech, MessageKey> = {
+function partOfSpeechKey(partOfSpeech: DictionaryPartOfSpeech): MessageKey {
+  const keys: Record<DictionaryPartOfSpeech, MessageKey> = {
     noun: 'noun',
     verb: 'verb',
     adjective: 'adjective',
     adverb: 'adverb',
+    unknown: 'unknownPartOfSpeech',
   };
   return keys[partOfSpeech];
 }

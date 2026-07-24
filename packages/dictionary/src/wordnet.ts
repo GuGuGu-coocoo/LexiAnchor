@@ -24,7 +24,7 @@ export interface DictionarySource {
   readonly id: string;
   readonly name: string;
   readonly version: string;
-  readonly languages: readonly ['en', 'en'];
+  readonly languages: readonly [string, string];
   readonly license: string;
   readonly attribution: string;
 }
@@ -33,7 +33,7 @@ export interface DictionaryResult {
   readonly term: string;
   readonly lemma: string;
   readonly senses: readonly WordNetSense[];
-  readonly rootOrEtymology: null;
+  readonly rootOrEtymology: string | null;
   readonly source: DictionarySource;
 }
 

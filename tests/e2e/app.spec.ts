@@ -1,6 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
 
+const freeDictFixture = `<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <text><body>
+    <entry>
+      <form><orth>attentive</orth><pron>əˈtɛntɪv</pron></form>
+      <gramGrp><pos>adj</pos></gramGrp>
+      <sense><cit type="trans"><quote>attentif</quote></cit></sense>
+    </entry>
+  </body></text>
+</TEI>`;
+
 async function ensureServiceWorkerControl(page: Page) {
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
@@ -13,6 +24,26 @@ async function ensureServiceWorkerControl(page: Page) {
   await expect
     .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
     .toBe(true);
+}
+
+async function installFreeDictFixture(page: Page) {
+  await page.evaluate(async (content) => {
+    const root = await navigator.storage.getDirectory();
+    const appDirectory = await root.getDirectoryHandle('lexianchor', { create: true });
+    const dictionaryDirectory = await appDirectory.getDirectoryHandle('dictionaries', {
+      create: true,
+    });
+    const file = await dictionaryDirectory.getFileHandle('freedict-eng-fra-0.1.6.tei', {
+      create: true,
+    });
+    const writer = await file.createWritable();
+
+    try {
+      await writer.write(content);
+    } finally {
+      await writer.close();
+    }
+  }, freeDictFixture);
 }
 
 test('shows the shared LexiAnchor home surface', async ({ page }) => {
@@ -379,6 +410,81 @@ test('looks up a selected word from the full offline WordNet package', async ({
 
   await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
   await expect(page.locator('.dictionary-attribution')).toContainText('Princeton WordNet');
+});
+
+test('reorders, disables, and uses installed English-French data offline', async ({ page }) => {
+  await page.goto('/');
+  await installFreeDictFixture(page);
+  await page.reload();
+
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  const freeDictCard = page.locator('article[data-dictionary-id="freedict-eng-fra-0.1.6"]').first();
+  await expect(freeDictCard).toContainText(/Installed|已安装|Installé/);
+  await expect(freeDictCard.getByRole('checkbox')).toBeChecked();
+
+  await freeDictCard
+    .getByRole('button', {
+      name: /Move up FreeDict|上移 FreeDict|Monter FreeDict/,
+    })
+    .click();
+  await expect(page.locator('article[data-dictionary-id]').first()).toHaveAttribute(
+    'data-dictionary-id',
+    'freedict-eng-fra-0.1.6',
+  );
+  await page.screenshot({
+    path: 'test-results/dictionary-settings.png',
+    fullPage: true,
+    animations: 'disabled',
+  });
+
+  await page.reload();
+  const settingsNavigation = page.getByRole('button', { name: /Settings|设置|Réglages/ });
+  await settingsNavigation.click();
+  await expect(settingsNavigation).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('button', { name: /Home|首页|Accueil/ })).not.toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(page.locator('article[data-dictionary-id]').first()).toHaveAttribute(
+    'data-dictionary-id',
+    'freedict-eng-fra-0.1.6',
+  );
+  await page.screenshot({ path: 'test-results/dictionary-settings.png', fullPage: true });
+
+  async function openAndSelectAttentive() {
+    await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+    await page
+      .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
+      .click();
+
+    const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
+    const attentive = bookFrame.locator('em');
+    await expect(attentive).toBeVisible();
+    await attentive.evaluate((element) => {
+      const selection = element.ownerDocument.defaultView?.getSelection();
+      const range = element.ownerDocument.createRange();
+      range.selectNodeContents(element);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      element.ownerDocument.dispatchEvent(new Event('selectionchange'));
+    });
+  }
+
+  await ensureServiceWorkerControl(page);
+  await page.context().setOffline(true);
+  await openAndSelectAttentive();
+  await expect(page.locator('.dictionary-result').first()).toContainText('FreeDict');
+  await expect(page.locator('.dictionary-result').first()).toContainText('attentif');
+  await expect(page.locator('.dictionary-result')).toHaveCount(2);
+
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  await freeDictCard.getByRole('checkbox').uncheck();
+
+  await openAndSelectAttentive();
+  await expect(page.locator('.dictionary-result').filter({ hasText: 'FreeDict' })).toHaveCount(0);
+  await expect(page.locator('.dictionary-result')).toHaveCount(1);
+  await expect(page.locator('.dictionary-result')).toContainText('Princeton WordNet');
 });
 
 test('saves, searches, and deletes a persistent word card', async ({ page }) => {
