@@ -67,6 +67,13 @@ Electron Forge 的 Vite 插件目前由官方标记为 experimental。Phase 0 �
 - 在首个可发布构建前验证 Windows/macOS 打包；
 - 若插件稳定性不达标，改用独立 Vite 构建加 Forge 打包，不更换 React、TypeScript 或 Electron 主路线。
 
+pnpm 11 默认阻止 Git 来源的间接依赖。Electron Forge 7.11.2 声明的
+`@electron/rebuild` 3.x 会引入 Electron 官方 `@electron/node-gyp` Git commit，因此
+工作区将 `@electron/rebuild` 覆盖到保留 Forge 所用命名 API 的 4.0.4。该版本移除了
+Git 子依赖；覆盖兼容性由桌面打包任务验证，不关闭 pnpm 的供应链保护。
+Electron Forge 打包同时要求 pnpm 使用 hoisted node linker，因此该设置保存在
+`pnpm-workspace.yaml`，不得依赖开发者个人的全局配置。
+
 ## 4. 总体架构
 
 ```mermaid

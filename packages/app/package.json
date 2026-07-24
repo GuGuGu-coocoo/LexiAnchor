@@ -1,0 +1,23 @@
+{
+  "name": "@lexianchor/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lexianchor/domain": "workspace:*",
+    "@lexianchor/i18n": "workspace:*",
+    "@lexianchor/platform": "workspace:*",
+    "@lexianchor/ui": "workspace:*",
+    "react": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "typescript": "6.0.3"
+  }
+}

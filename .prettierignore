@@ -1,0 +1,16 @@
+.agents/
+.vite/
+coverage/
+dist/
+node_modules/
+out/
+playwright-report/
+test-results/
+pnpm-lock.yaml
+
+# Product and third-party documentation is maintained independently.
+DEVELOPMENT_WORKFLOW.md
+PRD.md
+TECHNICAL_ARCHITECTURE.md
+docs/
+LICENSE
