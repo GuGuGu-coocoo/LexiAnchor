@@ -141,6 +141,7 @@ export function App({ platform }: AppProps) {
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [wordCards, setWordCards] = useState<WordCardRecord[]>([]);
   const [cardSearch, setCardSearch] = useState('');
+  const [lastDeletedCard, setLastDeletedCard] = useState<WordCardRecord | null>(null);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
 
@@ -342,14 +343,35 @@ export function App({ platform }: AppProps) {
   const deleteWordCard = useCallback(
     async (cardId: string) => {
       try {
+        const card = wordCards.find((candidate) => candidate.id === cardId);
         await repository().deleteWordCard(cardId, new Date().toISOString());
+        setLastDeletedCard(card ?? null);
         setWordCards(await repository().listWordCards(cardSearch));
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : String(error));
       }
     },
-    [cardSearch],
+    [cardSearch, wordCards],
   );
+
+  const undoDeleteWordCard = useCallback(async () => {
+    if (!lastDeletedCard) {
+      return;
+    }
+
+    try {
+      await repository().saveWordCard({
+        ...lastDeletedCard,
+        updatedAt: new Date().toISOString(),
+        deletedAt: null,
+        version: lastDeletedCard.version + 1,
+      });
+      setLastDeletedCard(null);
+      setWordCards(await repository().listWordCards(cardSearch));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, [cardSearch, lastDeletedCard]);
 
   async function toggleFullscreen() {
     setStatusMessage('');
@@ -491,6 +513,8 @@ export function App({ platform }: AppProps) {
             t={t}
             onQueryChange={setCardSearch}
             onDelete={deleteWordCard}
+            deletedCard={lastDeletedCard}
+            onUndoDelete={undoDeleteWordCard}
           />
         )}
         <p className="sr-only" aria-live="polite">
@@ -814,9 +838,20 @@ interface CardsPageProps {
   readonly t: (key: MessageKey) => string;
   readonly onQueryChange: (query: string) => void;
   readonly onDelete: (cardId: string) => Promise<void>;
+  readonly deletedCard: WordCardRecord | null;
+  readonly onUndoDelete: () => Promise<void>;
 }
 
-function CardsPage({ cards, query, locale, t, onQueryChange, onDelete }: CardsPageProps) {
+function CardsPage({
+  cards,
+  query,
+  locale,
+  t,
+  onQueryChange,
+  onDelete,
+  deletedCard,
+  onUndoDelete,
+}: CardsPageProps) {
   return (
     <section className="page" aria-labelledby="cards-title">
       <header className="page-header">
@@ -838,6 +873,17 @@ function CardsPage({ cards, query, locale, t, onQueryChange, onDelete }: CardsPa
           onChange={(event) => onQueryChange(event.target.value)}
         />
       </label>
+
+      {deletedCard ? (
+        <div className="card-delete-notice" role="status">
+          <span>
+            {t('cardDeleted')} “{deletedCard.term}”
+          </span>
+          <button type="button" onClick={() => void onUndoDelete()}>
+            {t('undo')}
+          </button>
+        </div>
+      ) : null}
 
       {cards.length > 0 ? (
         <div className="word-card-grid">

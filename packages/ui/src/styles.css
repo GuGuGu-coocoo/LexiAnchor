@@ -928,6 +928,31 @@ button {
   gap: 16px;
 }
 
+.card-delete-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 560px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 14px;
+  box-shadow: var(--shadow);
+}
+
+.card-delete-notice button {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
 .word-card {
   padding: 20px;
   border: 1px solid var(--line);

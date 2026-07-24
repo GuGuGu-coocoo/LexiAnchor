@@ -59,6 +59,8 @@ const english = {
   dictionarySource: 'Dictionary source',
   createdAt: 'Created',
   notProvided: 'Not provided by this dictionary',
+  cardDeleted: 'Deleted word card',
+  undo: 'Undo',
   phaseLabel: 'Foundation in progress',
   phaseTitle: 'One calm reading surface, shared everywhere',
   phaseBody:
@@ -174,6 +176,8 @@ const simplifiedChinese: Record<MessageKey, string> = {
   dictionarySource: '词典来源',
   createdAt: '创建时间',
   notProvided: '该词典未提供',
+  cardDeleted: '已删除词卡',
+  undo: '撤销',
   phaseLabel: '基础工程开发中',
   phaseTitle: '一套安静的阅读界面，跨平台共享',
   phaseBody: '当前骨架已经在 Web 与 Electron 之间共享导航、主题、语言和无障碍行为。',
@@ -289,6 +293,8 @@ const french: Record<MessageKey, string> = {
   dictionarySource: 'Source du dictionnaire',
   createdAt: 'Créée',
   notProvided: 'Non fourni par ce dictionnaire',
+  cardDeleted: 'Fiche supprimée',
+  undo: 'Annuler',
   phaseLabel: 'Fondations en cours',
   phaseTitle: 'Une interface de lecture calme, partagée partout',
   phaseBody:

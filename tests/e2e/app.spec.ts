@@ -422,7 +422,11 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   ).toBeDisabled();
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
-  await page.getByRole('button', { name: /Word cards|词卡|Fiches de mots/ }).click();
+  const cardsNavigation = page.getByRole('button', {
+    name: /Word cards|词卡|Fiches de mots/,
+  });
+  await cardsNavigation.click();
+  await expect(cardsNavigation).toHaveAttribute('aria-current', 'page');
 
   const savedCard = page.locator('article[data-word-card-id]').filter({ hasText: 'resilient' });
   await expect(savedCard).toBeVisible();
@@ -453,6 +457,13 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
     }),
   ).toBeVisible();
   await search.fill('');
+  await expect(savedCard).toBeVisible();
+
+  await savedCard
+    .getByRole('button', { name: /Delete resilient|删除 resilient|Supprimer resilient/ })
+    .click();
+  await expect(savedCard).toHaveCount(0);
+  await page.getByRole('button', { name: /Undo|撤销|Annuler/ }).click();
   await expect(savedCard).toBeVisible();
 
   await savedCard
