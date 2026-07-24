@@ -2,9 +2,9 @@
 
 > 日期：2026-07-24
 >
-> 分支：`agent/phase-0-foundation`
+> 分支：`main`
 >
-> 状态：本地实现完成，等待 GitHub CI 与 PR 验证
+> 状态：实现已进入 `main`，等待 GitHub CI 与跨平台验证
 
 ## 已交付
 
@@ -62,12 +62,11 @@
 - 当前桌面包未签名，macOS/Windows 可能显示系统安全提醒；
 - Phase 0 只提供产品骨架，尚未接入真实 EPUB/PDF、SQLite、词典或翻译模型。
 
-## 合并前仍需确认
+## Phase 0 仍需确认
 
 - GitHub Actions 在 Windows、macOS 和 Linux 上全部通过；
 - Windows 生成的桌面包可以启动；
-- GitHub `main` 分支保护已启用；
-- PR diff 不包含书籍、词典、模型、数据库或秘密信息。
+- `main` 提交不包含书籍、词典、模型、数据库或秘密信息。
 
 ## 下一阶段
 

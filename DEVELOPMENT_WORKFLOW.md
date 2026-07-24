@@ -17,20 +17,20 @@
 - 关键架构选择有 ADR；
 - AI 生成的代码必须通过自动测试和人工验收；
 - Windows、macOS 和 Web 的差异尽早暴露；
-- 许可证、隐私和知识产权风险在合并前可追踪。
+- 许可证、隐私和知识产权风险在提交与发布前可追踪。
 
 ## 2. 工作方式
 
-采用轻量 trunk-based development：
+第一版（`v0.1.0`）完成前采用直接 main development：
 
-- `main` 为唯一长期分支；
-- 每个 Issue 使用短期 feature/fix/chore 分支；
-- 所有修改通过 Pull Request 合并；
-- 禁止直接向 `main` 推送功能代码；
-- PR 尽量在 1–3 个可审查主题内完成；
-- 大功能拆成垂直切片，而不是一次创建所有层。
+- `main` 是唯一开发分支和长期分支；
+- 功能、修复和文档直接在本地 `main` 完成并推送；
+- 每次提交保持单一目的、可测试、可回退；
+- 推送前必须运行与改动风险相称的本地检查并审查 diff；
+- 禁止 force push 或改写已推送的 `main` 历史；
+- 大功能仍拆成垂直切片，不因省略 PR 而扩大单次改动。
 
-### 2.1 分支命名
+`v0.1.0` 达到首个可用版本后，重新评估并恢复短分支 + Pull Request 流程。届时建议的分支命名为：
 
 ```text
 feat/epub-import
@@ -41,7 +41,7 @@ chore/upgrade-pdfjs
 docs/storage-adr
 ```
 
-### 2.2 Commit
+### 2.1 Commit
 
 使用 Conventional Commits：
 
@@ -115,7 +115,7 @@ docs(adr): choose Electron desktop shell
 - Web 和 Electron 显示同一基础页面；
 - Windows/macOS/Web CI 可构建；
 - 无高危依赖告警；
-- `main` 分支保护启用。
+- `main` 推送后自动运行 CI。
 
 Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimental，因此需固定版本并保持 Vite 配置独立；若桌面打包不稳定，切换为独立 Vite 构建加 Forge 打包。
 
@@ -241,16 +241,14 @@ Phase 1 结束前不大规模开发阅读 UI。
 ```text
 选择 Issue
   → 明确验收标准
-  → 新建短分支
   → 先写或更新测试
   → 实现最小切片
   → 本地质量检查
   → 手动验证真实阅读流程
   → 更新文档/ADR
-  → 提交 Pull Request
-  → CI
   → 审查 diff
-  → squash merge
+  → 提交到 main
+  → 推送并观察 CI
 ```
 
 ## 7. 本地质量命令
@@ -262,19 +260,20 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm test:integration
-pnpm test:e2e:web
+pnpm test:e2e
 pnpm build:web
 pnpm build:desktop
 ```
 
-`pnpm verify` 聚合合并前必须通过的快速检查：
+`pnpm check` 聚合推送前必须通过的快速检查：
 
 ```text
 format:check + lint + typecheck + unit tests
 ```
 
-## 8. Pull Request 质量门
+## 8. 提交质量门
+
+`v0.1.0` 前这些规则适用于直接推送 `main`；恢复 Pull Request 流程后，同一规则作为 PR 合并门。
 
 ### 8.1 必须通过
 
@@ -324,12 +323,12 @@ Issue 满足以下条件才进入开发：
 - 不记录敏感内容；
 - 数据可迁移、可恢复；
 - 许可证来源可追踪；
-- PR 已审查并合并；
+- diff 已审查，改动已提交到 `main`；
 - 对应 Issue 已关闭。
 
 ## 11. CI 设计
 
-### 11.1 Pull Request
+### 11.1 Main Push
 
 - `quality`：format、lint、typecheck；
 - `unit`：Vitest；
