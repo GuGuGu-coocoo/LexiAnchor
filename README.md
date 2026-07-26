@@ -12,9 +12,11 @@ English–French dictionary plus an optional FreeDict/WikDict English–Chinese 
 offline. Users can also import an uncompressed StarDict `.ifo + .idx + .dict` set.
 They can enable dictionaries and change result order in Settings, while
 explicit online translation and Web search remain available. Dictionary results can be
-saved as persistent, searchable word cards with their reading context. Optional Mozilla
-Bergamot English–French and English–Chinese models can be installed for private,
-on-device sentence translation and reused while offline.
+saved as persistent, searchable and editable word cards with their reading context.
+Word cards can be exported to and restored from a versioned JSON backup without a
+network connection. Optional Mozilla Bergamot English–French and English–Chinese
+models can be installed for private, on-device sentence translation and reused while
+offline.
 
 ## Requirements
 

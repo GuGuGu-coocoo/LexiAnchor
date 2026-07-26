@@ -14,6 +14,12 @@ export type DatabaseRequest =
   | { readonly id: number; readonly type: 'save-word-card'; readonly card: WordCardRecord }
   | {
       readonly id: number;
+      readonly type: 'import-word-cards';
+      readonly cards: readonly WordCardRecord[];
+    }
+  | { readonly id: number; readonly type: 'update-word-card'; readonly card: WordCardRecord }
+  | {
+      readonly id: number;
       readonly type: 'delete-word-card';
       readonly cardId: string;
       readonly deletedAt: string;

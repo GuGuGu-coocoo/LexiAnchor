@@ -16,6 +16,8 @@ type RequestInput =
   | Omit<Extract<DatabaseRequest, { type: 'save-progress' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'list-word-cards' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'save-word-card' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'import-word-cards' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'update-word-card' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'delete-word-card' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'close' }>, 'id'>;
 
@@ -85,6 +87,14 @@ export class SqliteBookRepository implements BookRepository, WordCardRepository 
 
   saveWordCard(card: WordCardRecord): Promise<void> {
     return this.request({ type: 'save-word-card', card });
+  }
+
+  importWordCards(cards: readonly WordCardRecord[]): Promise<void> {
+    return this.request({ type: 'import-word-cards', cards });
+  }
+
+  updateWordCard(card: WordCardRecord): Promise<void> {
+    return this.request({ type: 'update-word-card', card });
   }
 
   deleteWordCard(cardId: string, deletedAt: string): Promise<void> {

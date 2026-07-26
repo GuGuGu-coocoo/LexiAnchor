@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const freeDictFixture = `<?xml version="1.0" encoding="UTF-8"?>
@@ -718,6 +719,60 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   ).toBeVisible();
   await search.fill('');
   await expect(savedCard).toBeVisible();
+
+  await savedCard
+    .getByRole('button', { name: /Edit resilient|编辑 resilient|Modifier resilient/ })
+    .click();
+  const editor = savedCard.locator('form.word-card-editor');
+  await editor
+    .getByLabel(/English definition|英语释义|Définition anglaise/)
+    .fill('Able to recover and keep going.');
+  await editor
+    .getByLabel(/Root or etymology|词根或词源|Racine ou étymologie/)
+    .fill('Latin resilire');
+  await editor
+    .getByLabel(/Original sentence|原句|Phrase originale/)
+    .fill('A resilient reader returns to the page.');
+  await page.screenshot({ path: 'test-results/word-card-editor.png', fullPage: true });
+  await editor.getByRole('button', { name: /Save changes|保存修改|Enregistrer/ }).click();
+  await expect(savedCard).toContainText('Able to recover and keep going.');
+  await expect(savedCard).toContainText('Latin resilire');
+  await expect(savedCard).toContainText('A resilient reader returns to the page.');
+
+  await search.fill('latin');
+  await expect(savedCard).toBeVisible();
+  await search.fill('');
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /Export backup|导出备份|Exporter la sauvegarde/ }).click();
+  const download = await downloadPromise;
+  const exportPath = await download.path();
+
+  if (!exportPath) {
+    throw new Error('The word-card backup download has no local path.');
+  }
+
+  const backup = JSON.parse(await readFile(exportPath, 'utf8')) as {
+    format: string;
+    schemaVersion: number;
+    cards: Array<{ term: string; rootOrEtymology: string | null }>;
+  };
+  expect(backup.format).toBe('lexianchor.word-cards');
+  expect(backup.schemaVersion).toBe(1);
+  expect(backup.cards).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ term: 'resilient', rootOrEtymology: 'Latin resilire' }),
+    ]),
+  );
+
+  await savedCard
+    .getByRole('button', { name: /Delete resilient|删除 resilient|Supprimer resilient/ })
+    .click();
+  await expect(savedCard).toHaveCount(0);
+
+  await page.locator('.card-transfer-actions input[type="file"]').setInputFiles(exportPath);
+  await expect(savedCard).toBeVisible();
+  await expect(savedCard).toContainText('Able to recover and keep going.');
 
   await savedCard
     .getByRole('button', { name: /Delete resilient|删除 resilient|Supprimer resilient/ })

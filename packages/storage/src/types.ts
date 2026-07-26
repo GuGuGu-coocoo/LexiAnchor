@@ -63,6 +63,8 @@ export interface BookRepository {
 export interface WordCardRepository {
   listWordCards(query?: string): Promise<WordCardRecord[]>;
   saveWordCard(card: WordCardRecord): Promise<void>;
+  importWordCards(cards: readonly WordCardRecord[]): Promise<void>;
+  updateWordCard(card: WordCardRecord): Promise<void>;
   deleteWordCard(id: string, deletedAt: string): Promise<void>;
 }
 

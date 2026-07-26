@@ -22,6 +22,8 @@ import type { PlatformBridge } from '@lexianchor/platform';
 import type { ReaderLocator, ReaderSource } from '@lexianchor/reader-core';
 import {
   OpfsContentStore,
+  parseWordCardExport,
+  serializeWordCards,
   sha256,
   SqliteBookRepository,
   type BookRecord,
@@ -73,6 +75,15 @@ interface OpenBookSession {
   readonly source: ReaderSource;
   readonly bookId?: string;
   readonly initialLocator?: ReaderLocator;
+}
+
+interface WordCardEditDraft {
+  readonly term: string;
+  readonly partOfSpeech: string;
+  readonly definition: string;
+  readonly rootOrEtymology: string;
+  readonly sourceBookTitle: string;
+  readonly sourceSentence: string;
 }
 
 type StarDictImportResponse =
@@ -278,6 +289,7 @@ export function App({ platform }: AppProps) {
   const [wordCards, setWordCards] = useState<WordCardRecord[]>([]);
   const [cardSearch, setCardSearch] = useState('');
   const [lastDeletedCard, setLastDeletedCard] = useState<WordCardRecord | null>(null);
+  const [cardTransferMessage, setCardTransferMessage] = useState('');
   const [dictionaryPreferences, setDictionaryPreferences] = useState(readDictionaryPreferences);
   const [installedDictionaries, setInstalledDictionaries] = useState<DictionaryInstallState>({
     'freedict-eng-fra-0.1.6': false,
@@ -621,6 +633,85 @@ export function App({ platform }: AppProps) {
     }
   }, [cardSearch, lastDeletedCard]);
 
+  const updateWordCard = useCallback(
+    async (cardId: string, draft: WordCardEditDraft) => {
+      const card = wordCards.find((candidate) => candidate.id === cardId);
+
+      if (!card) {
+        throw new Error(t('cardUpdateFailed'));
+      }
+
+      const term = draft.term.trim();
+      const definition = draft.definition.trim();
+      const sourceBookTitle = draft.sourceBookTitle.trim();
+      const sourceSentence = draft.sourceSentence.trim();
+
+      if (!term || !definition || !sourceBookTitle || !sourceSentence) {
+        throw new Error(t('cardRequiredFields'));
+      }
+
+      try {
+        await repository().updateWordCard({
+          ...card,
+          term,
+          normalizedTerm: term.toLocaleLowerCase('en-US'),
+          partOfSpeech: draft.partOfSpeech.trim() || 'unknown',
+          definition,
+          rootOrEtymology: draft.rootOrEtymology.trim() || null,
+          sourceBookTitle,
+          sourceSentence,
+          updatedAt: new Date().toISOString(),
+          version: card.version + 1,
+        });
+        setWordCards(await repository().listWordCards(cardSearch));
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+        throw new Error(t('cardUpdateFailed'), { cause: error });
+      }
+    },
+    [cardSearch, t, wordCards],
+  );
+
+  const exportWordCards = useCallback(async () => {
+    try {
+      const cards = await repository().listWordCards();
+      const blob = new Blob([serializeWordCards(cards)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `lexianchor-word-cards-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setCardTransferMessage(t('cardsExported'));
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : String(error));
+      setCardTransferMessage(t('cardsExportFailed'));
+    }
+  }, [t]);
+
+  const importWordCards = useCallback(
+    async (file: File) => {
+      try {
+        const backup = parseWordCardExport(await file.text());
+        const importedAt = new Date().toISOString();
+        await repository().importWordCards(
+          backup.cards.map((card) => ({
+            ...card,
+            updatedAt: importedAt,
+            version: card.version + 1,
+          })),
+        );
+        setLastDeletedCard(null);
+        setWordCards(await repository().listWordCards(cardSearch));
+        setCardTransferMessage(`${t('cardsImported')} ${backup.cards.length}`);
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+        setCardTransferMessage(t('cardsImportFailed'));
+      }
+    },
+    [cardSearch, t],
+  );
+
   async function installFreeDict(id: DownloadableDictionaryId) {
     setInstallingDictionary(id);
     setStatusMessage(t('downloadingDictionary'));
@@ -937,9 +1028,13 @@ export function App({ platform }: AppProps) {
             locale={locale}
             t={t}
             onQueryChange={setCardSearch}
+            onUpdate={updateWordCard}
             onDelete={deleteWordCard}
             deletedCard={lastDeletedCard}
             onUndoDelete={undoDeleteWordCard}
+            onExport={exportWordCards}
+            onImport={importWordCards}
+            transferMessage={cardTransferMessage}
           />
         ) : (
           <SettingsPage
@@ -1283,9 +1378,13 @@ interface CardsPageProps {
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onQueryChange: (query: string) => void;
+  readonly onUpdate: (cardId: string, draft: WordCardEditDraft) => Promise<void>;
   readonly onDelete: (cardId: string) => Promise<void>;
   readonly deletedCard: WordCardRecord | null;
   readonly onUndoDelete: () => Promise<void>;
+  readonly onExport: () => Promise<void>;
+  readonly onImport: (file: File) => Promise<void>;
+  readonly transferMessage: string;
 }
 
 function CardsPage({
@@ -1294,10 +1393,16 @@ function CardsPage({
   locale,
   t,
   onQueryChange,
+  onUpdate,
   onDelete,
   deletedCard,
   onUndoDelete,
+  onExport,
+  onImport,
+  transferMessage,
 }: CardsPageProps) {
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+
   return (
     <section className="page" aria-labelledby="cards-title">
       <header className="page-header">
@@ -1307,6 +1412,26 @@ function CardsPage({
             {t('cardsTitle')}
           </h1>
           <p className="page-description">{t('cardsDescription')}</p>
+        </div>
+        <div className="card-transfer-actions">
+          <button type="button" onClick={() => void onExport()}>
+            {t('exportCards')}
+          </button>
+          <label>
+            <span>{t('importCards')}</span>
+            <input
+              className="sr-only"
+              type="file"
+              accept=".json,application/json"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                if (file) {
+                  void onImport(file);
+                }
+              }}
+            />
+          </label>
         </div>
       </header>
 
@@ -1331,52 +1456,82 @@ function CardsPage({
         </div>
       ) : null}
 
+      {transferMessage ? (
+        <p className="card-transfer-status" role="status">
+          {transferMessage}
+        </p>
+      ) : null}
+
       {cards.length > 0 ? (
         <div className="word-card-grid">
           {cards.map((card) => (
             <article className="word-card" data-word-card-id={card.id} key={card.id}>
-              <div className="word-card-heading">
-                <div>
-                  <span className="badge">{card.partOfSpeech}</span>
-                  <h2>{card.term}</h2>
-                </div>
-                <button
-                  className="word-card-delete"
-                  type="button"
-                  aria-label={`${t('deleteCard')} ${card.term}`}
-                  onClick={() => void onDelete(card.id)}
-                >
-                  {t('deleteCard')}
-                </button>
-              </div>
-              <p className="word-card-definition">{card.definition}</p>
-              <dl className="word-card-metadata">
-                <div>
-                  <dt>{t('wordRoot')}</dt>
-                  <dd>{card.rootOrEtymology ?? t('notProvided')}</dd>
-                </div>
-                <div>
-                  <dt>{t('sourceBook')}</dt>
-                  <dd>{card.sourceBookTitle}</dd>
-                </div>
-                <div>
-                  <dt>{t('originalSentence')}</dt>
-                  <dd>“{card.sourceSentence}”</dd>
-                </div>
-                <div>
-                  <dt>{t('dictionarySource')}</dt>
-                  <dd>{card.dictionarySource}</dd>
-                </div>
-                <div>
-                  <dt>{t('createdAt')}</dt>
-                  <dd>
-                    {new Intl.DateTimeFormat(locale, {
-                      dateStyle: 'medium',
-                      timeStyle: 'short',
-                    }).format(new Date(card.createdAt))}
-                  </dd>
-                </div>
-              </dl>
+              {editingCardId === card.id ? (
+                <WordCardEditor
+                  card={card}
+                  t={t}
+                  onCancel={() => setEditingCardId(null)}
+                  onSave={async (draft) => {
+                    await onUpdate(card.id, draft);
+                    setEditingCardId(null);
+                  }}
+                />
+              ) : (
+                <>
+                  <div className="word-card-heading">
+                    <div>
+                      <span className="badge">{card.partOfSpeech}</span>
+                      <h2>{card.term}</h2>
+                    </div>
+                    <div className="word-card-actions">
+                      <button
+                        className="word-card-edit"
+                        type="button"
+                        aria-label={`${t('editCard')} ${card.term}`}
+                        onClick={() => setEditingCardId(card.id)}
+                      >
+                        {t('editCard')}
+                      </button>
+                      <button
+                        className="word-card-delete"
+                        type="button"
+                        aria-label={`${t('deleteCard')} ${card.term}`}
+                        onClick={() => void onDelete(card.id)}
+                      >
+                        {t('deleteCard')}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="word-card-definition">{card.definition}</p>
+                  <dl className="word-card-metadata">
+                    <div>
+                      <dt>{t('wordRoot')}</dt>
+                      <dd>{card.rootOrEtymology ?? t('notProvided')}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sourceBook')}</dt>
+                      <dd>{card.sourceBookTitle}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('originalSentence')}</dt>
+                      <dd>“{card.sourceSentence}”</dd>
+                    </div>
+                    <div>
+                      <dt>{t('dictionarySource')}</dt>
+                      <dd>{card.dictionarySource}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('createdAt')}</dt>
+                      <dd>
+                        {new Intl.DateTimeFormat(locale, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        }).format(new Date(card.createdAt))}
+                      </dd>
+                    </div>
+                  </dl>
+                </>
+              )}
             </article>
           ))}
         </div>
@@ -1390,6 +1545,133 @@ function CardsPage({
         </div>
       )}
     </section>
+  );
+}
+
+interface WordCardEditorProps {
+  readonly card: WordCardRecord;
+  readonly t: (key: MessageKey) => string;
+  readonly onSave: (draft: WordCardEditDraft) => Promise<void>;
+  readonly onCancel: () => void;
+}
+
+function WordCardEditor({ card, t, onSave, onCancel }: WordCardEditorProps) {
+  const [draft, setDraft] = useState<WordCardEditDraft>({
+    term: card.term,
+    partOfSpeech: card.partOfSpeech,
+    definition: card.definition,
+    rootOrEtymology: card.rootOrEtymology ?? '',
+    sourceBookTitle: card.sourceBookTitle,
+    sourceSentence: card.sourceSentence,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+  const standardPartsOfSpeech = ['noun', 'verb', 'adjective', 'adverb', 'unknown'] as const;
+
+  async function submit() {
+    setIsSaving(true);
+    setError('');
+
+    try {
+      await onSave(draft);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t('cardUpdateFailed'));
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <form
+      className="word-card-editor"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="word-card-editor-grid">
+        <label>
+          <span>{t('wordField')}</span>
+          <input
+            autoFocus
+            required
+            maxLength={160}
+            value={draft.term}
+            onChange={(event) => setDraft({ ...draft, term: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>{t('partOfSpeechField')}</span>
+          <select
+            value={draft.partOfSpeech}
+            onChange={(event) => setDraft({ ...draft, partOfSpeech: event.target.value })}
+          >
+            {!standardPartsOfSpeech.includes(
+              draft.partOfSpeech as (typeof standardPartsOfSpeech)[number],
+            ) ? (
+              <option value={draft.partOfSpeech}>{draft.partOfSpeech}</option>
+            ) : null}
+            {standardPartsOfSpeech.map((partOfSpeech) => (
+              <option value={partOfSpeech} key={partOfSpeech}>
+                {t(partOfSpeech === 'unknown' ? 'unknownPartOfSpeech' : partOfSpeech)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label>
+        <span>{t('englishDefinition')}</span>
+        <textarea
+          required
+          rows={3}
+          maxLength={2_000}
+          value={draft.definition}
+          onChange={(event) => setDraft({ ...draft, definition: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>{t('wordRoot')}</span>
+        <input
+          maxLength={500}
+          value={draft.rootOrEtymology}
+          onChange={(event) => setDraft({ ...draft, rootOrEtymology: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>{t('sourceBook')}</span>
+        <input
+          required
+          maxLength={500}
+          value={draft.sourceBookTitle}
+          onChange={(event) => setDraft({ ...draft, sourceBookTitle: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>{t('originalSentence')}</span>
+        <textarea
+          required
+          rows={3}
+          maxLength={4_000}
+          value={draft.sourceSentence}
+          onChange={(event) => setDraft({ ...draft, sourceSentence: event.target.value })}
+        />
+      </label>
+
+      {error ? (
+        <p className="word-card-editor-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="word-card-editor-actions">
+        <button className="word-card-save" type="submit" disabled={isSaving}>
+          {isSaving ? t('savingChanges') : t('saveChanges')}
+        </button>
+        <button type="button" disabled={isSaving} onClick={onCancel}>
+          {t('cancel')}
+        </button>
+      </div>
+    </form>
   );
 }
 

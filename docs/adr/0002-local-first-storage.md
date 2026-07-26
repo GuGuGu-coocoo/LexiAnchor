@@ -27,7 +27,10 @@
 - Web 已验证离线重载和打开导入书籍；
 - Electron 生产 bundle 已验证 `opfs-sahpool`，macOS arm64 打包通过；
 - `SyncProvider` 接口已保留，没有网络实现；
-- 词卡在 Web/Electron 共用 Worker 中保存，可断网搜索和软删除；
+- 词卡在 Web/Electron 共用 Worker 中保存，可断网搜索、编辑和软删除；
+- 词卡使用 `lexianchor.word-cards` schema v1 JSON 备份；导入前完整校验，
+  并在一个 SQLite 事务中写入；
+- 备份保留全部词卡内容和同步版本，但不携带设备本地的书籍外键；
 - 详细证据见 [SQLite WASM + OPFS 存储 Spike](../spikes/0003-sqlite-opfs.md)。
 
 ## 一致性定义

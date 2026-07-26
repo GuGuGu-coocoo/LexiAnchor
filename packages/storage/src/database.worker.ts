@@ -151,6 +151,48 @@ function likePattern(query: string): string {
   return `%${escaped.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
 }
 
+function saveWordCard(db: Database, card: WordCardRecord): void {
+  db.exec({
+    sql: `
+      INSERT INTO word_cards (
+        id, term, normalized_term, part_of_speech, definition, root_or_etymology,
+        dictionary_source, source_book_id, source_book_title, source_sentence,
+        created_at, updated_at, deleted_at, version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT DO UPDATE SET
+        term = excluded.term,
+        normalized_term = excluded.normalized_term,
+        part_of_speech = excluded.part_of_speech,
+        definition = excluded.definition,
+        root_or_etymology = excluded.root_or_etymology,
+        dictionary_source = excluded.dictionary_source,
+        source_book_id = COALESCE(excluded.source_book_id, word_cards.source_book_id),
+        source_book_title = excluded.source_book_title,
+        source_sentence = excluded.source_sentence,
+        created_at = MIN(word_cards.created_at, excluded.created_at),
+        updated_at = excluded.updated_at,
+        deleted_at = NULL,
+        version = MAX(word_cards.version + 1, excluded.version)
+    `,
+    bind: [
+      card.id,
+      card.term,
+      card.normalizedTerm,
+      card.partOfSpeech,
+      card.definition,
+      card.rootOrEtymology,
+      card.dictionarySource,
+      card.sourceBookId,
+      card.sourceBookTitle,
+      card.sourceSentence,
+      card.createdAt,
+      card.updatedAt,
+      card.deletedAt,
+      card.version,
+    ],
+  });
+}
+
 const contextPromise = createDatabase();
 
 async function handleRequest(request: DatabaseRequest) {
@@ -273,6 +315,7 @@ async function handleRequest(request: DatabaseRequest) {
                 AND (
                   normalized_term LIKE ? ESCAPE '\\'
                   OR LOWER(definition) LIKE ? ESCAPE '\\'
+                  OR LOWER(COALESCE(root_or_etymology, '')) LIKE ? ESCAPE '\\'
                   OR LOWER(source_book_title) LIKE ? ESCAPE '\\'
                   OR LOWER(source_sentence) LIKE ? ESCAPE '\\'
                 )
@@ -283,47 +326,56 @@ async function handleRequest(request: DatabaseRequest) {
               WHERE deleted_at IS NULL
               ORDER BY created_at DESC, term COLLATE NOCASE
             `,
-        bind: query ? Array(4).fill(likePattern(query)) : undefined,
+        bind: query ? Array(5).fill(likePattern(query)) : undefined,
         rowMode: 'object',
         returnValue: 'resultRows',
       }) as unknown as WordCardRow[];
       return rows.map(mapWordCard);
     }
     case 'save-word-card': {
+      saveWordCard(context.db, request.card);
+      return undefined;
+    }
+    case 'import-word-cards':
+      context.db.exec('BEGIN IMMEDIATE');
+
+      try {
+        for (const card of request.cards) {
+          saveWordCard(context.db, card);
+        }
+        context.db.exec('COMMIT');
+      } catch (error) {
+        context.db.exec('ROLLBACK');
+        throw error;
+      }
+      return undefined;
+    case 'update-word-card': {
       const card = request.card;
       context.db.exec({
         sql: `
-          INSERT INTO word_cards (
-            id, term, normalized_term, part_of_speech, definition, root_or_etymology,
-            dictionary_source, source_book_id, source_book_title, source_sentence,
-            created_at, updated_at, deleted_at, version
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT DO UPDATE SET
-            term = excluded.term,
-            part_of_speech = excluded.part_of_speech,
-            definition = excluded.definition,
-            root_or_etymology = excluded.root_or_etymology,
-            dictionary_source = excluded.dictionary_source,
-            source_book_id = COALESCE(excluded.source_book_id, word_cards.source_book_id),
-            updated_at = excluded.updated_at,
-            deleted_at = NULL,
-            version = word_cards.version + 1
+          UPDATE word_cards
+          SET term = ?,
+              normalized_term = ?,
+              part_of_speech = ?,
+              definition = ?,
+              root_or_etymology = ?,
+              source_book_title = ?,
+              source_sentence = ?,
+              updated_at = ?,
+              deleted_at = NULL,
+              version = version + 1
+          WHERE id = ? AND deleted_at IS NULL
         `,
         bind: [
-          card.id,
           card.term,
           card.normalizedTerm,
           card.partOfSpeech,
           card.definition,
           card.rootOrEtymology,
-          card.dictionarySource,
-          card.sourceBookId,
           card.sourceBookTitle,
           card.sourceSentence,
-          card.createdAt,
           card.updatedAt,
-          card.deletedAt,
-          card.version,
+          card.id,
         ],
       });
       return undefined;
