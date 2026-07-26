@@ -1,4 +1,4 @@
-import ePub, { type Book, type Contents, type Rendition } from 'epubjs';
+import ePub, { type Book, type Contents, type NavItem, type Rendition } from 'epubjs';
 
 import type {
   ReaderCallbacks,
@@ -21,6 +21,52 @@ interface EpubLocation {
       readonly total: number;
     };
   };
+}
+
+export interface EpubNavigationItem {
+  readonly id: string;
+  readonly href: string;
+  readonly label: string;
+  readonly subitems: readonly EpubNavigationItem[];
+}
+
+function navigationItems(items: readonly NavItem[]): EpubNavigationItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    href: item.href,
+    label: item.label.trim() || item.href,
+    subitems: navigationItems(item.subitems ?? []),
+  }));
+}
+
+function handleNavigationKey(
+  event: KeyboardEvent,
+  onCommand: ReaderCallbacks['onNavigationCommand'],
+): void {
+  const element = event.target as HTMLElement | null;
+  const tagName = element?.tagName;
+
+  if (
+    event.defaultPrevented ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    element?.isContentEditable ||
+    tagName === 'INPUT' ||
+    tagName === 'SELECT' ||
+    tagName === 'TEXTAREA'
+  ) {
+    return;
+  }
+
+  if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+    event.preventDefault();
+    onCommand?.('next');
+  } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+    event.preventDefault();
+    onCommand?.('previous');
+  }
 }
 
 function asError(error: unknown): Error {
@@ -82,6 +128,10 @@ export class EpubJsReaderEngine implements ReaderEngine {
         if (this.preferences?.focusMode) {
           applyFocusMarkup(contents.document);
         }
+
+        contents.document.addEventListener('keydown', (event) =>
+          handleNavigationKey(event, this.callbacks.onNavigationCommand),
+        );
       });
 
       this.rendition.on('relocated', (location: EpubLocation) => {
@@ -107,7 +157,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       this.rendition.on('click', () => this.callbacks.onSelection(null));
       await this.book.ready;
       await this.book.locations.generate(600);
-      await this.rendition.display(initialLocator?.cfi);
+      await this.rendition.display(initialLocator?.cfi ?? initialLocator?.href);
     } catch (error) {
       this.callbacks.onError(asError(error));
       await this.close();
@@ -134,6 +184,17 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
   async goTo(locator: ReaderLocator): Promise<void> {
     await this.rendition?.display(locator.cfi ?? locator.href);
+  }
+
+  async getTableOfContents(): Promise<readonly EpubNavigationItem[]> {
+    const book = this.book;
+
+    if (!book) {
+      return [];
+    }
+
+    const navigation = await book.loaded.navigation;
+    return navigationItems(navigation.toc);
   }
 
   async setPreferences(preferences: ReaderPreferences): Promise<void> {

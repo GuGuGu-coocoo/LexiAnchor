@@ -601,6 +601,12 @@ button {
   font-weight: 720;
 }
 
+.reader-toolbar-leading {
+  display: flex;
+  min-width: 0;
+  gap: 7px;
+}
+
 .reader-engine-label {
   margin-top: 3px;
   color: var(--text-muted);
@@ -653,6 +659,94 @@ button {
   overflow-y: auto;
   border-right: 1px solid var(--line);
   background: var(--surface);
+}
+
+.reader-panel-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin-bottom: 20px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.reader-panel-switch button {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.reader-panel-switch button[aria-pressed='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.reader-panel-switch button:active {
+  transform: scale(0.97);
+}
+
+.reader-toc ol {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reader-toc li > ol {
+  margin: 3px 0 0 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+.reader-toc button {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 620;
+  line-height: 1.4;
+  text-align: left;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.reader-toc button[aria-current='location'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 740;
+}
+
+.reader-toc button:active {
+  transform: scale(0.98);
+}
+
+.reader-toc-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .reader-setting-group {
@@ -1641,6 +1735,17 @@ button {
     background: var(--surface-muted);
   }
 
+  .reader-panel-switch button:hover,
+  .reader-toc button:hover {
+    background: var(--surface-raised);
+    color: var(--text);
+  }
+
+  .reader-toc button[aria-current='location']:hover {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+  }
+
   .reader-icon-button:disabled:hover {
     border-color: var(--line);
     background: var(--surface-raised);
@@ -1785,6 +1890,10 @@ button {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
+  .reader-toolbar-leading {
+    gap: 5px;
+  }
+
   .reader-icon-button span:not([aria-hidden='true']) {
     display: none;
   }
@@ -1804,6 +1913,9 @@ button {
   }
 
   .reader-setting-group,
+  .reader-panel-switch,
+  .reader-toc,
+  .reader-toc-empty,
   .selection-inspector {
     grid-column: 1 / -1;
     margin: 0;
@@ -1859,6 +1971,9 @@ button {
   }
 
   .reader-setting-group,
+  .reader-panel-switch,
+  .reader-toc,
+  .reader-toc-empty,
   .selection-inspector {
     grid-column: auto;
   }
@@ -1877,6 +1992,11 @@ button {
   .book-action:active,
   .reader-icon-button:active,
   .import-button:active {
+    transform: none;
+  }
+
+  .reader-panel-switch button:active,
+  .reader-toc button:active {
     transform: none;
   }
 

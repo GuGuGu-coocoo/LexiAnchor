@@ -16,10 +16,13 @@
 - 项目自制 EPUB 2 与 EPUB 3 夹具均可加载；
 - CFI 能序列化，并在重新打开测试书后恢复到相同章节；
 - 分页、连续滚动、字号、行距、词间距和颜色可调；
+- EPUB 2 NCX 与 EPUB 3 Navigation Document 可转换为统一目录树，支持当前章节标记和跳转；
+- EPUB iframe 和宿主窗口都支持方向键与 Page Up/Page Down 翻页，并避开表单输入；
 - 焦点加粗可以注入和移除，正文语义不变；
 - 能获得选中文字、原句和 CFI range；
 - 相同 adapter 与阅读页通过 Web 构建和 Electron 构建；
-- 浏览器端到端测试覆盖 EPUB 2 导入、EPUB 3 加载、选词、焦点加粗和位置恢复。
+- 浏览器端到端测试覆盖 EPUB 2 导入、EPUB 3 加载、目录跳转、键盘/按钮翻页、选词、
+  焦点加粗和位置恢复。
 
 完整证据见 [EPUB 阅读内核 Spike](../spikes/0001-epub-engine.md)。
 

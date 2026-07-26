@@ -7,7 +7,7 @@ import {
   type ReaderSelection,
   type ReaderSource,
 } from '@lexianchor/reader-core';
-import { EpubJsReaderEngine } from '@lexianchor/reader-epub';
+import { EpubJsReaderEngine, type EpubNavigationItem } from '@lexianchor/reader-epub';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
 import type {
@@ -62,6 +62,35 @@ function readerColors(): Pick<ReaderPreferences, 'foreground' | 'background'> {
   };
 }
 
+function normalizedHref(href: string | undefined): string {
+  return (href ?? '').split('#')[0]?.replace(/^\.?\//, '') ?? '';
+}
+
+function isCurrentHref(candidate: string, current: string | undefined): boolean {
+  const candidatePath = normalizedHref(candidate);
+  const currentPath = normalizedHref(current);
+
+  if (!candidatePath || !currentPath) {
+    return false;
+  }
+
+  return (
+    candidatePath === currentPath ||
+    candidatePath.endsWith(`/${currentPath}`) ||
+    currentPath.endsWith(`/${candidatePath}`)
+  );
+}
+
+function isEditableKeyTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  return (
+    element?.isContentEditable === true ||
+    element?.tagName === 'INPUT' ||
+    element?.tagName === 'SELECT' ||
+    element?.tagName === 'TEXTAREA'
+  );
+}
+
 export function ReaderPage(props: ReaderPageProps) {
   if (props.source.format === 'pdf') {
     return (
@@ -95,6 +124,8 @@ function EpubReaderPage({
   }));
   const initialPreferencesRef = useRef(preferences);
   const [locator, setLocator] = useState<ReaderLocator>();
+  const [tableOfContents, setTableOfContents] = useState<readonly EpubNavigationItem[]>([]);
+  const [sidePanel, setSidePanel] = useState<'contents' | 'settings'>('settings');
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -120,17 +151,38 @@ function EpubReaderPage({
           Math.round((nextLocator.totalProgression ?? nextLocator.progression ?? 0) * 100),
         );
       },
-      onSelection: (nextSelection) => isActive && setSelection(nextSelection),
+      onSelection: (nextSelection) => {
+        if (isActive) {
+          setSelection(nextSelection);
+
+          if (nextSelection) {
+            setSidePanel('settings');
+          }
+        }
+      },
+      onNavigationCommand: (command) => {
+        const activeEngine = engineRef.current;
+        void (command === 'next' ? activeEngine?.next() : activeEngine?.previous());
+      },
       onError: (readerError) => isActive && setError(readerError.message),
     });
     engineRef.current = engine;
     container.replaceChildren();
+    setTableOfContents([]);
+    setSidePanel('settings');
     setIsLoading(true);
     setError('');
 
     void engine
       .open(container, source, initialLocator ?? readLocator(source))
-      .then(() => engine.setPreferences(initialPreferencesRef.current))
+      .then(async () => {
+        await engine.setPreferences(initialPreferencesRef.current);
+        const navigation = await engine.getTableOfContents().catch(() => []);
+
+        if (isActive) {
+          setTableOfContents(navigation);
+        }
+      })
       .then(() => isActive && setIsLoading(false))
       .catch(() => isActive && setIsLoading(false));
 
@@ -151,6 +203,32 @@ function EpubReaderPage({
       );
   }, [preferences]);
 
+  useEffect(() => {
+    function navigateWithKeyboard(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        isEditableKeyTarget(event.target)
+      ) {
+        return;
+      }
+
+      if (event.key === 'ArrowRight' || event.key === 'PageDown') {
+        event.preventDefault();
+        void engineRef.current?.next();
+      } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
+        event.preventDefault();
+        void engineRef.current?.previous();
+      }
+    }
+
+    globalThis.addEventListener('keydown', navigateWithKeyboard);
+    return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
+  }, []);
+
   const progress = Math.round((locator?.totalProgression ?? 0) * 100);
 
   function updatePreference<Key extends keyof ReaderPreferences>(
@@ -163,15 +241,27 @@ function EpubReaderPage({
   return (
     <section className="reader-page" aria-label={t('readerExperiment')}>
       <header className="reader-toolbar">
-        <button
-          className="reader-icon-button"
-          type="button"
-          aria-label={t('backToLibrary')}
-          onClick={onClose}
-        >
-          <span aria-hidden="true">←</span>
-          <span>{t('backToLibrary')}</span>
-        </button>
+        <div className="reader-toolbar-leading">
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={t('backToLibrary')}
+            onClick={onClose}
+          >
+            <span aria-hidden="true">←</span>
+            <span>{t('backToLibrary')}</span>
+          </button>
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={t('openTableOfContents')}
+            disabled={isLoading || tableOfContents.length === 0}
+            onClick={() => setSidePanel('contents')}
+          >
+            <span aria-hidden="true">☰</span>
+            <span>{t('tableOfContents')}</span>
+          </button>
+        </div>
         <div className="reader-title-group">
           <p className="reader-title">{source.name}</p>
           <p className="reader-engine-label">EPUB.js · {progress}%</p>
@@ -200,90 +290,132 @@ function EpubReaderPage({
 
       <div className="reader-workspace">
         <aside className="reader-settings" aria-label={t('readingSettings')}>
-          <div className="reader-setting-group">
-            <p className="reader-setting-title">{t('readerExperiment')}</p>
-            <p className="reader-setting-copy">{t('readerExperimentBody')}</p>
+          <div className="reader-panel-switch" aria-label={t('readerSidebar')}>
+            <button
+              type="button"
+              aria-pressed={sidePanel === 'contents'}
+              onClick={() => setSidePanel('contents')}
+            >
+              {t('tableOfContents')}
+            </button>
+            <button
+              type="button"
+              aria-pressed={sidePanel === 'settings'}
+              onClick={() => setSidePanel('settings')}
+            >
+              {t('readingSettings')}
+            </button>
           </div>
 
-          <label className="reader-toggle">
-            <span>
-              <strong>{t('focusMode')}</strong>
-              <small>{t('focusModeDescription')}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={preferences.focusMode}
-              onChange={(event) => updatePreference('focusMode', event.target.checked)}
+          {sidePanel === 'contents' ? (
+            <EpubTableOfContents
+              items={tableOfContents}
+              currentHref={locator?.href}
+              emptyLabel={t('noTableOfContents')}
+              label={t('tableOfContents')}
+              onNavigate={(href) => {
+                setSelection(null);
+                void engineRef.current?.goTo({ href }).catch((navigationError: unknown) => {
+                  setError(
+                    navigationError instanceof Error
+                      ? navigationError.message
+                      : String(navigationError),
+                  );
+                });
+              }}
             />
-          </label>
+          ) : (
+            <>
+              <div className="reader-setting-group">
+                <p className="reader-setting-title">{t('readerExperiment')}</p>
+                <p className="reader-setting-copy">{t('readerExperimentBody')}</p>
+              </div>
 
-          <label className="reader-control">
-            <span>{t('readingLayout')}</span>
-            <select
-              value={preferences.flow}
-              onChange={(event) =>
-                updatePreference('flow', event.target.value as ReaderPreferences['flow'])
-              }
-            >
-              <option value="paginated">{t('pageMode')}</option>
-              <option value="scrolled">{t('scrollMode')}</option>
-            </select>
-          </label>
+              <label className="reader-toggle">
+                <span>
+                  <strong>{t('focusMode')}</strong>
+                  <small>{t('focusModeDescription')}</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={preferences.focusMode}
+                  onChange={(event) => updatePreference('focusMode', event.target.checked)}
+                />
+              </label>
 
-          <label className="reader-control">
-            <span>
-              {t('fontSize')} <output>{preferences.fontSizePercent}%</output>
-            </span>
-            <input
-              type="range"
-              min="80"
-              max="180"
-              step="5"
-              value={preferences.fontSizePercent}
-              onChange={(event) => updatePreference('fontSizePercent', Number(event.target.value))}
-            />
-          </label>
+              <label className="reader-control">
+                <span>{t('readingLayout')}</span>
+                <select
+                  value={preferences.flow}
+                  onChange={(event) =>
+                    updatePreference('flow', event.target.value as ReaderPreferences['flow'])
+                  }
+                >
+                  <option value="paginated">{t('pageMode')}</option>
+                  <option value="scrolled">{t('scrollMode')}</option>
+                </select>
+              </label>
 
-          <label className="reader-control">
-            <span>
-              {t('lineHeight')} <output>{preferences.lineHeight.toFixed(2)}</output>
-            </span>
-            <input
-              type="range"
-              min="1.2"
-              max="2.2"
-              step="0.05"
-              value={preferences.lineHeight}
-              onChange={(event) => updatePreference('lineHeight', Number(event.target.value))}
-            />
-          </label>
+              <label className="reader-control">
+                <span>
+                  {t('fontSize')} <output>{preferences.fontSizePercent}%</output>
+                </span>
+                <input
+                  type="range"
+                  min="80"
+                  max="180"
+                  step="5"
+                  value={preferences.fontSizePercent}
+                  onChange={(event) =>
+                    updatePreference('fontSizePercent', Number(event.target.value))
+                  }
+                />
+              </label>
 
-          <label className="reader-control">
-            <span>
-              {t('wordSpacing')} <output>{preferences.wordSpacingEm.toFixed(2)} em</output>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="0.5"
-              step="0.05"
-              value={preferences.wordSpacingEm}
-              onChange={(event) => updatePreference('wordSpacingEm', Number(event.target.value))}
-            />
-          </label>
+              <label className="reader-control">
+                <span>
+                  {t('lineHeight')} <output>{preferences.lineHeight.toFixed(2)}</output>
+                </span>
+                <input
+                  type="range"
+                  min="1.2"
+                  max="2.2"
+                  step="0.05"
+                  value={preferences.lineHeight}
+                  onChange={(event) => updatePreference('lineHeight', Number(event.target.value))}
+                />
+              </label>
 
-          <SelectionTools
-            key={selection?.text ?? 'empty'}
-            selection={selection}
-            emptyHint={t('selectionHint')}
-            locale={locale}
-            t={t}
-            onOpenExternal={onOpenExternal}
-            onAddWordCard={onAddWordCard}
-            providers={dictionaryProviders}
-            localTranslationProvider={localTranslationProvider}
-            installedTranslationTargets={installedTranslationTargets}
-          />
+              <label className="reader-control">
+                <span>
+                  {t('wordSpacing')} <output>{preferences.wordSpacingEm.toFixed(2)} em</output>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="0.5"
+                  step="0.05"
+                  value={preferences.wordSpacingEm}
+                  onChange={(event) =>
+                    updatePreference('wordSpacingEm', Number(event.target.value))
+                  }
+                />
+              </label>
+
+              <SelectionTools
+                key={selection?.text ?? 'empty'}
+                selection={selection}
+                emptyHint={t('selectionHint')}
+                locale={locale}
+                t={t}
+                onOpenExternal={onOpenExternal}
+                onAddWordCard={onAddWordCard}
+                providers={dictionaryProviders}
+                localTranslationProvider={localTranslationProvider}
+                installedTranslationTargets={installedTranslationTargets}
+              />
+            </>
+          )}
         </aside>
 
         <div className="reader-stage">
@@ -298,5 +430,60 @@ function EpubReaderPage({
         </div>
       </div>
     </section>
+  );
+}
+
+interface EpubTableOfContentsProps {
+  readonly items: readonly EpubNavigationItem[];
+  readonly currentHref: string | undefined;
+  readonly emptyLabel: string;
+  readonly label: string;
+  readonly onNavigate: (href: string) => void;
+}
+
+function EpubTableOfContents({
+  items,
+  currentHref,
+  emptyLabel,
+  label,
+  onNavigate,
+}: EpubTableOfContentsProps) {
+  if (items.length === 0) {
+    return <p className="reader-toc-empty">{emptyLabel}</p>;
+  }
+
+  return (
+    <nav className="reader-toc" aria-label={label}>
+      <EpubTableOfContentsList items={items} currentHref={currentHref} onNavigate={onNavigate} />
+    </nav>
+  );
+}
+
+function EpubTableOfContentsList({
+  items,
+  currentHref,
+  onNavigate,
+}: Pick<EpubTableOfContentsProps, 'items' | 'currentHref' | 'onNavigate'>) {
+  return (
+    <ol>
+      {items.map((item) => (
+        <li key={`${item.id}:${item.href}`}>
+          <button
+            type="button"
+            aria-current={isCurrentHref(item.href, currentHref) ? 'location' : undefined}
+            onClick={() => onNavigate(item.href)}
+          >
+            {item.label}
+          </button>
+          {item.subitems.length > 0 ? (
+            <EpubTableOfContentsList
+              items={item.subitems}
+              currentHref={currentHref}
+              onNavigate={onNavigate}
+            />
+          ) : null}
+        </li>
+      ))}
+    </ol>
   );
 }

@@ -157,6 +157,27 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
 
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  const tableOfContents = page.getByRole('navigation', {
+    name: /Contents|目录|Sommaire/,
+  });
+  const firstChapter = tableOfContents.getByRole('button', { name: 'A Quiet Beginning' });
+  const secondChapter = tableOfContents.getByRole('button', { name: 'Finding an Anchor' });
+  await expect(firstChapter).toHaveAttribute('aria-current', 'location');
+  await secondChapter.click();
+  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await expect(secondChapter).toHaveAttribute('aria-current', 'location');
+  await firstChapter.click();
+  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  await expect(firstChapter).toHaveAttribute('aria-current', 'location');
+  await expect(secondChapter).not.toHaveAttribute('aria-current', 'location');
+  await page.locator('.reader-title-group').hover();
+  await page.screenshot({ path: 'test-results/epub-table-of-contents.png', fullPage: true });
+
   await bookFrame.locator('em').evaluate((element) => {
     const selection = element.ownerDocument.defaultView?.getSelection();
     const range = element.ownerDocument.createRange();
@@ -189,6 +210,11 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).uncheck();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]')).toHaveCount(0);
 
+  await bookFrame.locator('body').click({ position: { x: 24, y: 24 } });
+  await page.keyboard.press('PageDown');
+  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await page.getByRole('button', { name: /Previous|上一页|Précédent/ }).click();
+  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
   await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
   await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
 
@@ -220,6 +246,16 @@ test('imports a DRM-free EPUB 2 file from the local device', async ({ page }) =>
       .contentFrame()
       .getByRole('heading', { name: 'Compatibility Note' }),
   ).toBeVisible();
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  await expect(
+    page
+      .getByRole('navigation', { name: /Contents|目录|Sommaire/ })
+      .getByRole('button', { name: 'Compatibility Note' }),
+  ).toHaveAttribute('aria-current', 'location');
 });
 
 test('imports and reads a text-layer PDF with zoom, selection, focus, and restored progress', async ({

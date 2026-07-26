@@ -60,6 +60,7 @@
 | 本地 `.epub` 直接导入 | 通过，URL 与 `ArrayBuffer` 均可 | 不直接支持；需 RWPM/positions/HTTP 资源 | EPUB.js 明显更符合 v0.1 |
 | EPUB 2/3 | 两份项目夹具均通过 | 官方当前支持 EPUB，未在本地 zip 路径复测 | EPUB.js 通过当前基线 |
 | 分页/滚动 | 通过 | Preferences API 支持 | 两者都可 |
+| EPUB 2/3 目录 | NCX/Navigation Document 均解析为统一目录树并可跳转 | Publication Manifest 导航原生支持 | EPUB.js 通过当前基线 |
 | 位置保存 | CFI 保存并重新打开到同一章节 | Locator + positions 设计更完整 | v0.1 EPUB.js 足够 |
 | 字号/行距/词间距/颜色 | 通过 themes override | Preferences API 原生支持且更系统 | Readium 更强，但不是当前决定项 |
 | 焦点加粗 | DOM hook 注入并可逆移除 | 支持 injectables/decorators，但接入面更大 | EPUB.js 通过 |
@@ -80,6 +81,10 @@
 4. 焦点加粗使用无语义 `span`，不使用 `strong`，避免把视觉辅助错误地暴露为作者强调。
 5. 安全审计发现 EPUB.js 的 `@xmldom/xmldom` 0.7 间接依赖有 5 个高危公告；workspace
    覆盖到保持相同解析 API 的 0.8.13，并在 EPUB 2/3 回归和 Electron 打包中验证。
+6. 产品侧目录只接收 adapter 转换后的只读导航树，不直接依赖 EPUB.js 类型；当前章节通过
+   relocation href 标记，目录跳转继续走统一 locator 路径并保存进度。
+7. 键盘事件需要同时覆盖宿主窗口与 EPUB iframe；方向键和 Page Up/Page Down 统一映射到
+   adapter 翻页，并在输入框、下拉框、文本框和可编辑内容中停用。
 
 ## 决策
 

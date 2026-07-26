@@ -30,6 +30,7 @@ export interface ReaderCallbacks {
   readonly onLocationChange: (locator: ReaderLocator) => void;
   readonly onSelection: (selection: ReaderSelection | null) => void;
   readonly onError: (error: Error) => void;
+  readonly onNavigationCommand?: (command: 'next' | 'previous') => void;
 }
 
 export interface ReaderSource {
