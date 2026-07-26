@@ -519,11 +519,207 @@ button {
   transition: transform 120ms var(--ease-out);
 }
 
+.book-card-actions {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.book-card-actions .book-action {
+  margin-top: 0;
+}
+
+.book-delete-action {
+  padding: 7px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 680;
+  transition:
+    color 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.book-delete-action:active {
+  transform: scale(0.97);
+}
+
 .library-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 20px;
+}
+
+.library-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+  align-items: end;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.library-search,
+.library-sort {
+  display: grid;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.library-search input,
+.library-sort select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 520;
+}
+
+.library-no-results {
+  margin-bottom: 32px;
+  padding: 22px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--text-muted);
+}
+
+.library-no-results h2,
+.library-no-results p {
+  margin: 0;
+}
+
+.library-no-results h2 {
+  color: var(--text);
+  font-size: 15px;
+}
+
+.library-no-results p {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.book-delete-dialog {
+  width: min(calc(100% - 32px), 520px);
+  max-height: min(760px, calc(100vh - 32px));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 24%);
+}
+
+.book-delete-dialog::backdrop {
+  background: rgb(20 22 20 / 45%);
+  backdrop-filter: blur(3px);
+}
+
+.book-delete-dialog form {
+  padding: 24px;
+}
+
+.book-delete-dialog h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.book-delete-description {
+  margin: 10px 0 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.book-delete-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.book-delete-option input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.book-delete-option span {
+  display: grid;
+  gap: 4px;
+}
+
+.book-delete-option strong {
+  font-size: 12px;
+}
+
+.book-delete-option small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.book-delete-error {
+  margin: 12px 0 0;
+  color: #a6463e;
+  font-size: 12px;
+}
+
+.book-delete-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.book-delete-dialog-actions button {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.book-delete-dialog-actions .book-delete-confirm {
+  border-color: #a6463e;
+  background: #a6463e;
+  color: #fff;
+}
+
+.book-delete-dialog-actions button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.book-delete-dialog-actions button:not(:disabled):active {
+  transform: scale(0.97);
 }
 
 .import-button {
@@ -1730,6 +1926,20 @@ button {
     color: var(--accent);
   }
 
+  .book-delete-action:hover {
+    color: #a6463e;
+  }
+
+  .book-delete-dialog-actions button:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+    background: var(--surface-muted);
+  }
+
+  .book-delete-dialog-actions .book-delete-confirm:not(:disabled):hover {
+    border-color: #8f3933;
+    background: #8f3933;
+  }
+
   .reader-icon-button:hover {
     border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
     background: var(--surface-muted);
@@ -1845,6 +2055,10 @@ button {
 
   .main-content {
     padding: 24px 18px 42px;
+  }
+
+  .library-tools {
+    grid-template-columns: 1fr;
   }
 
   .page-header {
@@ -1992,6 +2206,11 @@ button {
   .book-action:active,
   .reader-icon-button:active,
   .import-button:active {
+    transform: none;
+  }
+
+  .book-delete-action:active,
+  .book-delete-dialog-actions button:active {
     transform: none;
   }
 

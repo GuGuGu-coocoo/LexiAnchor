@@ -414,6 +414,115 @@ test('persists an imported book and its reading progress in local SQLite and OPF
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
 });
 
+test('searches, sorts, and safely deletes books from the local library', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const importInput = page.locator('.import-button input[type="file"]');
+
+  await importInput.setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-text.pdf'));
+  await expect(page.locator('.pdf-page')).toBeVisible();
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+
+  await importInput.setInputFiles(
+    resolve('packages/test-fixtures/generated/lexianchor-spike.epub'),
+  );
+  await expect(
+    page.locator('.epub-container iframe').first().contentFrame().getByRole('heading', {
+      name: 'A Quiet Beginning',
+    }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+
+  const savedBooks = page.locator('article[data-book-id]');
+  const pdfBook = savedBooks.filter({ hasText: 'lexianchor-text' });
+  const epubBook = savedBooks.filter({ hasText: 'lexianchor-spike' });
+  await expect(savedBooks).toHaveCount(2);
+
+  const search = page.getByRole('searchbox', {
+    name: /Search library|搜索书库|Rechercher dans la bibliothèque/,
+  });
+  await search.fill('lexianchor-text');
+  await expect(pdfBook).toBeVisible();
+  await expect(epubBook).toBeHidden();
+  await search.fill('does-not-exist');
+  await expect(
+    page.getByRole('heading', {
+      name: /No matching books|没有匹配的书籍|Aucun livre correspondant/,
+    }),
+  ).toBeVisible();
+  await search.fill('');
+
+  await page
+    .getByRole('combobox', { name: /Sort books|书籍排序|Trier les livres/ })
+    .selectOption('title');
+  await expect(savedBooks.first()).toContainText('lexianchor-spike');
+
+  const bookId = await pdfBook.getAttribute('data-book-id');
+
+  if (!bookId?.startsWith('book-')) {
+    throw new Error('The imported PDF has no content-addressed book id.');
+  }
+
+  await pdfBook
+    .getByRole('button', {
+      name: /Delete lexianchor-text|删除 lexianchor-text|Supprimer lexianchor-text/,
+    })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('lexianchor-text');
+  await dialog
+    .getByRole('checkbox', {
+      name: /Keep reading progress|保留阅读进度|Conserver la progression/,
+    })
+    .check();
+  await expect(
+    dialog.getByRole('checkbox', {
+      name: /Keep word cards|保留词卡|Conserver les fiches/,
+    }),
+  ).toBeChecked();
+  await page.screenshot({ path: 'test-results/library-delete-dialog.png', fullPage: true });
+  await dialog
+    .getByRole('button', {
+      name: /Delete local copy|删除本地副本|Supprimer la copie locale/,
+    })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(pdfBook).toHaveCount(0);
+  await expect(epubBook).toBeVisible();
+
+  const contentStillExists = await page.evaluate(async (hash) => {
+    const root = await navigator.storage.getDirectory();
+    const appDirectory = await root.getDirectoryHandle('lexianchor');
+    const booksDirectory = await appDirectory.getDirectoryHandle('books');
+
+    try {
+      await booksDirectory.getFileHandle(hash);
+      return true;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotFoundError') {
+        return false;
+      }
+
+      throw error;
+    }
+  }, bookId.slice('book-'.length));
+  expect(contentStillExists).toBe(false);
+
+  await page.reload();
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await expect(
+    page.locator('article[data-book-id]').filter({ hasText: 'lexianchor-text' }),
+  ).toHaveCount(0);
+
+  await page
+    .locator('.import-button input[type="file"]')
+    .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-text.pdf'));
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+});
+
 test('restores an imported EPUB locator from SQLite after localStorage is cleared', async ({
   page,
 }) => {

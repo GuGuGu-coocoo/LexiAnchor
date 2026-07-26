@@ -231,7 +231,7 @@ async function handleRequest(request: DatabaseRequest) {
             metadata_json = excluded.metadata_json,
             updated_at = excluded.updated_at,
             deleted_at = excluded.deleted_at,
-            version = excluded.version
+            version = MAX(books.version + 1, excluded.version)
         `,
         bind: [
           book.id,
@@ -252,6 +252,44 @@ async function handleRequest(request: DatabaseRequest) {
           book.version,
         ],
       });
+      return undefined;
+    }
+    case 'delete-book': {
+      context.db.exec('BEGIN IMMEDIATE');
+
+      try {
+        context.db.exec({
+          sql: `
+            UPDATE books
+            SET deleted_at = ?, updated_at = ?, version = version + 1
+            WHERE id = ? AND deleted_at IS NULL
+          `,
+          bind: [request.deletedAt, request.deletedAt, request.bookId],
+        });
+
+        if (!request.options.keepProgress) {
+          context.db.exec({
+            sql: 'DELETE FROM reading_progress WHERE book_id = ?',
+            bind: [request.bookId],
+          });
+        }
+
+        if (!request.options.keepWordCards) {
+          context.db.exec({
+            sql: `
+              UPDATE word_cards
+              SET deleted_at = ?, updated_at = ?, version = version + 1
+              WHERE source_book_id = ? AND deleted_at IS NULL
+            `,
+            bind: [request.deletedAt, request.deletedAt, request.bookId],
+          });
+        }
+
+        context.db.exec('COMMIT');
+      } catch (error) {
+        context.db.exec('ROLLBACK');
+        throw error;
+      }
       return undefined;
     }
     case 'get-progress': {

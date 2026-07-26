@@ -2,6 +2,7 @@ import type { DatabaseRequest, DatabaseResponse } from './protocol';
 import type {
   BookRecord,
   BookRepository,
+  DeleteBookOptions,
   ReadingProgressRecord,
   StorageStatus,
   WordCardRecord,
@@ -12,6 +13,7 @@ type RequestInput =
   | Omit<Extract<DatabaseRequest, { type: 'initialize' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'list-books' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'save-book' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'delete-book' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'get-progress' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'save-progress' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'list-word-cards' }>, 'id'>
@@ -71,6 +73,10 @@ export class SqliteBookRepository implements BookRepository, WordCardRepository 
 
   saveBook(book: BookRecord): Promise<void> {
     return this.request({ type: 'save-book', book });
+  }
+
+  deleteBook(bookId: string, deletedAt: string, options: DeleteBookOptions): Promise<void> {
+    return this.request({ type: 'delete-book', bookId, deletedAt, options });
   }
 
   getProgress(bookId: string): Promise<ReadingProgressRecord | null> {

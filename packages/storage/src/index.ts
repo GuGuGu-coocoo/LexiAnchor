@@ -6,6 +6,7 @@ export type {
   BookRecord,
   BookRepository,
   ContentStore,
+  DeleteBookOptions,
   ReadingProgressRecord,
   StorageStatus,
   SyncChange,

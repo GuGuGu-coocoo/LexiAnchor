@@ -51,10 +51,16 @@ export interface StorageStatus {
   readonly persistence: 'opfs-sahpool' | 'memory';
 }
 
+export interface DeleteBookOptions {
+  readonly keepProgress: boolean;
+  readonly keepWordCards: boolean;
+}
+
 export interface BookRepository {
   initialize(): Promise<StorageStatus>;
   listBooks(): Promise<BookRecord[]>;
   saveBook(book: BookRecord): Promise<void>;
+  deleteBook(bookId: string, deletedAt: string, options: DeleteBookOptions): Promise<void>;
   getProgress(bookId: string): Promise<ReadingProgressRecord | null>;
   saveProgress(progress: ReadingProgressRecord): Promise<void>;
   close(): Promise<void>;

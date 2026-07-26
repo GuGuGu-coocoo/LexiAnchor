@@ -27,6 +27,7 @@ import {
   sha256,
   SqliteBookRepository,
   type BookRecord,
+  type DeleteBookOptions,
   type ReadingProgressRecord,
   type StorageStatus,
   type WordCardRecord,
@@ -56,6 +57,7 @@ type DictionaryInstallState = Readonly<Record<DownloadableDictionaryId, boolean>
 type TranslationInstallState = Readonly<
   Record<TranslationTargetLanguage, TranslationModelInstallStatus>
 >;
+type LibrarySort = 'recent' | 'imported' | 'title' | 'progress';
 
 interface DictionaryPreferences {
   readonly order: readonly DictionaryId[];
@@ -547,6 +549,32 @@ export function App({ platform }: AppProps) {
     [refreshLibrary, t],
   );
 
+  const deleteStoredBook = useCallback(
+    async (entry: LibraryEntry, options: DeleteBookOptions) => {
+      const deletedAt = new Date().toISOString();
+
+      try {
+        await repository().deleteBook(entry.book.id, deletedAt, options);
+        await refreshLibrary();
+
+        try {
+          await contentStore.delete(entry.book.contentRef);
+          setStatusMessage(t('bookDeleted'));
+        } catch (error) {
+          setStatusMessage(
+            `${t('bookDeleted')} ${t('bookFileCleanupFailed')} ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      } catch (error) {
+        setStatusMessage(error instanceof Error ? error.message : String(error));
+        throw error;
+      }
+    },
+    [refreshLibrary, t],
+  );
+
   const persistLocation = useCallback(
     (locator: ReaderLocator, percentage: number) => {
       const bookId = openBook?.bookId;
@@ -1018,6 +1046,7 @@ export function App({ platform }: AppProps) {
             library={library}
             t={t}
             onImportBook={importBook}
+            onDeleteBook={deleteStoredBook}
             onOpenSample={(source) => setOpenBook({ source })}
             onOpenStored={openStoredBook}
           />
@@ -1188,11 +1217,63 @@ interface LibraryPageProps {
   readonly library: readonly LibraryEntry[];
   readonly t: (key: MessageKey) => string;
   readonly onImportBook: (file: File) => Promise<void>;
+  readonly onDeleteBook: (entry: LibraryEntry, options: DeleteBookOptions) => Promise<void>;
   readonly onOpenSample: (source: ReaderSource) => void;
   readonly onOpenStored: (entry: LibraryEntry) => Promise<void>;
 }
 
-function LibraryPage({ library, t, onImportBook, onOpenSample, onOpenStored }: LibraryPageProps) {
+function LibraryPage({
+  library,
+  t,
+  onImportBook,
+  onDeleteBook,
+  onOpenSample,
+  onOpenStored,
+}: LibraryPageProps) {
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<LibrarySort>(() => {
+    const stored = globalThis.localStorage?.getItem('lexianchor:library-sort');
+    return ['recent', 'imported', 'title', 'progress'].includes(stored ?? '')
+      ? (stored as LibrarySort)
+      : 'recent';
+  });
+  const [bookToDelete, setBookToDelete] = useState<LibraryEntry | null>(null);
+  const visibleLibrary = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    const entries = normalizedQuery
+      ? library.filter((entry) =>
+          `${entry.book.title}\n${entry.book.author}`.toLocaleLowerCase().includes(normalizedQuery),
+        )
+      : [...library];
+
+    return entries.toSorted((left, right) => {
+      if (sort === 'title') {
+        return left.book.title.localeCompare(right.book.title, undefined, { sensitivity: 'base' });
+      }
+
+      if (sort === 'progress') {
+        return (
+          normalizeProgress(right.progress?.percentage ?? 0) -
+          normalizeProgress(left.progress?.percentage ?? 0)
+        );
+      }
+
+      const leftDate =
+        sort === 'imported'
+          ? left.book.importedAt
+          : (left.book.lastOpenedAt ?? left.book.importedAt);
+      const rightDate =
+        sort === 'imported'
+          ? right.book.importedAt
+          : (right.book.lastOpenedAt ?? right.book.importedAt);
+      return rightDate.localeCompare(leftDate);
+    });
+  }, [library, query, sort]);
+
+  useEffect(() => {
+    globalThis.localStorage?.setItem('lexianchor:library-sort', sort);
+  }, [sort]);
+
   function importBook(file: File | undefined) {
     if (!file) {
       return;
@@ -1230,21 +1311,51 @@ function LibraryPage({ library, t, onImportBook, onOpenSample, onOpenStored }: L
 
       {library.length > 0 ? (
         <>
+          <div className="library-tools">
+            <label className="library-search">
+              <span>{t('librarySearch')}</span>
+              <input
+                type="search"
+                value={query}
+                placeholder={t('librarySearchPlaceholder')}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <label className="library-sort">
+              <span>{t('librarySort')}</span>
+              <select value={sort} onChange={(event) => setSort(event.target.value as LibrarySort)}>
+                <option value="recent">{t('sortRecentlyRead')}</option>
+                <option value="imported">{t('sortImported')}</option>
+                <option value="title">{t('sortTitle')}</option>
+                <option value="progress">{t('sortProgress')}</option>
+              </select>
+            </label>
+          </div>
           <div className="section-heading">
             <h2 className="section-title">{t('savedOnDevice')}</h2>
-            <span className="section-meta">{library.length}</span>
+            <span className="section-meta">
+              {visibleLibrary.length} / {library.length}
+            </span>
           </div>
-          <div className="book-grid saved-book-grid">
-            {library.map((entry) => (
-              <StoredBookCard
-                key={entry.book.id}
-                entry={entry}
-                headingLevel={2}
-                t={t}
-                onOpen={() => void onOpenStored(entry)}
-              />
-            ))}
-          </div>
+          {visibleLibrary.length > 0 ? (
+            <div className="book-grid saved-book-grid">
+              {visibleLibrary.map((entry) => (
+                <StoredBookCard
+                  key={entry.book.id}
+                  entry={entry}
+                  headingLevel={2}
+                  t={t}
+                  onOpen={() => void onOpenStored(entry)}
+                  onDelete={() => setBookToDelete(entry)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="library-no-results">
+              <h2>{t('noBooksFound')}</h2>
+              <p>{t('noBooksFoundDescription')}</p>
+            </div>
+          )}
           <div className="section-heading sample-section-heading">
             <h2 className="section-title">{t('testBooks')}</h2>
           </div>
@@ -1314,6 +1425,18 @@ function LibraryPage({ library, t, onImportBook, onOpenSample, onOpenStored }: L
           </div>
         </article>
       </div>
+
+      {bookToDelete ? (
+        <BookDeleteDialog
+          entry={bookToDelete}
+          t={t}
+          onCancel={() => setBookToDelete(null)}
+          onDelete={async (options) => {
+            await onDeleteBook(bookToDelete, options);
+            setBookToDelete(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1323,9 +1446,10 @@ interface StoredBookCardProps {
   readonly headingLevel: 2 | 3;
   readonly t: (key: MessageKey) => string;
   readonly onOpen: () => void;
+  readonly onDelete?: () => void;
 }
 
-function StoredBookCard({ entry, headingLevel, t, onOpen }: StoredBookCardProps) {
+function StoredBookCard({ entry, headingLevel, t, onOpen, onDelete }: StoredBookCardProps) {
   const progress = normalizeProgress(entry.progress?.percentage ?? 0);
   const title = entry.book.title;
   const titleElement =
@@ -1364,11 +1488,126 @@ function StoredBookCard({ entry, headingLevel, t, onOpen }: StoredBookCardProps)
         >
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
-        <button className="book-action" type="button" onClick={onOpen}>
-          {t('openBook')} →
-        </button>
+        <div className="book-card-actions">
+          <button className="book-action" type="button" onClick={onOpen}>
+            {t('openBook')} →
+          </button>
+          {onDelete ? (
+            <button
+              className="book-delete-action"
+              type="button"
+              aria-label={`${t('deleteBook')} ${title}`}
+              onClick={onDelete}
+            >
+              {t('deleteBook')}
+            </button>
+          ) : null}
+        </div>
       </div>
     </article>
+  );
+}
+
+interface BookDeleteDialogProps {
+  readonly entry: LibraryEntry;
+  readonly t: (key: MessageKey) => string;
+  readonly onCancel: () => void;
+  readonly onDelete: (options: DeleteBookOptions) => Promise<void>;
+}
+
+function BookDeleteDialog({ entry, t, onCancel, onDelete }: BookDeleteDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [keepProgress, setKeepProgress] = useState(false);
+  const [keepWordCards, setKeepWordCards] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+
+    return () => {
+      if (dialog?.open) {
+        dialog.close();
+      }
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="book-delete-dialog"
+      aria-labelledby="book-delete-title"
+      onCancel={(event) => {
+        event.preventDefault();
+
+        if (!isDeleting) {
+          onCancel();
+        }
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setIsDeleting(true);
+          setError('');
+          void onDelete({ keepProgress, keepWordCards }).catch((deleteError: unknown) => {
+            setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+            setIsDeleting(false);
+          });
+        }}
+      >
+        <p className="eyebrow">{t('localOnly')}</p>
+        <h2 id="book-delete-title">
+          {t('confirmDeleteBook')} “{entry.book.title}”?
+        </h2>
+        <p className="book-delete-description">{t('deleteBookDescription')}</p>
+
+        <label className="book-delete-option">
+          <input
+            type="checkbox"
+            checked={keepProgress}
+            disabled={isDeleting}
+            onChange={(event) => setKeepProgress(event.target.checked)}
+          />
+          <span>
+            <strong>{t('keepReadingProgress')}</strong>
+            <small>{t('keepReadingProgressDescription')}</small>
+          </span>
+        </label>
+
+        <label className="book-delete-option">
+          <input
+            type="checkbox"
+            checked={keepWordCards}
+            disabled={isDeleting}
+            onChange={(event) => setKeepWordCards(event.target.checked)}
+          />
+          <span>
+            <strong>{t('keepBookWordCards')}</strong>
+            <small>{t('keepBookWordCardsDescription')}</small>
+          </span>
+        </label>
+
+        {error ? (
+          <p className="book-delete-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="book-delete-dialog-actions">
+          <button type="button" autoFocus disabled={isDeleting} onClick={onCancel}>
+            {t('cancel')}
+          </button>
+          <button className="book-delete-confirm" type="submit" disabled={isDeleting}>
+            {isDeleting ? t('deletingBook') : t('deleteLocalCopy')}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 

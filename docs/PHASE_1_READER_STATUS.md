@@ -19,6 +19,8 @@
 - 导入书籍保存到私有 OPFS，并以 SHA-256 内容引用去重；
 - SQLite WASM Worker 保存书籍元数据、最近阅读与进度；
 - Home 和书库显示真实导入书籍；
+- 书库支持按书名/作者搜索，以及按最近阅读、导入时间、书名和进度排序；
+- 删除书籍前可选择保留阅读进度和词卡；数据库软删除后清理本地文件副本；
 - Web 断网重载后可继续打开已导入 PDF；
 - Web/PWA 与 Electron 使用同一 React 阅读界面和 adapter。
 - EPUB/PDF 选择英文单词后自动查询完整 WordNet 3.1；
@@ -58,12 +60,12 @@
 | --- | --- |
 | `pnpm check` | 通过 |
 | Vitest | 8 个文件、29 个测试通过 |
-| Playwright | 15 个常规 Chromium 场景通过；另完成 2 个真实模型资源审计场景 |
+| Playwright | 16 个常规 Chromium 场景通过；另完成 2 个真实模型资源审计场景 |
 | `pnpm build:web` | 通过，PDF、SQLite、Bergamot worker 和 WASM 均形成生产资源 |
 | `pnpm build:desktop` | 通过，生成 macOS arm64 `.app` |
 | `pnpm audit --audit-level high` | 无已知漏洞 |
 | Electron 运行探针 | 生产 bundle 窗口启动，`opfs-sahpool` 生效 |
-| 视觉检查 | PDF 文本/扫描/390px 窄窗口与持久化书库通过 |
+| 视觉检查 | EPUB 目录、词卡编辑、书库删除确认、PDF 文本/扫描与 390px 窄窗口通过 |
 
 Playwright 当前覆盖：
 
@@ -80,6 +82,7 @@ Playwright 当前覆盖：
 11. FreeDict/WikDict 英汉翻译、英语释义、自动生成质量提示和完整资源安装。
 12. StarDict 三文件后台导入、重载后查询和移除。
 13. 本地翻译设置、语言选择和模型未安装时的明确降级。
+14. 书库搜索、四种排序、删除选项、OPFS 文件清理和保留进度后的重新导入。
 
 额外的一次性真实模型验证覆盖：
 
@@ -91,7 +94,7 @@ Playwright 当前覆盖：
 - 10 万词卡压力测试和全文检索优化尚未实现；
 - PDF annotation layer 尚未实现；
 - 100MB PDF 压力测试、Windows 实机启动和无签名分发验证尚未完成；
-- 书库尚未支持批量导入、拖放、搜索、删除和元数据编辑；
+- 书库尚未支持批量导入、拖放、列表视图和元数据编辑；
 - 尚未提供本地数据导出、配额提示和孤儿内容清理。
 
 ## 下一步
@@ -99,7 +102,7 @@ Playwright 当前覆盖：
 继续词卡与阅读稳定化切片：
 
 ```text
-书库管理 → PDF annotation → 词卡与大文件压力测试
+书库元数据/批量导入 → PDF annotation → 词卡与大文件压力测试
 ```
 
 词卡闭环（保存、搜索、编辑、删除/撤销和备份恢复）已经达到可测试状态。

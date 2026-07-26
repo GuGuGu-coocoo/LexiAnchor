@@ -1,9 +1,22 @@
-import type { BookRecord, ReadingProgressRecord, StorageStatus, WordCardRecord } from './types';
+import type {
+  BookRecord,
+  DeleteBookOptions,
+  ReadingProgressRecord,
+  StorageStatus,
+  WordCardRecord,
+} from './types';
 
 export type DatabaseRequest =
   | { readonly id: number; readonly type: 'initialize' }
   | { readonly id: number; readonly type: 'list-books' }
   | { readonly id: number; readonly type: 'save-book'; readonly book: BookRecord }
+  | {
+      readonly id: number;
+      readonly type: 'delete-book';
+      readonly bookId: string;
+      readonly deletedAt: string;
+      readonly options: DeleteBookOptions;
+    }
   | { readonly id: number; readonly type: 'get-progress'; readonly bookId: string }
   | {
       readonly id: number;

@@ -31,6 +31,8 @@
 - 词卡使用 `lexianchor.word-cards` schema v1 JSON 备份；导入前完整校验，
   并在一个 SQLite 事务中写入；
 - 备份保留全部词卡内容和同步版本，但不携带设备本地的书籍外键；
+- 删除书籍时在单个事务中写入 book tombstone，并按用户选择保留或清理阅读进度和词卡；
+- 数据库事务成功后删除 OPFS 内容副本；中断时宁可留下可清理的孤儿文件，不产生悬空活动记录；
 - 详细证据见 [SQLite WASM + OPFS 存储 Spike](../spikes/0003-sqlite-opfs.md)。
 
 ## 一致性定义

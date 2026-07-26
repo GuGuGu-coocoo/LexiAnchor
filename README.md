@@ -6,7 +6,9 @@ and turning words encountered in books into useful word cards.
 
 The project is in active development. The shared Web/PWA and Electron application
 can now import and read DRM-free EPUB 2/3 and PDF files. Imported books and reading
-progress persist locally through SQLite WASM and OPFS. Selecting an English word
+progress persist locally through SQLite WASM and OPFS. The library supports title/author
+search, four sort orders, and confirmed local deletion with choices for preserving reading
+progress and word cards. Selecting an English word
 queries the bundled Princeton WordNet 3.1 and an optional, installable FreeDict
 English–French dictionary plus an optional FreeDict/WikDict English–Chinese dictionary
 offline. Users can also import an uncompressed StarDict `.ifo + .idx + .dict` set.
