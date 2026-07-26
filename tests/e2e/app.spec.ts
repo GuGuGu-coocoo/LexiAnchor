@@ -146,6 +146,46 @@ test('shows optional English-French and English-Chinese local translation models
   ).toBeVisible();
 });
 
+test('shows browser quota and requests persistent local storage', async ({ page }) => {
+  await page.addInitScript(() => {
+    let isPersisted = false;
+    const storage = navigator.storage;
+
+    Object.defineProperties(storage, {
+      persisted: {
+        configurable: true,
+        value: () => Promise.resolve(isPersisted),
+      },
+      persist: {
+        configurable: true,
+        value: () => {
+          isPersisted = true;
+          return Promise.resolve(true);
+        },
+      },
+      estimate: {
+        configurable: true,
+        value: () => Promise.resolve({ usage: 12_500_000, quota: 100_000_000 }),
+      },
+    });
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+
+  const storageCard = page.getByTestId('storage-health');
+  await expect(storageCard).toContainText(/Browser-managed storage|由浏览器管理|géré par/);
+  await expect(storageCard).toContainText(/13 MB/);
+  await expect(storageCard).toContainText(/100 MB/);
+  await storageCard
+    .getByRole('button', { name: /Protect local data|保护本地数据|Protéger/ })
+    .click();
+  await expect(storageCard).toContainText(
+    /Protected from automatic cleanup|已防止自动清理|Protégé/,
+  );
+  await page.screenshot({ path: 'test-results/storage-health.png', fullPage: true });
+});
+
 test('opens the EPUB spike and validates selection and focus markup', async ({ page }) => {
   await page.goto('/');
 

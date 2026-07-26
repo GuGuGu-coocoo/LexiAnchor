@@ -1535,6 +1535,10 @@ button {
   margin-bottom: 14px;
 }
 
+.settings-section-heading-first {
+  margin-top: 0;
+}
+
 .settings-section-heading h2 {
   margin: 0;
   font-family: var(--font-display);
@@ -1551,6 +1555,85 @@ button {
   color: var(--text-muted);
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
+}
+
+.storage-health-card {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.storage-health-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.storage-health-heading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.storage-health-heading p {
+  max-width: 680px;
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.storage-protect-action {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--surface-raised);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.storage-protect-action:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.storage-health-metrics {
+  display: flex;
+  gap: 32px;
+  margin: 18px 0 10px;
+}
+
+.storage-health-metrics div {
+  display: grid;
+  gap: 3px;
+}
+
+.storage-health-metrics dt {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.storage-health-metrics dd {
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.storage-health-card meter {
+  width: min(100%, 480px);
+  height: 8px;
+  accent-color: var(--accent);
 }
 
 .dictionary-settings-card {
@@ -2045,6 +2128,14 @@ button {
     display: none;
   }
 
+  .storage-health-heading {
+    flex-direction: column;
+  }
+
+  .storage-protect-action {
+    width: 100%;
+  }
+
   .primary-nav {
     grid-template-columns: repeat(4, 1fr);
   }
@@ -2090,6 +2181,19 @@ button {
   .dictionary-settings-main {
     display: grid;
     gap: 14px;
+  }
+
+  .storage-health-heading {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .storage-protect-action {
+    width: 100%;
+  }
+
+  .storage-health-metrics {
+    flex-wrap: wrap;
   }
 
   .runtime-chip {

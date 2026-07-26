@@ -43,6 +43,12 @@ import {
 import '@lexianchor/ui/styles.css';
 
 import type { WordCardDraft } from './selection-tools';
+import {
+  formatStorageBytes,
+  readStorageHealth,
+  requestPersistentStorage,
+  type StorageHealth,
+} from './storage-health';
 
 type Section = 'home' | 'library' | 'cards' | 'settings';
 type Theme = 'system' | 'light' | 'dark' | 'eye-care';
@@ -287,6 +293,8 @@ export function App({ platform }: AppProps) {
   const [appVersion, setAppVersion] = useState('0.1.0');
   const [statusMessage, setStatusMessage] = useState('');
   const [storageStatus, setStorageStatus] = useState<StorageStatus>();
+  const [storageHealth, setStorageHealth] = useState<StorageHealth>();
+  const [isRequestingPersistentStorage, setIsRequestingPersistentStorage] = useState(false);
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [wordCards, setWordCards] = useState<WordCardRecord[]>([]);
   const [cardSearch, setCardSearch] = useState('');
@@ -358,6 +366,12 @@ export function App({ platform }: AppProps) {
 
   useEffect(() => {
     let isActive = true;
+
+    void readStorageHealth().then((health) => {
+      if (isActive) {
+        setStorageHealth(health);
+      }
+    });
 
     void repository()
       .initialize()
@@ -919,6 +933,13 @@ export function App({ platform }: AppProps) {
     }
   }
 
+  async function protectLocalStorage() {
+    setIsRequestingPersistentStorage(true);
+    const health = await requestPersistentStorage();
+    setStorageHealth(health);
+    setIsRequestingPersistentStorage(false);
+  }
+
   const navigationItems: ReadonlyArray<{
     id: Section;
     label: string;
@@ -1068,6 +1089,9 @@ export function App({ platform }: AppProps) {
           />
         ) : (
           <SettingsPage
+            locale={locale}
+            storageHealth={storageHealth}
+            isRequestingPersistentStorage={isRequestingPersistentStorage}
             dictionaryPreferences={dictionaryPreferences}
             installedDictionaries={installedDictionaries}
             installingDictionary={installingDictionary}
@@ -1086,6 +1110,7 @@ export function App({ platform }: AppProps) {
             onCancelTranslationInstall={cancelTranslationInstall}
             onRemoveTranslationModel={removeTranslationModel}
             onOpenExternal={(url) => platform.openExternal(url)}
+            onProtectLocalStorage={protectLocalStorage}
           />
         )}
         <p className="sr-only" aria-live="polite">
@@ -1916,6 +1941,9 @@ function WordCardEditor({ card, t, onSave, onCancel }: WordCardEditorProps) {
 }
 
 interface SettingsPageProps {
+  readonly locale: Locale;
+  readonly storageHealth: StorageHealth | undefined;
+  readonly isRequestingPersistentStorage: boolean;
   readonly dictionaryPreferences: DictionaryPreferences;
   readonly installedDictionaries: DictionaryInstallState;
   readonly installingDictionary: DownloadableDictionaryId | null;
@@ -1934,9 +1962,13 @@ interface SettingsPageProps {
   readonly onCancelTranslationInstall: () => void;
   readonly onRemoveTranslationModel: (targetLanguage: TranslationTargetLanguage) => Promise<void>;
   readonly onOpenExternal: (url: string) => Promise<void>;
+  readonly onProtectLocalStorage: () => Promise<void>;
 }
 
 function SettingsPage({
+  locale,
+  storageHealth,
+  isRequestingPersistentStorage,
   dictionaryPreferences,
   installedDictionaries,
   installingDictionary,
@@ -1955,6 +1987,7 @@ function SettingsPage({
   onCancelTranslationInstall,
   onRemoveTranslationModel,
   onOpenExternal,
+  onProtectLocalStorage,
 }: SettingsPageProps) {
   const descriptions: Readonly<
     Record<
@@ -2011,8 +2044,69 @@ function SettingsPage({
           <h1 className="page-title" id="settings-title">
             {t('settings')}
           </h1>
-          <p className="page-description">{t('dictionarySettingsDescription')}</p>
+          <p className="page-description">{t('settingsDescription')}</p>
         </div>
+      </header>
+
+      <header className="settings-section-heading settings-section-heading-first">
+        <h2>{t('localStorageTitle')}</h2>
+        <p>{t('localStorageDescription')}</p>
+      </header>
+
+      <article className="storage-health-card" data-testid="storage-health">
+        <div className="storage-health-heading">
+          <div>
+            <h3>
+              {storageHealth?.persisted
+                ? t('persistentStorage')
+                : storageHealth?.persisted === false
+                  ? t('bestEffortStorage')
+                  : t('storageStatusUnavailable')}
+            </h3>
+            <p>
+              {storageHealth?.persisted
+                ? t('persistentStorageDescription')
+                : t('bestEffortStorageDescription')}
+            </p>
+          </div>
+          {storageHealth?.supported && !storageHealth.persisted ? (
+            <button
+              className="storage-protect-action"
+              type="button"
+              disabled={isRequestingPersistentStorage}
+              onClick={() => void onProtectLocalStorage()}
+            >
+              {isRequestingPersistentStorage
+                ? t('requestingStorageProtection')
+                : t('protectLocalData')}
+            </button>
+          ) : null}
+        </div>
+        <dl className="storage-health-metrics">
+          <div>
+            <dt>{t('storageUsed')}</dt>
+            <dd>{formatStorageBytes(storageHealth?.usageBytes ?? null, locale)}</dd>
+          </div>
+          <div>
+            <dt>{t('storageAvailable')}</dt>
+            <dd>{formatStorageBytes(storageHealth?.quotaBytes ?? null, locale)}</dd>
+          </div>
+        </dl>
+        {storageHealth?.usageBytes !== null &&
+        storageHealth?.usageBytes !== undefined &&
+        storageHealth.quotaBytes ? (
+          <meter
+            aria-label={t('storageUsed')}
+            min="0"
+            max={storageHealth.quotaBytes}
+            value={Math.min(storageHealth.usageBytes, storageHealth.quotaBytes)}
+          />
+        ) : null}
+      </article>
+
+      <header className="settings-section-heading">
+        <h2>{t('offlineDictionaries')}</h2>
+        <p>{t('dictionarySettingsDescription')}</p>
       </header>
 
       <div className="dictionary-settings-list">

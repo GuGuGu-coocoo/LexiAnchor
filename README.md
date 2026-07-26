@@ -20,7 +20,8 @@ network connection. Optional Mozilla Bergamot English–French and English–Chi
 models can be installed for private, on-device sentence translation and reused while
 offline. EPUB reading includes persistent per-book typography controls and independently
 implemented, removable light/medium/strong focus highlighting; text-layer PDFs use the
-same focus rules without modifying the original document.
+same focus rules without modifying the original document. Settings show local storage
+usage, browser quota, and whether the browser has granted protection from automatic cleanup.
 
 ## Requirements
 

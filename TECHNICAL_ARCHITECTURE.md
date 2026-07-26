@@ -311,6 +311,11 @@ Schema v2 增加 `word_cards`。词卡保存词语、规范化词语、词性、
 记录仍保持一致，残留文件由后续孤儿清理处理。重新导入相同哈希会恢复同一稳定 book ID，
 并可继续用户选择保留的阅读进度。
 
+Web 设置页只读调用 `navigator.storage.estimate()` 和 `navigator.storage.persisted()`，
+显示当前用量、浏览器配额和自动清理保护状态。`navigator.storage.persist()` 只在用户明确点击
+“保护本地数据”后调用，应用启动时不主动请求；拒绝或不支持时继续使用现有本地存储并清楚显示
+best-effort 状态。完整应用数据导出仍按 8.4 节逐步实现。
+
 ### 8.3 大文件
 
 数据库保存元数据、索引和引用，不保存 EPUB/PDF/模型完整二进制。
