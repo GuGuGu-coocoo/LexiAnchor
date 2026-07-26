@@ -1011,6 +1011,10 @@ button {
   padding-top: 16px;
 }
 
+.reader-control[aria-disabled='true'] {
+  opacity: 0.6;
+}
+
 .reader-control > span {
   display: flex;
   justify-content: space-between;
@@ -1742,7 +1746,7 @@ button {
 
 .pdf-focus-prefix {
   position: absolute;
-  color: #173f32;
+  color: #111;
   font-weight: 800;
   transform-origin: left top;
   white-space: pre;

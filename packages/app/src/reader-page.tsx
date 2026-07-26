@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import {
-  defaultReaderPreferences,
   type ReaderLocator,
   type ReaderPreferences,
   type ReaderSelection,
@@ -16,6 +15,7 @@ import type {
 } from '@lexianchor/translation';
 
 import { SelectionTools, type WordCardDraft } from './selection-tools';
+import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -24,6 +24,7 @@ const PdfReaderPage = lazy(async () => {
 
 interface ReaderPageProps {
   readonly source: ReaderSource;
+  readonly preferenceScopeId: string;
   readonly initialLocator?: ReaderLocator;
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
@@ -105,6 +106,7 @@ export function ReaderPage(props: ReaderPageProps) {
 
 function EpubReaderPage({
   source,
+  preferenceScopeId,
   initialLocator,
   locale,
   t,
@@ -119,7 +121,7 @@ function EpubReaderPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
-    ...defaultReaderPreferences,
+    ...readReaderPreferences(preferenceScopeId),
     ...readerColors(),
   }));
   const initialPreferencesRef = useRef(preferences);
@@ -202,6 +204,10 @@ function EpubReaderPage({
         ),
       );
   }, [preferences]);
+
+  useEffect(() => {
+    persistReaderPreferences(preferenceScopeId, preferences);
+  }, [preferenceScopeId, preferences]);
 
   useEffect(() => {
     function navigateWithKeyboard(event: KeyboardEvent) {
@@ -344,6 +350,23 @@ function EpubReaderPage({
               </label>
 
               <label className="reader-control">
+                <span>{t('focusStrength')}</span>
+                <select
+                  value={preferences.focusStrength}
+                  onChange={(event) =>
+                    updatePreference(
+                      'focusStrength',
+                      event.target.value as ReaderPreferences['focusStrength'],
+                    )
+                  }
+                >
+                  <option value="light">{t('lightStrength')}</option>
+                  <option value="medium">{t('mediumStrength')}</option>
+                  <option value="strong">{t('strongStrength')}</option>
+                </select>
+              </label>
+
+              <label className="reader-control">
                 <span>{t('readingLayout')}</span>
                 <select
                   value={preferences.flow}
@@ -357,11 +380,28 @@ function EpubReaderPage({
               </label>
 
               <label className="reader-control">
+                <span>{t('fontFamily')}</span>
+                <select
+                  value={preferences.fontFamily}
+                  onChange={(event) =>
+                    updatePreference(
+                      'fontFamily',
+                      event.target.value as ReaderPreferences['fontFamily'],
+                    )
+                  }
+                >
+                  <option value="serif">{t('serifFont')}</option>
+                  <option value="sans-serif">{t('sansSerifFont')}</option>
+                </select>
+              </label>
+
+              <label className="reader-control">
                 <span>
                   {t('fontSize')} <output>{preferences.fontSizePercent}%</output>
                 </span>
                 <input
                   type="range"
+                  aria-label={t('fontSize')}
                   min="80"
                   max="180"
                   step="5"
@@ -374,10 +414,26 @@ function EpubReaderPage({
 
               <label className="reader-control">
                 <span>
+                  {t('fontWeight')} <output>{preferences.fontWeight}</output>
+                </span>
+                <input
+                  type="range"
+                  aria-label={t('fontWeight')}
+                  min="350"
+                  max="700"
+                  step="50"
+                  value={preferences.fontWeight}
+                  onChange={(event) => updatePreference('fontWeight', Number(event.target.value))}
+                />
+              </label>
+
+              <label className="reader-control">
+                <span>
                   {t('lineHeight')} <output>{preferences.lineHeight.toFixed(2)}</output>
                 </span>
                 <input
                   type="range"
+                  aria-label={t('lineHeight')}
                   min="1.2"
                   max="2.2"
                   step="0.05"
@@ -388,10 +444,61 @@ function EpubReaderPage({
 
               <label className="reader-control">
                 <span>
+                  {t('letterSpacing')} <output>{preferences.letterSpacingEm.toFixed(2)} em</output>
+                </span>
+                <input
+                  type="range"
+                  aria-label={t('letterSpacing')}
+                  min="0"
+                  max="0.15"
+                  step="0.01"
+                  value={preferences.letterSpacingEm}
+                  onChange={(event) =>
+                    updatePreference('letterSpacingEm', Number(event.target.value))
+                  }
+                />
+              </label>
+
+              <label className="reader-control">
+                <span>
+                  {t('contentWidth')} <output>{preferences.contentWidthPercent}%</output>
+                </span>
+                <input
+                  type="range"
+                  aria-label={t('contentWidth')}
+                  min="55"
+                  max="100"
+                  step="5"
+                  value={preferences.contentWidthPercent}
+                  onChange={(event) =>
+                    updatePreference('contentWidthPercent', Number(event.target.value))
+                  }
+                />
+              </label>
+
+              <label className="reader-control">
+                <span>{t('textAlignment')}</span>
+                <select
+                  value={preferences.textAlignment}
+                  onChange={(event) =>
+                    updatePreference(
+                      'textAlignment',
+                      event.target.value as ReaderPreferences['textAlignment'],
+                    )
+                  }
+                >
+                  <option value="start">{t('alignLeft')}</option>
+                  <option value="justify">{t('justifyText')}</option>
+                </select>
+              </label>
+
+              <label className="reader-control">
+                <span>
                   {t('wordSpacing')} <output>{preferences.wordSpacingEm.toFixed(2)} em</output>
                 </span>
                 <input
                   type="range"
+                  aria-label={t('wordSpacing')}
                   min="0"
                   max="0.5"
                   step="0.05"

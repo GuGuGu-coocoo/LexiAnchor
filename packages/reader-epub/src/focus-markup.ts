@@ -1,13 +1,17 @@
-const SKIPPED_ELEMENTS = new Set(['CODE', 'PRE', 'SCRIPT', 'STYLE', 'SVG', 'MATH']);
+import { focusFontWeight, focusPrefixLength, type FocusStrength } from '@lexianchor/reader-core';
+
+const SKIPPED_ELEMENTS = new Set([
+  'A',
+  'CODE',
+  'KBD',
+  'PRE',
+  'SAMP',
+  'SCRIPT',
+  'STYLE',
+  'SVG',
+  'MATH',
+]);
 const WORD_PATTERN = /([A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?)/g;
-
-function prefixLength(word: string): number {
-  if (word.length <= 3) {
-    return 1;
-  }
-
-  return Math.ceil(word.length * 0.45);
-}
 
 function canDecorate(node: Text): boolean {
   const parent = node.parentElement;
@@ -21,12 +25,24 @@ function canDecorate(node: Text): boolean {
   );
 }
 
-export function applyFocusMarkup(document: Document): void {
-  if (!document.body || document.body.dataset.lexianchorFocus === 'on') {
+export function applyFocusMarkup(document: Document, strength: FocusStrength = 'medium'): void {
+  if (!document.body) {
     return;
   }
 
+  if (
+    document.body.dataset.lexianchorFocus === 'on' &&
+    document.body.dataset.lexianchorFocusStrength === strength
+  ) {
+    return;
+  }
+
+  if (document.body.dataset.lexianchorFocus === 'on') {
+    removeFocusMarkup(document);
+  }
+
   document.body.dataset.lexianchorFocus = 'on';
+  document.body.dataset.lexianchorFocusStrength = strength;
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
 
@@ -53,12 +69,13 @@ export function applyFocusMarkup(document: Document): void {
       }
 
       WORD_PATTERN.lastIndex = 0;
-      const length = prefixLength(part);
+      const length = focusPrefixLength(part.length, strength);
       const word = document.createElement('span');
       const anchor = document.createElement('span');
       word.dataset.lexianchorFocus = 'word';
       anchor.dataset.lexianchorFocus = 'anchor';
       anchor.textContent = part.slice(0, length);
+      anchor.style.fontWeight = String(focusFontWeight(strength));
       word.append(anchor, part.slice(length));
       fragment.append(word);
     }
@@ -78,4 +95,5 @@ export function removeFocusMarkup(document: Document): void {
 
   document.body.normalize();
   delete document.body.dataset.lexianchorFocus;
+  delete document.body.dataset.lexianchorFocusStrength;
 }

@@ -207,8 +207,60 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();
   await expect(bookFrame.getByRole('main')).toBeVisible();
 
+  const focusStrength = page.getByRole('combobox', {
+    name: /Focus strength|焦点强度|Intensité/,
+  });
+  await focusStrength.selectOption('light');
+  const attentiveAnchor = bookFrame
+    .locator('[data-lexianchor-focus="word"]', { hasText: 'attentive' })
+    .locator('[data-lexianchor-focus="anchor"]');
+  await expect(attentiveAnchor).toHaveText('atte');
+  await expect(attentiveAnchor).toHaveCSS('font-weight', '650');
+  await focusStrength.selectOption('strong');
+  await expect(attentiveAnchor).toHaveText('attent');
+  await expect(attentiveAnchor).toHaveCSS('font-weight', '850');
+
+  await page.getByRole('combobox', { name: /^(Font|字体|Police)$/ }).selectOption('sans-serif');
+  await page.getByRole('slider', { name: /Text weight|正文字重|Graisse du texte/ }).fill('550');
+  await page
+    .getByRole('slider', { name: /Letter spacing|字间距|Espacement des lettres/ })
+    .fill('0.08');
+  await page.getByRole('slider', { name: /Text width|正文宽度|Largeur du texte/ }).fill('70');
+  await page
+    .getByRole('combobox', { name: /Alignment|文字对齐|Alignement/ })
+    .selectOption('justify');
+  await expect
+    .poll(() =>
+      bookFrame.locator('body').evaluate((body) => {
+        const style = body.ownerDocument.defaultView?.getComputedStyle(body);
+        return {
+          fontFamily: style?.fontFamily ?? '',
+          fontWeight: style?.fontWeight ?? '',
+          letterSpacing: Number.parseFloat(style?.letterSpacing ?? '0'),
+          paddingLeft: Number.parseFloat(style?.paddingLeft ?? '0'),
+          textAlign: style?.textAlign ?? '',
+        };
+      }),
+    )
+    .toMatchObject({
+      fontWeight: '550',
+      textAlign: 'justify',
+    });
+  const bodyPresentation = await bookFrame.locator('body').evaluate((body) => {
+    const style = body.ownerDocument.defaultView?.getComputedStyle(body);
+    return {
+      fontFamily: style?.fontFamily ?? '',
+      letterSpacing: Number.parseFloat(style?.letterSpacing ?? '0'),
+      paddingLeft: Number.parseFloat(style?.paddingLeft ?? '0'),
+    };
+  });
+  expect(bodyPresentation.fontFamily.toLowerCase()).toContain('sans');
+  expect(bodyPresentation.letterSpacing).toBeGreaterThan(0);
+  expect(bodyPresentation.paddingLeft).toBeGreaterThan(0);
+
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).uncheck();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]')).toHaveCount(0);
+  await expect(bookFrame.locator('em')).toHaveText('attentive');
 
   await bookFrame.locator('body').click({ position: { x: 24, y: 24 } });
   await page.keyboard.press('PageDown');
@@ -227,6 +279,15 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
       name: 'Finding an Anchor',
     }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('combobox', { name: /Focus strength|焦点强度|Intensité/ }),
+  ).toHaveValue('strong');
+  await expect(page.getByRole('combobox', { name: /^(Font|字体|Police)$/ })).toHaveValue(
+    'sans-serif',
+  );
+  await expect(
+    page.getByRole('slider', { name: /Text width|正文宽度|Largeur du texte/ }),
+  ).toHaveValue('70');
 
   await page.screenshot({ path: 'test-results/epub-spike.png', fullPage: true });
 });
@@ -334,7 +395,15 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
     name: /Focus emphasis|焦点加粗|Mise en évidence/,
   });
   await focusToggle.check();
+  const pdfFocusStrength = page.getByRole('combobox', {
+    name: /Focus strength|焦点强度|Intensité/,
+  });
+  await pdfFocusStrength.selectOption('strong');
   await expect(page.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();
+  await expect(page.locator('.pdf-focus-prefix').filter({ hasText: 'resili' }).first()).toHaveCSS(
+    'font-weight',
+    '850',
+  );
   await page.screenshot({ path: 'test-results/pdf-focus-reader.png', fullPage: true });
 
   const zoomControl = page.getByRole('slider', { name: /Zoom|缩放/ });
@@ -349,6 +418,12 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await page.locator('input[type="file"]').setInputFiles(pdfPath);
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
   await expect(page.locator('.reader-control output')).toHaveText('150%');
+  await expect(
+    page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole('combobox', { name: /Focus strength|焦点强度|Intensité/ }),
+  ).toHaveValue('strong');
 
   await page.screenshot({ path: 'test-results/pdf-text-reader.png', fullPage: true });
 });

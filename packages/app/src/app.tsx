@@ -933,8 +933,9 @@ export function App({ platform }: AppProps) {
     return (
       <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
         <ReaderPage
-          key={`${openBook.source.format}:${openBook.source.name}`}
+          key={`${openBook.bookId ?? 'sample'}:${openBook.source.format}:${openBook.source.name}`}
           source={openBook.source}
+          preferenceScopeId={openBook.bookId ?? openBook.source.name}
           initialLocator={openBook.initialLocator}
           locale={locale}
           t={t}

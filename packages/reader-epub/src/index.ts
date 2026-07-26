@@ -126,7 +126,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
       this.rendition.hooks.content.register((contents: Contents) => {
         if (this.preferences?.focusMode) {
-          applyFocusMarkup(contents.document);
+          applyFocusMarkup(contents.document, this.preferences.focusStrength);
         }
 
         contents.document.addEventListener('keydown', (event) =>
@@ -209,10 +209,21 @@ export class EpubJsReaderEngine implements ReaderEngine {
     rendition.themes.override('font-size', `${preferences.fontSizePercent}%`, true);
     rendition.themes.override('line-height', String(preferences.lineHeight), true);
     rendition.themes.override('word-spacing', `${preferences.wordSpacingEm}em`, true);
+    rendition.themes.override('letter-spacing', `${preferences.letterSpacingEm}em`, true);
+    rendition.themes.override(
+      'font-family',
+      preferences.fontFamily === 'serif'
+        ? "Georgia, 'Times New Roman', serif"
+        : "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      true,
+    );
+    rendition.themes.override('font-weight', String(preferences.fontWeight), true);
+    rendition.themes.override('text-align', preferences.textAlignment, true);
     rendition.themes.override('color', preferences.foreground, true);
     rendition.themes.override('background', preferences.background, true);
     rendition.themes.override('background-color', preferences.background, true);
-    rendition.themes.override('padding', preferences.flow === 'scrolled' ? '0 7vw' : '0', true);
+    rendition.themes.override('padding', `0 ${(100 - preferences.contentWidthPercent) / 2}%`, true);
+    rendition.themes.override('box-sizing', 'border-box', true);
 
     // EPUB.js 0.3.93 declares a single Contents value, while runtime returns Contents[].
     const renderedContents = rendition.getContents() as unknown as Contents[];
@@ -221,7 +232,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       const document = contents.document;
 
       if (preferences.focusMode) {
-        applyFocusMarkup(document);
+        applyFocusMarkup(document, preferences.focusStrength);
       } else {
         removeFocusMarkup(document);
       }

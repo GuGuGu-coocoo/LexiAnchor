@@ -12,7 +12,13 @@ import {
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 
-import type { ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
+import {
+  focusFontWeight,
+  focusPrefixLength,
+  type FocusStrength,
+  type ReaderSelection,
+  type ReaderSource,
+} from '@lexianchor/reader-core';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -35,6 +41,12 @@ export interface PdfReaderCallbacks {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function renderingCancelledError(pageNumber: number): Error {
+  return new RenderingCancelledException(
+    `Rendering cancelled, page ${pageNumber}`,
+  ) as unknown as Error;
 }
 
 function normalizedText(value: string): string {
@@ -65,7 +77,11 @@ function sentenceForSelection(pageSegments: readonly string[], selectedText: str
   return pageText.slice(Math.max(0, index - 100), index + selectedText.length + 100).trim();
 }
 
-function applyFocusMarkup(textLayer: HTMLElement, pageElement: HTMLElement): void {
+function applyFocusMarkup(
+  textLayer: HTMLElement,
+  pageElement: HTMLElement,
+  strength: FocusStrength,
+): void {
   const wordPattern = /([A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?)/g;
   const overlay = textLayer.ownerDocument.createElement('div');
   const pageRect = pageElement.getBoundingClientRect();
@@ -90,7 +106,7 @@ function applyFocusMarkup(textLayer: HTMLElement, pageElement: HTMLElement): voi
     for (const match of original.matchAll(wordPattern)) {
       const word = match[0];
       const start = match.index;
-      const prefixLength = word.length <= 3 ? 1 : Math.ceil(word.length * 0.45);
+      const prefixLength = focusPrefixLength(word.length, strength);
       const range = textSpan.ownerDocument.createRange();
       range.setStart(textNode, start);
       range.setEnd(textNode, start + prefixLength);
@@ -109,6 +125,7 @@ function applyFocusMarkup(textLayer: HTMLElement, pageElement: HTMLElement): voi
       anchor.style.fontFamily = computedStyle.fontFamily;
       anchor.style.fontSize = computedStyle.fontSize;
       anchor.style.fontStyle = computedStyle.fontStyle;
+      anchor.style.fontWeight = String(focusFontWeight(strength));
       anchor.style.letterSpacing = computedStyle.letterSpacing;
       anchor.style.lineHeight = `${rangeRect.height}px`;
       anchor.style.height = `${rangeRect.height}px`;
@@ -168,6 +185,7 @@ export class PdfJsReaderEngine {
   private renderTask: RenderTask | null = null;
   private textLayer: TextLayer | null = null;
   private removeSelectionListener: (() => void) | null = null;
+  private renderGeneration = 0;
 
   constructor(private readonly callbacks: PdfReaderCallbacks) {}
 
@@ -195,6 +213,7 @@ export class PdfJsReaderEngine {
     pageNumber: number,
     scale: number,
     focusMode: boolean,
+    focusStrength: FocusStrength,
   ): Promise<PdfPageResult> {
     const document = this.document;
 
@@ -203,11 +222,17 @@ export class PdfJsReaderEngine {
     }
 
     this.cancelPageRender();
+    const renderGeneration = this.renderGeneration;
     container.replaceChildren();
 
     try {
       const safePageNumber = Math.min(Math.max(1, pageNumber), document.numPages);
       const page = await document.getPage(safePageNumber);
+
+      if (renderGeneration !== this.renderGeneration) {
+        throw renderingCancelledError(safePageNumber);
+      }
+
       const viewport = page.getViewport({ scale });
       const outputScale = Math.min(globalThis.devicePixelRatio || 1, 2);
       const pageElement = container.ownerDocument.createElement('div');
@@ -232,15 +257,23 @@ export class PdfJsReaderEngine {
       pageElement.append(canvas, textLayerElement);
       container.append(pageElement);
 
-      this.renderTask = page.render({
+      const renderTask = page.render({
         canvas,
         viewport,
         transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0],
       });
+      this.renderTask = renderTask;
 
       const textContent = await page.getTextContent();
-      await this.renderTask.promise;
-      this.renderTask = null;
+      await renderTask.promise;
+
+      if (renderGeneration !== this.renderGeneration) {
+        throw renderingCancelledError(safePageNumber);
+      }
+
+      if (this.renderTask === renderTask) {
+        this.renderTask = null;
+      }
 
       const textItems = textContent.items
         .map((item) => ('str' in item ? item.str : ''))
@@ -250,15 +283,24 @@ export class PdfJsReaderEngine {
       const hasText = pageText.length > 0;
 
       if (hasText) {
-        this.textLayer = new TextLayer({
+        const textLayer = new TextLayer({
           textContentSource: textContent,
           container: textLayerElement,
           viewport,
         });
-        await this.textLayer.render();
+        this.textLayer = textLayer;
+        await textLayer.render();
+
+        if (renderGeneration !== this.renderGeneration) {
+          throw renderingCancelledError(safePageNumber);
+        }
+
+        if (this.textLayer === textLayer) {
+          this.textLayer = null;
+        }
 
         if (focusMode) {
-          applyFocusMarkup(textLayerElement, pageElement);
+          applyFocusMarkup(textLayerElement, pageElement, focusStrength);
           textLayerElement.dataset.focusMode = 'on';
         }
 
@@ -300,6 +342,7 @@ export class PdfJsReaderEngine {
   }
 
   private cancelPageRender(): void {
+    this.renderGeneration += 1;
     this.renderTask?.cancel();
     this.textLayer?.cancel();
     this.removeSelectionListener?.();

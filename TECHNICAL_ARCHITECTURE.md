@@ -122,10 +122,9 @@ LexiAnchor/
 │   ├── app/                     # React 应用组合与路由
 │   ├── ui/                      # 设计 token 和可访问组件
 │   ├── domain/                  # 纯业务规则与实体
-│   ├── reader-core/             # 阅读位置、选区、主题公共协议
+│   ├── reader-core/             # 阅读位置、选区、偏好协议与焦点纯规则
 │   ├── reader-epub/             # EPUB adapter
 │   ├── reader-pdf/              # PDF.js adapter
-│   ├── focus-formatting/        # 独立焦点加粗算法
 │   ├── dictionary/              # 词典协议、索引、包格式
 │   ├── translation/             # 本地/在线翻译路由
 │   ├── storage/                 # schema、迁移、Repository
@@ -243,13 +242,26 @@ Readium Web 维护更活跃，但其 TypeScript navigator 需要 RWPM、position
 
 ### 7.3 焦点加粗
 
-`focus-formatting` 是纯函数包：
+`@lexianchor/reader-core` 保存内核无关的纯规则：
 
-- 输入为原始 token 和设置；
-- 输出为不改变原始文本的 decoration 描述；
+- 输入为单词长度和弱/中/强设置；
+- 输出为前缀长度和字重；
 - 不依赖 “Bionic Reading®” 字体、代码、参数或资产；
 - EPUB/PDF 分别实现 decoration adapter；
 - 复制、搜索、选词和屏幕阅读器始终使用原文。
+
+EPUB adapter 使用可逆的中性 `span` 包装前缀；PDF adapter 根据透明文本层坐标在独立覆盖层
+绘制前缀。两者共用同一组产品规则，但不修改书籍或 PDF 原文件。PDF 渲染使用任务局部引用和
+渲染代次校验；连续调整缩放或焦点强度时，过期任务被取消且不能覆盖最新页面。
+
+### 7.4 阅读偏好
+
+`ReaderPreferences` 是 EPUB/PDF 共享协议。当前支持主题颜色、分页/滚动、字体、字重、字号、
+行距、词间距、字间距、正文宽度、对齐，以及焦点开关和三级强度。应用先读取全局默认值，再
+合并单本书覆盖值；每次调整同时更新两者，使新书继承最近习惯、旧书恢复自己的设置。
+
+v0.1 当前将阅读偏好保存到本机 `localStorage`，书籍、进度和词卡仍保存在 SQLite/OPFS。
+在跨设备同步进入范围时，偏好要迁移到已预留的 `ReaderPreferences` 数据实体与同步接口。
 
 ## 8. 本地数据一致性
 

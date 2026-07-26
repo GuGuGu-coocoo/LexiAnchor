@@ -62,8 +62,8 @@
 | 分页/滚动 | 通过 | Preferences API 支持 | 两者都可 |
 | EPUB 2/3 目录 | NCX/Navigation Document 均解析为统一目录树并可跳转 | Publication Manifest 导航原生支持 | EPUB.js 通过当前基线 |
 | 位置保存 | CFI 保存并重新打开到同一章节 | Locator + positions 设计更完整 | v0.1 EPUB.js 足够 |
-| 字号/行距/词间距/颜色 | 通过 themes override | Preferences API 原生支持且更系统 | Readium 更强，但不是当前决定项 |
-| 焦点加粗 | DOM hook 注入并可逆移除 | 支持 injectables/decorators，但接入面更大 | EPUB.js 通过 |
+| 字体/字重/字号/间距/宽度/对齐/颜色 | 通过 themes override | Preferences API 原生支持且更系统 | Readium 更强，但不是当前决定项 |
+| 三级焦点加粗 | DOM hook 注入并可逆移除 | 支持 injectables/decorators，但接入面更大 | EPUB.js 通过 |
 | 选词与原句 | 通过；使用 live Selection，保留 CFI range | 提供 textSelected listener | 两者都可 |
 | 无障碍语义 | `main`、标题等语义保留；加粗只增加中性 `span` | 设计更完整 | EPUB.js 通过当前基线 |
 | 安全默认值 | 明确禁用书内脚本与弹窗，iframe sandbox | 有内容保护能力 | 两者仍需持续安全测试 |
@@ -85,6 +85,9 @@
    relocation href 标记，目录跳转继续走统一 locator 路径并保存进度。
 7. 键盘事件需要同时覆盖宿主窗口与 EPUB iframe；方向键和 Page Up/Page Down 统一映射到
    adapter 翻页，并在输入框、下拉框、文本框和可编辑内容中停用。
+8. 最初的焦点标记只带 CSS class，iframe 内没有对应可见样式；改为 adapter 按共享规则直接
+   写入弱/中/强字重，并用浏览器测试读取计算结果，避免“DOM 有标记但视觉无效果”的假通过。
+9. 全局默认与单本书偏好由产品层统一持久化；重新打开测试书后验证字体、正文宽度和焦点强度恢复。
 
 ## 决策
 
@@ -104,6 +107,6 @@ v0.1 使用 EPUB.js 0.3.93，原因是它唯一满足“浏览器直接选择本
 
 - 用更大的公开、无 DRM EPUB 2/3 样本扩展兼容矩阵；
 - 测试固定版式、RTL、竖排、脚注、图片、内部链接与异常 EPUB；
-- 将焦点加粗转换器独立为可测试模块，并验证 CFI 在开关前后不漂移；
+- 用更复杂的嵌套样式、连字符和非拉丁文本继续扩展焦点规则测试，并验证 CFI 在开关前后不漂移；
 - 对 Electron 的导航、外链和文件协议增加安全测试；
 - 阅读偏好和书籍数据进入正式本地存储后，用书籍内容哈希代替文件名作为位置 key。

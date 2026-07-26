@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
-import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
+import type {
+  FocusStrength,
+  ReaderLocator,
+  ReaderSelection,
+  ReaderSource,
+} from '@lexianchor/reader-core';
 import type {
   BergamotTranslationProvider,
   TranslationTargetLanguage,
@@ -14,9 +19,11 @@ import {
 } from '@lexianchor/reader-pdf';
 
 import { SelectionTools, type WordCardDraft } from './selection-tools';
+import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
+  readonly preferenceScopeId: string;
   readonly initialLocator?: ReaderLocator;
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
@@ -58,6 +65,7 @@ function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): S
 
 export function PdfReaderPage({
   source,
+  preferenceScopeId,
   initialLocator,
   locale,
   t,
@@ -71,12 +79,17 @@ export function PdfReaderPage({
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
+  const [initialPreferences] = useState(() => readReaderPreferences(preferenceScopeId));
+  const storedPreferencesRef = useRef(initialPreferences);
   const [initialView] = useState(() => readStoredView(source, initialLocator));
   const [documentInfo, setDocumentInfo] = useState<PdfDocumentInfo>();
   const [pageResult, setPageResult] = useState<PdfPageResult>();
   const [pageNumber, setPageNumber] = useState(initialView.pageNumber);
   const [scale, setScale] = useState(initialView.scale);
-  const [focusMode, setFocusMode] = useState(false);
+  const [focusMode, setFocusMode] = useState(initialPreferences.focusMode);
+  const [focusStrength, setFocusStrength] = useState<FocusStrength>(
+    initialPreferences.focusStrength,
+  );
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -119,7 +132,7 @@ export function PdfReaderPage({
     let isActive = true;
 
     void engine
-      .renderPage(container, pageNumber, scale, focusMode)
+      .renderPage(container, pageNumber, scale, focusMode, focusStrength)
       .then((result) => {
         if (!isActive) {
           return;
@@ -157,7 +170,17 @@ export function PdfReaderPage({
     return () => {
       isActive = false;
     };
-  }, [documentInfo, focusMode, onLocationChange, pageNumber, scale, source]);
+  }, [documentInfo, focusMode, focusStrength, onLocationChange, pageNumber, scale, source]);
+
+  useEffect(() => {
+    const preferences = {
+      ...storedPreferencesRef.current,
+      focusMode,
+      focusStrength,
+    };
+    storedPreferencesRef.current = preferences;
+    persistReaderPreferences(preferenceScopeId, preferences);
+  }, [focusMode, focusStrength, preferenceScopeId]);
 
   const pageCount = documentInfo?.pageCount ?? 0;
   const progress = pageCount > 0 ? Math.round((pageNumber / pageCount) * 100) : 0;
@@ -223,6 +246,19 @@ export function PdfReaderPage({
               disabled={!hasText}
               onChange={(event) => setFocusMode(event.target.checked)}
             />
+          </label>
+
+          <label className="reader-control" aria-disabled={!hasText}>
+            <span>{t('focusStrength')}</span>
+            <select
+              value={focusStrength}
+              disabled={!hasText}
+              onChange={(event) => setFocusStrength(event.target.value as FocusStrength)}
+            >
+              <option value="light">{t('lightStrength')}</option>
+              <option value="medium">{t('mediumStrength')}</option>
+              <option value="strong">{t('strongStrength')}</option>
+            </select>
           </label>
 
           <label className="reader-control">

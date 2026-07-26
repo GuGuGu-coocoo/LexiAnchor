@@ -18,7 +18,9 @@ saved as persistent, searchable and editable word cards with their reading conte
 Word cards can be exported to and restored from a versioned JSON backup without a
 network connection. Optional Mozilla Bergamot English–French and English–Chinese
 models can be installed for private, on-device sentence translation and reused while
-offline.
+offline. EPUB reading includes persistent per-book typography controls and independently
+implemented, removable light/medium/strong focus highlighting; text-layer PDFs use the
+same focus rules without modifying the original document.
 
 ## Requirements
 
