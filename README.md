@@ -1,57 +1,349 @@
 # LexiAnchor
 
-LexiAnchor is a local-first EPUB/PDF reader designed for focused English learning.
-Its primary goals are comfortable reading, offline dictionaries and translation,
-and turning words encountered in books into useful word cards.
+一款本地优先的 EPUB / PDF 阅读器，帮助你专注阅读、查询单词、翻译内容并制作词卡。
 
-The project is in active development. The shared Web/PWA and Electron application
-can now batch-import, organize, and read DRM-free EPUB 2/3 and PDF files. Imported books
-and reading progress persist locally through SQLite WASM and OPFS. The library supports
-drag-and-drop, editable metadata, title/author search, four sort orders, and confirmed local
-deletion with choices for preserving reading progress and word cards. Selecting an English word
-queries English Wiktionary with a bundled Princeton WordNet 3.1 offline fallback and an optional, installable FreeDict
-English–French dictionary plus an optional FreeDict/WikDict English–Chinese dictionary
-offline. Users can also import an uncompressed StarDict `.ifo + .idx + .dict` set.
-They can enable dictionaries and change result order in Settings, while
-explicit online translation and Web search remain available. Dictionary results can be
-saved as persistent, searchable and editable word cards with their reading context.
-Word cards can be exported to and restored from a versioned JSON backup without a
-network connection. Optional Mozilla Bergamot English–French and English–Chinese
-models can be installed for private, on-device sentence translation and reused while
-offline. EPUB reading includes persistent per-book typography controls and independently
-implemented, removable light/medium/strong focus highlighting; text-layer PDFs use the
-same focus rules without modifying the original document. Settings show local storage
-usage, browser quota, and whether the browser has granted protection from automatic cleanup.
-Versioned application backups can optionally include the original local book copies.
+A local-first EPUB / PDF reader for focused reading, dictionary lookup, translation, and vocabulary cards.
 
-## Requirements
+Un lecteur EPUB / PDF local, conçu pour lire sans distraction, consulter le dictionnaire, traduire et créer des fiches de vocabulaire.
+
+[中文](#中文) · [English](#english) · [Français](#français)
+
+> [!IMPORTANT]
+> LexiAnchor 目前是测试版本。请只打开你信任的、无 DRM 的 EPUB 或 PDF 文件，并定期备份重要数据。
+>
+> LexiAnchor is currently a test release. Open only trusted, DRM-free EPUB or PDF files and back up important data regularly.
+>
+> LexiAnchor est actuellement en version de test. Ouvrez uniquement des fichiers EPUB ou PDF fiables et sans DRM, et sauvegardez régulièrement vos données importantes.
+
+---
+
+## 中文
+
+### 1. 我应该下载哪个文件？
+
+前往 [LexiAnchor v0.1.0 下载页面](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.0)，根据电脑选择：
+
+| 你的电脑                                           | 下载文件                     |
+| -------------------------------------------------- | ---------------------------- |
+| 配备 Apple 芯片的 Mac（M1、M2、M3、M4 或更新型号） | `LexiAnchor-macOS-arm64.zip` |
+| 64 位 Windows 10 / 11 电脑                         | `LexiAnchor-Windows-x64.zip` |
+
+目前没有 Intel Mac、Windows ARM 或 Linux 安装包。不要下载 GitHub 自动生成的 `Source code` 文件——它们是给开发者看的，不能直接打开阅读器。
+
+### 2. Mac 安装步骤
+
+1. 下载 `LexiAnchor-macOS-arm64.zip`。
+2. 打开“下载”文件夹，双击 ZIP 文件解压。
+3. 把解压出来的 `LexiAnchor.app` 拖进“应用程序”文件夹。
+4. 第一次启动时，不要直接双击。按住 `Control` 键并点按 `LexiAnchor.app`，选择“打开”。
+5. 如果系统再次询问，继续选择“打开”。
+
+当前版本尚未经过 Apple 公证，所以 macOS 可能显示安全提醒。这不代表文件损坏。请确保文件来自本仓库的正式 Release 页面。
+
+如果你的 Mac 显示“此应用需要 Apple 芯片”，说明你使用的是 Intel Mac，当前安装包不支持这台电脑。
+
+### 3. Windows 安装步骤
+
+1. 下载 `LexiAnchor-Windows-x64.zip`。
+2. 在“下载”文件夹中右键点击 ZIP，选择“全部解压”。
+3. 打开解压后的完整文件夹。不要只把 `LexiAnchor.exe` 单独拖出来。
+4. 双击 `LexiAnchor.exe`。
+5. 如果 Microsoft Defender SmartScreen 显示提醒，先确认文件来自本仓库，然后点击“更多信息” → “仍要运行”。
+
+当前版本还没有 Windows 代码签名，因此首次启动可能出现安全提醒。整个解压文件夹都属于应用程序，使用过程中不要随意删除里面的文件。
+
+### 4. 第一次使用
+
+1. 启动 LexiAnchor。
+2. 在“书库”页面点击导入按钮，选择一本 `.epub` 或 `.pdf` 书籍；也可以把文件直接拖进窗口。
+3. 等待书籍出现在书库中。
+4. 点击书籍封面或标题开始阅读。
+5. 用以下方式翻页：
+   - 左右翻页模式：双指在触控板上左右滑动，或按键盘 `←` / `→`。
+   - 上下连续模式：双指上下滚动，或使用鼠标滚轮。
+6. 选中英文单词即可查看释义、翻译并保存为词卡。
+7. 点击阅读界面的设置按钮，可以调整主题、字体、字号、行距、页边距、单栏 / 双栏和翻页方式。
+8. 按 `Esc` 退出全屏。
+
+阅读进度和外观设置会自动保存在当前电脑上。侧边栏开关、全屏标题栏自动隐藏和阅读布局也会保留到下次启动。
+
+### 5. 常用功能
+
+- **目录跳转：** 点击阅读器顶部的章节标题，在下拉菜单中选择章节。
+- **划词翻译：** 用鼠标拖动选中文字，翻译浮窗会显示在选区附近。
+- **词卡：** 在划词结果中保存单词；打开词卡可以查看完整释义，左右滑动可切换卡片。
+- **阅读外观：** 在设置中调整字体、字号、行距、字间距、页边距、主题和分栏。
+- **外观预设：** 保存常用配置、覆盖当前预设，或一键恢复默认设置。
+- **全屏阅读：** 进入全屏后，标题栏可以自动隐藏；鼠标移到窗口顶部时会重新出现。
+- **EPUB / PDF 布局：** 两种格式都支持上下连续阅读和左右分页阅读。
+
+### 6. 书籍和数据保存在哪里？
+
+LexiAnchor 采用本地优先设计。导入的书籍、阅读进度、词卡、词典和设置主要保存在你的电脑上，不会自动上传到云端。
+
+卸载应用、清除浏览器数据或手动删除应用数据前，请先在设置中导出备份。应用数据备份可以选择包含原始书籍；词卡也可以单独导出为 JSON 文件。
+
+### 7. 常见问题
+
+**双击应用没有反应怎么办？**
+
+Mac 请使用“按住 `Control` 点按 → 打开”；Windows 请先完整解压 ZIP，再运行文件夹中的 `LexiAnchor.exe`。
+
+**为什么有些 EPUB 打不开？**
+
+当前仅支持无 DRM 的 EPUB 2 / EPUB 3。来自部分商业书店、带 DRM 保护的电子书无法导入。
+
+**为什么 PDF 中不能选中文字？**
+
+扫描版 PDF 的每一页实际上是一张图片，没有文字层，因此无法正常划词。请换用带文字层的 PDF。
+
+**为什么翻译没有结果？**
+
+离线词典可以直接使用；句子翻译需要先在设置中下载对应的离线翻译模型。在线翻译和网页搜索需要网络连接。
+
+**可以直接把 `.app` 或 Windows 文件夹发给别人吗？**
+
+可以，但推荐直接把本 Release 页面的链接发给对方，这样更容易下载到完整、未被改动的文件。Mac 用户需要 Apple 芯片，Windows 用户需要 64 位 Windows 10 / 11。
+
+**网页版本在哪里？**
+
+目前没有公开部署的网页版本。普通用户请使用上面的桌面版；开发者可以按照文末步骤在本机运行网页端。
+
+---
+
+## English
+
+### 1. Which file should I download?
+
+Open the [LexiAnchor v0.1.0 download page](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.0) and choose:
+
+| Your computer                                     | Download                     |
+| ------------------------------------------------- | ---------------------------- |
+| Mac with Apple silicon (M1, M2, M3, M4, or newer) | `LexiAnchor-macOS-arm64.zip` |
+| 64-bit Windows 10 or 11 PC                        | `LexiAnchor-Windows-x64.zip` |
+
+There is no build for Intel Macs, Windows on ARM, or Linux yet. Do not download the automatically generated `Source code` archives unless you are a developer; they are not runnable applications.
+
+### 2. Install on a Mac
+
+1. Download `LexiAnchor-macOS-arm64.zip`.
+2. Open your Downloads folder and double-click the ZIP file.
+3. Drag `LexiAnchor.app` into the Applications folder.
+4. For the first launch, hold `Control`, click `LexiAnchor.app`, and choose **Open**.
+5. If macOS asks again, choose **Open** once more.
+
+This test build is not notarized by Apple, so macOS may show a security warning. Make sure you downloaded it from this repository's official Release page.
+
+If macOS says the app requires Apple silicon, your Mac has an Intel processor and is not supported by the current build.
+
+### 3. Install on Windows
+
+1. Download `LexiAnchor-Windows-x64.zip`.
+2. Right-click the ZIP file and select **Extract All**.
+3. Open the complete extracted folder. Do not move `LexiAnchor.exe` out by itself.
+4. Double-click `LexiAnchor.exe`.
+5. If Microsoft Defender SmartScreen appears, verify that the file came from this repository, then select **More info** → **Run anyway**.
+
+This test build is not code-signed, so Windows may display a warning on first launch. The entire extracted folder belongs to the application; do not delete individual files from it.
+
+### 4. Your first book
+
+1. Start LexiAnchor.
+2. On the Library page, click the import button and select an `.epub` or `.pdf` book. You can also drag the file into the window.
+3. Wait for the book to appear in your library.
+4. Click its cover or title to start reading.
+5. Navigate in either mode:
+   - Horizontal pages: swipe left or right with two fingers, or press `←` / `→`.
+   - Continuous vertical reading: scroll with two fingers or use the mouse wheel.
+6. Select an English word to see definitions and translations or save it as a word card.
+7. Open the reader settings to change the theme, font, size, spacing, margins, one/two-column layout, and page-turning mode.
+8. Press `Esc` to leave full screen.
+
+Reading progress and appearance settings are saved automatically on this computer. Sidebar visibility, the full-screen toolbar option, and the reading layout are also restored the next time you start the app.
+
+### 5. Main features
+
+- **Table of contents:** Click the chapter title in the top bar and choose a chapter from the menu.
+- **Selection lookup:** Drag across text; a translation panel appears near the selection.
+- **Word cards:** Save a selected word, open a card for full definitions, and swipe left or right between cards.
+- **Reading appearance:** Adjust the font, size, line spacing, letter spacing, margins, theme, and column count.
+- **Appearance presets:** Save a new preset, update the active preset, or restore all defaults in one click.
+- **Full-screen reading:** The top bar can hide automatically and reappear when the pointer reaches the top of the window.
+- **EPUB and PDF layouts:** Both formats support continuous vertical reading and horizontal pagination.
+
+### 6. Where is my data?
+
+LexiAnchor is local-first. Imported books, reading progress, word cards, dictionaries, and settings are primarily stored on your computer and are not automatically uploaded to a cloud service.
+
+Before uninstalling the app, clearing browser data, or deleting application data, export a backup from Settings. An application backup can optionally include the original books. Word cards can also be exported separately as JSON.
+
+### 7. Troubleshooting
+
+**Nothing happens when I open the app.**
+
+On a Mac, use `Control`-click → **Open**. On Windows, extract the entire ZIP before launching `LexiAnchor.exe`.
+
+**Why will my EPUB not open?**
+
+LexiAnchor supports DRM-free EPUB 2 and EPUB 3 files. Books protected by a commercial store's DRM cannot be imported.
+
+**Why can I not select text in a PDF?**
+
+A scanned PDF contains page images instead of a text layer. Word selection requires a PDF with real text.
+
+**Why is there no translation result?**
+
+Offline dictionaries work directly. Sentence translation requires the matching offline model to be downloaded in Settings. Online translation and Web search require an internet connection.
+
+**Can I send the `.app` or Windows folder to someone else?**
+
+Yes, but sharing the official Release link is safer and less likely to produce an incomplete copy. The recipient needs an Apple-silicon Mac or a 64-bit Windows 10 / 11 computer.
+
+**Where is the Web version?**
+
+There is no publicly hosted Web version yet. Regular users should use a desktop download. Developers can run the Web app locally using the instructions at the end of this README.
+
+---
+
+## Français
+
+### 1. Quel fichier dois-je télécharger ?
+
+Ouvrez la [page de téléchargement de LexiAnchor v0.1.0](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.0), puis choisissez :
+
+| Votre ordinateur                                     | Fichier à télécharger        |
+| ---------------------------------------------------- | ---------------------------- |
+| Mac avec puce Apple (M1, M2, M3, M4 ou plus récente) | `LexiAnchor-macOS-arm64.zip` |
+| PC 64 bits sous Windows 10 ou 11                     | `LexiAnchor-Windows-x64.zip` |
+
+Il n'existe pas encore de version pour les Mac Intel, Windows ARM ou Linux. Ne téléchargez pas les archives `Source code` générées automatiquement, sauf si vous êtes développeur : elles ne contiennent pas une application prête à lancer.
+
+### 2. Installation sur Mac
+
+1. Téléchargez `LexiAnchor-macOS-arm64.zip`.
+2. Ouvrez le dossier Téléchargements et double-cliquez sur le fichier ZIP.
+3. Faites glisser `LexiAnchor.app` dans le dossier Applications.
+4. Lors du premier lancement, maintenez la touche `Control`, cliquez sur `LexiAnchor.app`, puis choisissez **Ouvrir**.
+5. Si macOS vous demande une confirmation, choisissez de nouveau **Ouvrir**.
+
+Cette version de test n'est pas certifiée par Apple. macOS peut donc afficher un avertissement de sécurité. Vérifiez que le fichier vient bien de la page Releases officielle de ce dépôt.
+
+Si macOS indique que l'application nécessite une puce Apple, votre Mac utilise un processeur Intel et n'est pas compatible avec la version actuelle.
+
+### 3. Installation sous Windows
+
+1. Téléchargez `LexiAnchor-Windows-x64.zip`.
+2. Faites un clic droit sur le fichier ZIP, puis choisissez **Extraire tout**.
+3. Ouvrez le dossier extrait complet. Ne déplacez pas `LexiAnchor.exe` tout seul.
+4. Double-cliquez sur `LexiAnchor.exe`.
+5. Si Microsoft Defender SmartScreen affiche un avertissement, vérifiez que le fichier vient de ce dépôt, puis choisissez **Informations complémentaires** → **Exécuter quand même**.
+
+Cette version de test n'est pas signée numériquement. Windows peut donc afficher un avertissement au premier lancement. Tous les fichiers du dossier extrait sont nécessaires à l'application : ne les supprimez pas séparément.
+
+### 4. Ouvrir votre premier livre
+
+1. Lancez LexiAnchor.
+2. Dans la Bibliothèque, cliquez sur le bouton d'importation et choisissez un livre `.epub` ou `.pdf`. Vous pouvez aussi faire glisser le fichier dans la fenêtre.
+3. Attendez que le livre apparaisse dans la bibliothèque.
+4. Cliquez sur sa couverture ou son titre pour commencer la lecture.
+5. Utilisez le mode qui vous convient :
+   - Pages horizontales : balayez vers la gauche ou la droite avec deux doigts, ou appuyez sur `←` / `→`.
+   - Lecture verticale continue : faites défiler avec deux doigts ou avec la molette de la souris.
+6. Sélectionnez un mot anglais pour afficher ses définitions et traductions, ou pour l'enregistrer comme fiche de vocabulaire.
+7. Ouvrez les réglages du lecteur pour modifier le thème, la police, la taille, les espacements, les marges, l'affichage sur une/deux colonnes et le mode de changement de page.
+8. Appuyez sur `Esc` pour quitter le plein écran.
+
+La progression de lecture et les réglages d'affichage sont enregistrés automatiquement sur cet ordinateur. L'état de la barre latérale, l'option de masquage de la barre en plein écran et la mise en page sont également restaurés au prochain démarrage.
+
+### 5. Fonctions principales
+
+- **Table des matières :** cliquez sur le titre du chapitre dans la barre supérieure, puis choisissez un chapitre.
+- **Traduction d'une sélection :** sélectionnez du texte ; un panneau de traduction apparaît près de la sélection.
+- **Fiches de vocabulaire :** enregistrez un mot, ouvrez sa fiche pour voir les définitions complètes et balayez à gauche ou à droite pour changer de fiche.
+- **Apparence de lecture :** réglez la police, la taille, l'interligne, l'espacement des lettres, les marges, le thème et le nombre de colonnes.
+- **Préréglages :** enregistrez un nouveau préréglage, remplacez le préréglage actif ou revenez aux réglages par défaut en un clic.
+- **Lecture en plein écran :** la barre supérieure peut se masquer automatiquement et réapparaître lorsque le pointeur atteint le haut de la fenêtre.
+- **Mise en page EPUB / PDF :** les deux formats proposent la lecture verticale continue et la pagination horizontale.
+
+### 6. Où sont enregistrées mes données ?
+
+LexiAnchor fonctionne en priorité en local. Les livres importés, la progression, les fiches, les dictionnaires et les réglages sont principalement conservés sur votre ordinateur et ne sont pas envoyés automatiquement dans le cloud.
+
+Avant de désinstaller l'application, d'effacer les données du navigateur ou de supprimer les données de l'application, exportez une sauvegarde depuis les Réglages. La sauvegarde de l'application peut inclure les livres originaux. Les fiches de vocabulaire peuvent aussi être exportées séparément au format JSON.
+
+### 7. Problèmes fréquents
+
+**Rien ne se passe lorsque j'ouvre l'application.**
+
+Sur Mac, faites `Control`-clic → **Ouvrir**. Sous Windows, extrayez tout le contenu du ZIP avant de lancer `LexiAnchor.exe`.
+
+**Pourquoi mon EPUB ne s'ouvre-t-il pas ?**
+
+LexiAnchor prend en charge les fichiers EPUB 2 et EPUB 3 sans DRM. Les livres protégés par le DRM d'une boutique commerciale ne peuvent pas être importés.
+
+**Pourquoi ne puis-je pas sélectionner le texte d'un PDF ?**
+
+Un PDF numérisé contient des images de pages plutôt qu'une couche de texte. La sélection de mots nécessite un PDF contenant du vrai texte.
+
+**Pourquoi la traduction ne donne-t-elle aucun résultat ?**
+
+Les dictionnaires hors ligne fonctionnent directement. Pour traduire des phrases, téléchargez d'abord le modèle hors ligne correspondant dans les Réglages. La traduction en ligne et la recherche Web nécessitent une connexion Internet.
+
+**Puis-je envoyer le fichier `.app` ou le dossier Windows à quelqu'un ?**
+
+Oui, mais il est préférable de partager le lien officiel de la Release afin d'éviter une copie incomplète. Le destinataire doit posséder un Mac avec puce Apple ou un PC 64 bits sous Windows 10 / 11.
+
+**Où se trouve la version Web ?**
+
+Il n'existe pas encore de version Web publique. Les utilisateurs ordinaires doivent télécharger l'application de bureau. Les développeurs peuvent lancer la version Web localement en suivant les instructions ci-dessous.
+
+---
+
+## For developers / 开发者 / Pour les développeurs
+
+### Requirements / 环境要求 / Prérequis
 
 - Node.js 24 LTS
 - pnpm 11
 - macOS or Windows for desktop packaging
 
-## Development
+### Run locally / 本地运行 / Exécution locale
 
 ```bash
 pnpm install
+
+# Web app: open the address printed in the terminal, normally http://localhost:5173
 pnpm dev:web
+
+# Desktop app
 pnpm dev:desktop
 ```
 
-Create a local desktop test package:
+`localhost` only works while the development command is running. Closing the terminal stops the local Web server.
+
+`localhost` 只有在开发命令持续运行时才能访问；关闭终端后，本地网页服务也会停止。
+
+`localhost` fonctionne uniquement tant que la commande de développement reste active. La fermeture du terminal arrête le serveur Web local.
+
+### Package and test / 打包与测试 / Création et tests
 
 ```bash
+# Create a desktop test package for the current operating system
 pnpm --filter @lexianchor/desktop make
-```
 
-Quality checks:
-
-```bash
+# Run formatting, lint, type checks, and unit tests
 pnpm check
+
+# Run end-to-end browser tests
 pnpm test:e2e
 ```
 
-## Project status
+Books, downloaded dictionaries, translation models, local databases, test documents, and internal development documents are intentionally excluded from Git.
 
-LexiAnchor is currently a personal project. Books, downloaded dictionaries,
-translation models and local databases are intentionally excluded from Git.
+书籍、下载的词典、翻译模型、本地数据库、测试文档和内部开发文档不会提交到 Git。
+
+Les livres, dictionnaires téléchargés, modèles de traduction, bases de données locales, documents de test et documents internes de développement sont volontairement exclus de Git.
+
+## License
+
+[MIT](LICENSE)
