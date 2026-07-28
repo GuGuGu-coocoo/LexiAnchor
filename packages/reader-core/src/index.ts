@@ -67,6 +67,199 @@ export interface ReaderEngine {
   setPreferences(preferences: ReaderPreferences): Promise<void>;
 }
 
+export interface HorizontalPageGestureOptions {
+  readonly getVisualElement: () => HTMLElement | null;
+  readonly isEnabled?: () => boolean;
+  readonly onNext: () => void | Promise<void>;
+  readonly onPrevious: () => void | Promise<void>;
+}
+
+export interface HorizontalPageGestureController {
+  handleWheel(event: WheelEvent): void;
+  dispose(): void;
+}
+
+function projectedDistance(velocity: number, decelerationRate = 0.99): number {
+  return (velocity / 1000) * (decelerationRate / (1 - decelerationRate));
+}
+
+/**
+ * Turns a horizontal trackpad stream into a directly manipulated page surface.
+ * Content follows the gesture immediately, then settles with a critically damped
+ * spring so a new gesture can interrupt it without a discontinuous jump.
+ */
+export function createHorizontalPageGesture(
+  options: HorizontalPageGestureOptions,
+): HorizontalPageGestureController {
+  let position = 0;
+  let velocity = 0;
+  let lastInputAt = 0;
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  let animationFrame: number | null = null;
+  let sequence = 0;
+
+  const prefersReducedMotion = () =>
+    globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+  function visualWidth(): number {
+    return Math.max(320, options.getVisualElement()?.clientWidth ?? 0);
+  }
+
+  function render(nextPosition: number): void {
+    position = nextPosition;
+    const visual = options.getVisualElement();
+
+    if (!visual) {
+      return;
+    }
+
+    const progress = Math.min(1, Math.abs(position) / Math.max(1, visualWidth() * 0.42));
+    visual.style.transform = `translate3d(${position}px, 0, 0)`;
+    visual.style.opacity = String(1 - progress * 0.16);
+    visual.style.willChange = 'transform, opacity';
+  }
+
+  function stopAnimation(): void {
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+    sequence += 1;
+  }
+
+  function resetVisual(): void {
+    render(0);
+    const visual = options.getVisualElement();
+
+    if (visual) {
+      visual.style.removeProperty('transform');
+      visual.style.removeProperty('opacity');
+      visual.style.removeProperty('will-change');
+    }
+  }
+
+  function springTo(
+    target: number,
+    initialVelocity: number,
+    onSettled?: () => void,
+    dampingRatio = 1,
+  ): void {
+    stopAnimation();
+    const ownSequence = sequence;
+    const response = 0.34;
+    const stiffness = ((2 * Math.PI) / response) ** 2;
+    const damping = 2 * dampingRatio * Math.sqrt(stiffness);
+    let springVelocity = initialVelocity;
+    let previousTime = performance.now();
+
+    const tick = (time: number) => {
+      if (ownSequence !== sequence) {
+        return;
+      }
+
+      const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
+      previousTime = time;
+      const acceleration = -stiffness * (position - target) - damping * springVelocity;
+      springVelocity += acceleration * elapsed;
+      render(position + springVelocity * elapsed);
+
+      if (Math.abs(position - target) < 0.5 && Math.abs(springVelocity) < 5) {
+        render(target);
+        animationFrame = null;
+        onSettled?.();
+        return;
+      }
+
+      animationFrame = requestAnimationFrame(tick);
+    };
+
+    animationFrame = requestAnimationFrame(tick);
+  }
+
+  function finishGesture(): void {
+    endTimer = null;
+    const width = visualWidth();
+    const projected =
+      position + Math.max(-width * 0.55, Math.min(width * 0.55, projectedDistance(velocity)));
+    const direction =
+      position < -10 && (projected < -width * 0.16 || velocity < -480)
+        ? 1
+        : position > 10 && (projected > width * 0.16 || velocity > 480)
+          ? -1
+          : 0;
+
+    if (direction === 0) {
+      springTo(0, velocity, resetVisual);
+      return;
+    }
+
+    if (prefersReducedMotion()) {
+      resetVisual();
+      void Promise.resolve(direction > 0 ? options.onNext() : options.onPrevious()).catch(
+        resetVisual,
+      );
+      return;
+    }
+
+    const exitPosition = direction > 0 ? -width * 0.22 : width * 0.22;
+    springTo(
+      exitPosition,
+      velocity,
+      () => {
+        const navigationSequence = sequence;
+        void Promise.resolve(direction > 0 ? options.onNext() : options.onPrevious()).then(() => {
+          if (navigationSequence !== sequence) {
+            return;
+          }
+
+          render(direction > 0 ? width * 0.08 : -width * 0.08);
+          springTo(0, velocity * 0.08, resetVisual);
+        }, resetVisual);
+      },
+      Math.abs(velocity) > 700 ? 0.86 : 1,
+    );
+  }
+
+  function handleWheel(event: WheelEvent): void {
+    if (
+      options.isEnabled?.() === false ||
+      Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    const now = performance.now();
+    const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+    const delta = event.deltaX * scale;
+    const elapsed = lastInputAt > 0 ? Math.max(8, now - lastInputAt) : 16;
+    lastInputAt = now;
+
+    stopAnimation();
+    const instantaneousVelocity = (-delta / elapsed) * 1000;
+    velocity = velocity * 0.42 + instantaneousVelocity * 0.58;
+    const limit = visualWidth() * 0.34;
+    render(Math.max(-limit, Math.min(limit, position - delta)));
+
+    if (endTimer !== null) {
+      clearTimeout(endTimer);
+    }
+    endTimer = setTimeout(finishGesture, 90);
+  }
+
+  return {
+    handleWheel,
+    dispose() {
+      stopAnimation();
+      if (endTimer !== null) {
+        clearTimeout(endTimer);
+        endTimer = null;
+      }
+      resetVisual();
+    },
+  };
+}
+
 export const defaultReaderPreferences: ReaderPreferences = {
   flow: 'paginated',
   pageSpread: 'single',

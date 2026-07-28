@@ -2,6 +2,12 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+test.beforeEach(async ({ context }) => {
+  await context.route('https://en.wiktionary.org/**', (route) =>
+    route.abort('internetdisconnected'),
+  );
+});
+
 const freeDictFixture = `<?xml version="1.0" encoding="UTF-8"?>
 <TEI xmlns="http://www.tei-c.org/ns/1.0">
   <text><body>
@@ -409,6 +415,21 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
   await expect(page.locator('.selection-popover-shell')).toBeVisible();
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
+  await expect(page.locator('.selection-popover-shell .selection-inspector')).toHaveCSS(
+    'overflow-y',
+    'scroll',
+  );
+  const popoverScrollTop = await page
+    .locator('.selection-popover-shell .selection-inspector')
+    .evaluate((popover) => {
+      popover.style.maxHeight = '120px';
+      popover.scrollTop = 80;
+      return popover.scrollTop;
+    });
+  expect(popoverScrollTop).toBeGreaterThan(0);
+  const fullscreenReaderWidth = await page.getByTestId('epub-container').evaluate((container) => {
+    return container.getBoundingClientRect().width;
+  });
   await page.screenshot({ path: 'test-results/epub-selection-popover.png', fullPage: true });
   await page
     .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
@@ -416,6 +437,13 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
+  await expect
+    .poll(() =>
+      page
+        .getByTestId('epub-container')
+        .evaluate((container) => container.getBoundingClientRect().width),
+    )
+    .toBeLessThan(fullscreenReaderWidth - 200);
   await appearancePanel.locator('summary').click();
 
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).check();
@@ -479,11 +507,23 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   await bookFrame.locator('body').click({ position: { x: 24, y: 24 } });
   const progressBeforeSwipe = await page.locator('.reader-engine-label').textContent();
-  await bookFrame.locator('body').dispatchEvent('wheel', {
-    deltaMode: 0,
-    deltaX: 120,
-    deltaY: 2,
+  const gestureTransform = await bookFrame.locator('body').evaluate((body) => {
+    body.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        deltaX: 120,
+        deltaY: 2,
+      }),
+    );
+    const frame = body.ownerDocument.defaultView?.frameElement;
+    const container = frame?.ownerDocument.querySelector<HTMLElement>(
+      '[data-testid="epub-container"]',
+    );
+    return container?.style.transform ?? '';
   });
+  expect(gestureTransform).toContain('translate3d(-120px');
   await expect(page.locator('.reader-engine-label')).not.toHaveText(progressBeforeSwipe ?? '');
   const progressAfterSwipe = await page.locator('.reader-engine-label').textContent();
   await page.getByRole('button', { name: /Previous|上一页|Précédent/ }).click();
@@ -623,7 +663,7 @@ test('imports a DRM-free EPUB 2 file from the local device', async ({ page }) =>
   ).toHaveAttribute('aria-current', 'location');
 });
 
-test('imports and reads a text-layer PDF with zoom, selection, focus, and restored progress', async ({
+test('imports and reads a text-layer PDF with zoom, selection, gestures, and restored progress', async ({
   page,
 }) => {
   await page.goto('/');
@@ -738,30 +778,28 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await expect(searchPage).toHaveURL(/google\.com\/search\?q=resilient/);
   await searchPage.close();
 
-  const focusToggle = page.getByRole('checkbox', {
-    name: /Focus emphasis|焦点加粗|Mise en évidence/,
-  });
-  await focusToggle.check();
-  const pdfFocusStrength = page.getByRole('combobox', {
-    name: /Focus strength|焦点强度|Intensité/,
-  });
-  await pdfFocusStrength.selectOption('strong');
-  await expect(page.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();
-  await expect(page.locator('.pdf-focus-prefix').filter({ hasText: 'resili' }).first()).toHaveCSS(
-    'font-weight',
-    '850',
-  );
-  await page.screenshot({ path: 'test-results/pdf-focus-reader.png', fullPage: true });
+  await expect(
+    page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),
+  ).toHaveCount(0);
+  await expect(page.locator('.pdf-focus-prefix')).toHaveCount(0);
 
   const zoomControl = page.getByRole('slider', { name: /Zoom|缩放/ });
   await zoomControl.fill('1.5');
   await expect(page.locator('.reader-control output')).toHaveText('150%');
 
-  await page.locator('.pdf-reader-stage').dispatchEvent('wheel', {
-    deltaMode: 0,
-    deltaX: 120,
-    deltaY: 2,
+  const pdfGestureTransform = await page.locator('.pdf-reader-stage').evaluate((stage) => {
+    stage.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        deltaX: 120,
+        deltaY: 2,
+      }),
+    );
+    return stage.querySelector<HTMLElement>('[data-testid="pdf-container"]')?.style.transform ?? '';
   });
+  expect(pdfGestureTransform).toContain('translate3d(-120px');
   await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
   await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
@@ -772,10 +810,7 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await expect(page.locator('.reader-control output')).toHaveText('150%');
   await expect(
     page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),
-  ).toBeChecked();
-  await expect(
-    page.getByRole('combobox', { name: /Focus strength|焦点强度|Intensité/ }),
-  ).toHaveValue('strong');
+  ).toHaveCount(0);
 
   await page.screenshot({ path: 'test-results/pdf-text-reader.png', fullPage: true });
 });
@@ -812,7 +847,7 @@ test('keeps an image-only PDF readable and disables text-only features', async (
   ).toBeVisible();
   await expect(
     page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
 
   await page.screenshot({ path: 'test-results/pdf-image-only-reader.png', fullPage: true });
 });

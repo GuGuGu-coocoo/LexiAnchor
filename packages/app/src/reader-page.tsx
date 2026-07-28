@@ -241,7 +241,7 @@ function EpubReaderPage({
     return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
   }, []);
 
-  useHorizontalPageSwipe(readerStageRef, {
+  useHorizontalPageSwipe(readerStageRef, containerRef, {
     enabled: preferences.flow === 'paginated',
     onNext: () => void engineRef.current?.next(),
     onPrevious: () => void engineRef.current?.previous(),

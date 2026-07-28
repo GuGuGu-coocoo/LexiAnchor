@@ -16,6 +16,7 @@ export {
   type DictionaryResult,
   type DictionarySource,
 } from './wordnet';
+export { ExpandedEnglishDictionaryProvider, parseWiktionaryDefinitions } from './wiktionary';
 export {
   OpfsStarDictAssetStore,
   StarDictProvider,

@@ -254,6 +254,8 @@ const english = {
     'Downloads 13.9 MB from FreeDict/WikDict. The file is verified before it is stored locally.',
   automatedDictionaryNote:
     'Automatically generated from Wiktionary data. Chinese translations can be incomplete or inaccurate.',
+  expandedEnglishDictionaryNote:
+    'Uses the broader English Wiktionary when online and automatically falls back to the bundled WordNet dictionary offline.',
   userStarDict: 'Your StarDict dictionary',
   userDictionary: 'USER DICTIONARY',
   userSupplied: 'User supplied',
@@ -538,6 +540,8 @@ const simplifiedChinese: Record<MessageKey, string> = {
   dictionaryDownloadNote: '将从 FreeDict 下载 3.2 MB；校验通过后才会保存到本机。',
   chineseDictionaryDownloadNote: '将从 FreeDict/WikDict 下载 13.9 MB；校验通过后才会保存到本机。',
   automatedDictionaryNote: '该词典由 Wiktionary 数据自动生成，中文翻译可能不完整或不准确。',
+  expandedEnglishDictionaryNote:
+    '联网时优先查询覆盖更广的 English Wiktionary；断网时会自动回退到内置 WordNet。',
   userStarDict: '你的 StarDict 词典',
   userDictionary: '用户词典',
   userSupplied: '用户自行提供',
@@ -836,6 +840,8 @@ const french: Record<MessageKey, string> = {
     "Télécharge 13,9 Mo depuis FreeDict/WikDict. Le fichier est vérifié avant d'être stocké localement.",
   automatedDictionaryNote:
     'Généré automatiquement depuis Wiktionary. Les traductions chinoises peuvent être incomplètes ou inexactes.',
+  expandedEnglishDictionaryNote:
+    'Utilise le Wiktionnaire anglais, plus complet, en ligne et revient automatiquement à WordNet hors ligne.',
   userStarDict: 'Votre dictionnaire StarDict',
   userDictionary: 'DICTIONNAIRE UTILISATEUR',
   userSupplied: 'Fourni par l’utilisateur',

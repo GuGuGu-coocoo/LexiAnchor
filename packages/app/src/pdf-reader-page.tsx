@@ -2,12 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
-import type {
-  FocusStrength,
-  ReaderLocator,
-  ReaderSelection,
-  ReaderSource,
-} from '@lexianchor/reader-core';
+import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
 import type {
   BergamotTranslationProvider,
   TranslationTargetLanguage,
@@ -20,7 +15,6 @@ import {
 
 import { FloatingSelectionTools } from './floating-selection-tools';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
-import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import type { Theme } from './theme';
 import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
 
@@ -72,7 +66,6 @@ function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): S
 
 export function PdfReaderPage({
   source,
-  preferenceScopeId,
   initialLocator,
   theme,
   isFullscreen,
@@ -92,17 +85,11 @@ export function PdfReaderPage({
   const readerStageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
   const openExternalRef = useRef(onOpenExternal);
-  const [initialPreferences] = useState(() => readReaderPreferences(preferenceScopeId));
-  const storedPreferencesRef = useRef(initialPreferences);
   const [initialView] = useState(() => readStoredView(source, initialLocator));
   const [documentInfo, setDocumentInfo] = useState<PdfDocumentInfo>();
   const [pageResult, setPageResult] = useState<PdfPageResult>();
   const [pageNumber, setPageNumber] = useState(initialView.pageNumber);
   const [scale, setScale] = useState(initialView.scale);
-  const [focusMode, setFocusMode] = useState(initialPreferences.focusMode);
-  const [focusStrength, setFocusStrength] = useState<FocusStrength>(
-    initialPreferences.focusStrength,
-  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -164,7 +151,7 @@ export function PdfReaderPage({
     let isActive = true;
 
     void engine
-      .renderPage(container, pageNumber, scale, focusMode, focusStrength)
+      .renderPage(container, pageNumber, scale)
       .then((result) => {
         if (!isActive) {
           return;
@@ -202,23 +189,13 @@ export function PdfReaderPage({
     return () => {
       isActive = false;
     };
-  }, [documentInfo, focusMode, focusStrength, onLocationChange, pageNumber, scale, source]);
-
-  useEffect(() => {
-    const preferences = {
-      ...storedPreferencesRef.current,
-      focusMode,
-      focusStrength,
-    };
-    storedPreferencesRef.current = preferences;
-    persistReaderPreferences(preferenceScopeId, preferences);
-  }, [focusMode, focusStrength, preferenceScopeId]);
+  }, [documentInfo, onLocationChange, pageNumber, scale, source]);
 
   const pageCount = documentInfo?.pageCount ?? 0;
   const progress = pageCount > 0 ? Math.round((pageNumber / pageCount) * 100) : 0;
   const hasText = pageResult?.hasText ?? true;
 
-  useHorizontalPageSwipe(readerStageRef, {
+  useHorizontalPageSwipe(readerStageRef, containerRef, {
     enabled: pageCount > 0,
     onNext: () => setPageNumber((current) => Math.min(pageCount, current + 1)),
     onPrevious: () => setPageNumber((current) => Math.max(1, current - 1)),
@@ -326,32 +303,6 @@ export function PdfReaderPage({
               <option value="light">{t('lightTheme')}</option>
               <option value="dark">{t('darkTheme')}</option>
               <option value="eye-care">{t('eyeCareTheme')}</option>
-            </select>
-          </label>
-
-          <label className="reader-toggle" aria-disabled={!hasText}>
-            <span>
-              <strong>{t('focusMode')}</strong>
-              <small>{hasText ? t('pdfFocusDescription') : t('imageOnlyDescription')}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={focusMode && hasText}
-              disabled={!hasText}
-              onChange={(event) => setFocusMode(event.target.checked)}
-            />
-          </label>
-
-          <label className="reader-control" aria-disabled={!hasText}>
-            <span>{t('focusStrength')}</span>
-            <select
-              value={focusStrength}
-              disabled={!hasText}
-              onChange={(event) => setFocusStrength(event.target.value as FocusStrength)}
-            >
-              <option value="light">{t('lightStrength')}</option>
-              <option value="medium">{t('mediumStrength')}</option>
-              <option value="strong">{t('strongStrength')}</option>
             </select>
           </label>
 

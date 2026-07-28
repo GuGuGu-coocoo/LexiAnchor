@@ -9,7 +9,7 @@ can now batch-import, organize, and read DRM-free EPUB 2/3 and PDF files. Import
 and reading progress persist locally through SQLite WASM and OPFS. The library supports
 drag-and-drop, editable metadata, title/author search, four sort orders, and confirmed local
 deletion with choices for preserving reading progress and word cards. Selecting an English word
-queries the bundled Princeton WordNet 3.1 and an optional, installable FreeDict
+queries English Wiktionary with a bundled Princeton WordNet 3.1 offline fallback and an optional, installable FreeDict
 English–French dictionary plus an optional FreeDict/WikDict English–Chinese dictionary
 offline. Users can also import an uncompressed StarDict `.ifo + .idx + .dict` set.
 They can enable dictionaries and change result order in Settings, while

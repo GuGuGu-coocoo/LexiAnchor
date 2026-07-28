@@ -8,6 +8,10 @@ import type {
   ReaderSelection,
   ReaderSource,
 } from '@lexianchor/reader-core';
+import {
+  createHorizontalPageGesture,
+  type HorizontalPageGestureController,
+} from '@lexianchor/reader-core';
 
 import { applyFocusMarkup, removeFocusMarkup } from './focus-markup';
 
@@ -113,9 +117,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private book: Book | null = null;
   private rendition: Rendition | null = null;
   private preferences: ReaderPreferences | null = null;
-  private wheelDeltaX = 0;
-  private wheelResetTimer: ReturnType<typeof setTimeout> | null = null;
-  private lastWheelNavigationAt = 0;
+  private container: HTMLElement | null = null;
+  private pageGesture: HorizontalPageGestureController | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private resizeFrame: number | null = null;
+  private observedSize = '';
 
   constructor(private readonly callbacks: ReaderCallbacks) {}
 
@@ -127,6 +133,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     await this.close();
 
     try {
+      this.container = container;
       this.book = ePub(source.data);
       this.rendition = this.book.renderTo(container, {
         width: '100%',
@@ -136,6 +143,33 @@ export class EpubJsReaderEngine implements ReaderEngine {
         ignoreClass: 'lexianchor-focus',
         allowScriptedContent: false,
       });
+
+      this.pageGesture = createHorizontalPageGesture({
+        getVisualElement: () => this.container,
+        isEnabled: () => this.preferences?.flow === 'paginated',
+        onNext: () => this.next(),
+        onPrevious: () => this.previous(),
+      });
+      this.resizeObserver = new ResizeObserver((entries) => {
+        const size = entries[0]?.contentRect;
+        const sizeKey = size ? `${Math.round(size.width)}x${Math.round(size.height)}` : '';
+
+        if (!sizeKey || sizeKey === this.observedSize) {
+          return;
+        }
+
+        this.observedSize = sizeKey;
+        const width = Math.round(size?.width ?? container.clientWidth);
+        const height = Math.round(size?.height ?? container.clientHeight);
+        if (this.resizeFrame !== null) {
+          cancelAnimationFrame(this.resizeFrame);
+        }
+        this.resizeFrame = requestAnimationFrame(() => {
+          this.resizeFrame = null;
+          this.rendition?.resize(width, height);
+        });
+      });
+      this.resizeObserver.observe(container);
 
       this.rendition.hooks.content.register((contents: Contents) => {
         if (this.preferences?.focusMode) {
@@ -188,16 +222,21 @@ export class EpubJsReaderEngine implements ReaderEngine {
   }
 
   close(): Promise<void> {
+    this.pageGesture?.dispose();
+    this.pageGesture = null;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    if (this.resizeFrame !== null) {
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = null;
+    }
     this.rendition?.destroy();
     this.book?.destroy();
     this.rendition = null;
     this.book = null;
     this.preferences = null;
-    this.wheelDeltaX = 0;
-    if (this.wheelResetTimer !== null) {
-      clearTimeout(this.wheelResetTimer);
-      this.wheelResetTimer = null;
-    }
+    this.container = null;
+    this.observedSize = '';
     return Promise.resolve();
   }
 
@@ -280,34 +319,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   }
 
   private readonly handleWheelNavigation = (event: WheelEvent): void => {
-    if (
-      this.preferences?.flow !== 'paginated' ||
-      Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
-    ) {
-      this.wheelDeltaX = 0;
-      return;
-    }
-
-    const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
-    this.wheelDeltaX += event.deltaX * scale;
-
-    if (this.wheelResetTimer !== null) {
-      clearTimeout(this.wheelResetTimer);
-    }
-    this.wheelResetTimer = setTimeout(() => {
-      this.wheelDeltaX = 0;
-      this.wheelResetTimer = null;
-    }, 180);
-
-    const now = Date.now();
-    if (Math.abs(this.wheelDeltaX) < 72 || now - this.lastWheelNavigationAt < 420) {
-      return;
-    }
-
-    event.preventDefault();
-    this.callbacks.onNavigationCommand?.(this.wheelDeltaX > 0 ? 'next' : 'previous');
-    this.lastWheelNavigationAt = now;
-    this.wheelDeltaX = 0;
+    this.pageGesture?.handleWheel(event);
   };
 }
 

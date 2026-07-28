@@ -1,11 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  ExpandedEnglishDictionaryProvider,
   FreeDictEnglishChineseProvider,
   FreeDictEnglishFrenchProvider,
   StarDictProvider,
   type FreeDictTeiProvider,
-  WordNetProvider,
   type DictionaryProvider,
   type StarDictInstallStatus,
 } from '@lexianchor/dictionary';
@@ -56,10 +56,7 @@ import type { Theme } from './theme';
 type Section = 'home' | 'library' | 'cards' | 'settings';
 type IconName = Section | 'expand' | 'lock' | 'book-open';
 type DictionaryId =
-  | 'princeton-wordnet-3.1'
-  | 'freedict-eng-fra-0.1.6'
-  | 'freedict-eng-zho-2025.11.23'
-  | 'user-stardict';
+  'english-wiktionary' | 'freedict-eng-fra-0.1.6' | 'freedict-eng-zho-2025.11.23' | 'user-stardict';
 type DownloadableDictionaryId = 'freedict-eng-fra-0.1.6' | 'freedict-eng-zho-2025.11.23';
 type DictionaryInstallState = Readonly<Record<DownloadableDictionaryId, boolean>>;
 type TranslationInstallState = Readonly<
@@ -143,7 +140,7 @@ const ReaderPage = lazy(() =>
   import('./reader-page').then((module) => ({ default: module.ReaderPage })),
 );
 
-const wordNetProvider = new WordNetProvider();
+const englishDictionaryProvider = new ExpandedEnglishDictionaryProvider();
 const freeDictFrenchProvider = new FreeDictEnglishFrenchProvider();
 const freeDictChineseProvider = new FreeDictEnglishChineseProvider();
 const userStarDictProvider = new StarDictProvider();
@@ -157,12 +154,12 @@ const freeDictProviders: Readonly<Record<DownloadableDictionaryId, FreeDictTeiPr
   'freedict-eng-zho-2025.11.23': freeDictChineseProvider,
 };
 const dictionaryProvidersById: Readonly<Record<DictionaryId, DictionaryProvider>> = {
-  'princeton-wordnet-3.1': wordNetProvider,
+  'english-wiktionary': englishDictionaryProvider,
   ...freeDictProviders,
   'user-stardict': userStarDictProvider,
 };
 const dictionaryIds: readonly DictionaryId[] = [
-  'princeton-wordnet-3.1',
+  'english-wiktionary',
   ...downloadableDictionaryIds,
   'user-stardict',
 ];
@@ -260,7 +257,7 @@ function readDictionaryPreferences(): DictionaryPreferences {
   const fallback: DictionaryPreferences = {
     order: dictionaryIds,
     enabled: {
-      'princeton-wordnet-3.1': true,
+      'english-wiktionary': true,
       'freedict-eng-fra-0.1.6': true,
       'freedict-eng-zho-2025.11.23': true,
       'user-stardict': true,
@@ -281,8 +278,8 @@ function readDictionaryPreferences(): DictionaryPreferences {
     return {
       order,
       enabled: {
-        'princeton-wordnet-3.1':
-          parsed.enabled?.['princeton-wordnet-3.1'] ?? fallback.enabled['princeton-wordnet-3.1'],
+        'english-wiktionary':
+          parsed.enabled?.['english-wiktionary'] ?? fallback.enabled['english-wiktionary'],
         'freedict-eng-fra-0.1.6':
           parsed.enabled?.['freedict-eng-fra-0.1.6'] ?? fallback.enabled['freedict-eng-fra-0.1.6'],
         'freedict-eng-zho-2025.11.23':
@@ -2389,12 +2386,13 @@ function SettingsPage({
       }
     >
   > = {
-    'princeton-wordnet-3.1': {
-      name: 'Princeton WordNet 3.1',
+    'english-wiktionary': {
+      name: 'English Wiktionary + WordNet fallback',
       languages: 'EN → EN',
-      license: 'Princeton WordNet License',
-      source: 'https://wordnet.princeton.edu/',
-      licenseUrl: 'https://wordnet.princeton.edu/license-and-commercial-use',
+      license: 'CC-BY-SA-4.0 / Princeton WordNet License',
+      source: 'https://en.wiktionary.org/',
+      licenseUrl: 'https://en.wiktionary.org/wiki/Wiktionary:Copyrights',
+      qualityNote: 'expandedEnglishDictionaryNote',
     },
     'freedict-eng-fra-0.1.6': {
       name: 'FreeDict English–French 0.1.6',

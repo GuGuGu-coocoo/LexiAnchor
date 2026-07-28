@@ -53,7 +53,11 @@ export function FloatingSelectionTools({
   installedTranslationTargets,
 }: FloatingSelectionToolsProps) {
   return (
-    <div className="selection-popover-shell" style={floatingStyle(selection)}>
+    <div
+      className="selection-popover-shell"
+      style={floatingStyle(selection)}
+      onWheelCapture={(event) => event.stopPropagation()}
+    >
       <SelectionTools
         key={selection.text}
         selection={selection}

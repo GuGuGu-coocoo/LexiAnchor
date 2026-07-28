@@ -14,13 +14,7 @@ import {
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 
-import {
-  focusFontWeight,
-  focusPrefixLength,
-  type FocusStrength,
-  type ReaderSelection,
-  type ReaderSource,
-} from '@lexianchor/reader-core';
+import type { ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -240,68 +234,6 @@ function sentenceForSelection(pageSegments: readonly string[], selectedText: str
   return pageText.slice(Math.max(0, index - 100), index + selectedText.length + 100).trim();
 }
 
-function applyFocusMarkup(
-  textLayer: HTMLElement,
-  pageElement: HTMLElement,
-  strength: FocusStrength,
-): void {
-  const wordPattern = /([A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?)/g;
-  const overlay = textLayer.ownerDocument.createElement('div');
-  const pageRect = pageElement.getBoundingClientRect();
-
-  overlay.className = 'pdf-focus-overlay';
-  overlay.setAttribute('aria-hidden', 'true');
-  pageElement.append(overlay);
-
-  for (const textSpan of textLayer.querySelectorAll<HTMLElement>('span')) {
-    if (textSpan.children.length > 0) {
-      continue;
-    }
-
-    const textNode = [...textSpan.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
-    const original = textNode?.textContent ?? '';
-    const computedStyle = textSpan.ownerDocument.defaultView?.getComputedStyle(textSpan);
-
-    if (!textNode || !computedStyle) {
-      continue;
-    }
-
-    for (const match of original.matchAll(wordPattern)) {
-      const word = match[0];
-      const start = match.index;
-      const prefixLength = focusPrefixLength(word.length, strength);
-      const range = textSpan.ownerDocument.createRange();
-      range.setStart(textNode, start);
-      range.setEnd(textNode, start + prefixLength);
-      const rangeRect = range.getBoundingClientRect();
-
-      if (rangeRect.width <= 0 || rangeRect.height <= 0) {
-        continue;
-      }
-
-      const anchor = textSpan.ownerDocument.createElement('span');
-      anchor.className = 'pdf-focus-prefix';
-      anchor.dataset.lexianchorFocus = 'anchor';
-      anchor.textContent = word.slice(0, prefixLength);
-      anchor.style.left = `${rangeRect.left - pageRect.left}px`;
-      anchor.style.top = `${rangeRect.top - pageRect.top}px`;
-      anchor.style.fontFamily = computedStyle.fontFamily;
-      anchor.style.fontSize = computedStyle.fontSize;
-      anchor.style.fontStyle = computedStyle.fontStyle;
-      anchor.style.fontWeight = String(focusFontWeight(strength));
-      anchor.style.letterSpacing = computedStyle.letterSpacing;
-      anchor.style.lineHeight = `${rangeRect.height}px`;
-      anchor.style.height = `${rangeRect.height}px`;
-      overlay.append(anchor);
-
-      const naturalWidth = anchor.getBoundingClientRect().width;
-      if (naturalWidth > 0) {
-        anchor.style.transform = `scaleX(${rangeRect.width / naturalWidth})`;
-      }
-    }
-  }
-}
-
 function listenForSelection(
   container: HTMLElement,
   pageSegments: readonly string[],
@@ -385,8 +317,6 @@ export class PdfJsReaderEngine {
     container: HTMLElement,
     pageNumber: number,
     scale: number,
-    focusMode: boolean,
-    focusStrength: FocusStrength,
   ): Promise<PdfPageResult> {
     const document = this.document;
 
@@ -470,11 +400,6 @@ export class PdfJsReaderEngine {
 
         if (this.textLayer === textLayer) {
           this.textLayer = null;
-        }
-
-        if (focusMode) {
-          applyFocusMarkup(textLayerElement, pageElement, focusStrength);
-          textLayerElement.dataset.focusMode = 'on';
         }
 
         this.removeSelectionListener = listenForSelection(
