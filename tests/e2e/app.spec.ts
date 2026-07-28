@@ -362,6 +362,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     )
     .toBe('rgb(248, 243, 229)');
 
+  const chapterBeforeSidebarResize = await currentEpubHref(page);
   await page
     .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
     .click();
@@ -371,12 +372,18 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
   await expect(readerSidebar).toBeVisible();
+  await expect.poll(() => currentEpubHref(page)).toBe(chapterBeforeSidebarResize);
 
   const progressBeforeFullscreen = await page.locator('.reader-engine-label').textContent();
   await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
   await expect(readerSidebar).toBeHidden();
   await expect(page.locator('.reader-engine-label')).toHaveText(progressBeforeFullscreen ?? '');
+  await expect(page.locator('.reader-page')).toHaveClass(/reader-page--toolbar-hidden/, {
+    timeout: 3_000,
+  });
+  await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
+  await expect(page.locator('.reader-page')).not.toHaveClass(/reader-page--toolbar-hidden/);
   await page
     .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
     .click();
@@ -397,17 +404,34 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   const firstChapter = tableOfContents.getByRole('button', { name: 'A Quiet Beginning' });
   const secondChapter = tableOfContents.getByRole('button', { name: 'Finding an Anchor' });
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
+  await expect(tableOfContents.getByRole('button').first()).toHaveText('A Quiet Beginning');
   await secondChapter.click();
   await expect.poll(() => currentEpubHref(page)).toContain('chapter-2.xhtml');
   await expectEpubHeading(page, 'Finding an Anchor');
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
   await expect(secondChapter).toHaveAttribute('aria-current', 'location');
+  await expect(tableOfContents.getByRole('button').first()).toHaveText('Finding an Anchor');
   await firstChapter.click();
   await expect.poll(() => currentEpubHref(page)).toContain('chapter-1.xhtml');
   await expectEpubHeading(page, 'A Quiet Beginning');
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
   await expect(secondChapter).not.toHaveAttribute('aria-current', 'location');
   await page.locator('.reader-title-group').hover();
   await page.screenshot({ path: 'test-results/epub-table-of-contents.png', fullPage: true });
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
 
   await bookFrame.locator('em').evaluate((element) => {
     const selection = element.ownerDocument.defaultView?.getSelection();
@@ -528,7 +552,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
         .evaluate((container) => container.getBoundingClientRect().width),
     )
     .toBeLessThan(fullscreenReaderWidth - 200);
-  await appearancePanel.locator('summary').click();
+  await expect(appearancePanel).toHaveAttribute('open', '');
 
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).check();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();

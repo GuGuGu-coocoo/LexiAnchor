@@ -17,6 +17,7 @@ import { FloatingSelectionTools } from './floating-selection-tools';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import type { Theme } from './theme';
 import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
+import { useFullscreenToolbar } from './use-fullscreen-toolbar';
 
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
@@ -94,6 +95,13 @@ export function PdfReaderPage({
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const {
+    autoHide: autoHideFullscreenToolbar,
+    isToolbarVisible,
+    revealToolbar,
+    scheduleHide,
+    setAutoHide: setAutoHideFullscreenToolbar,
+  } = useFullscreenToolbar(isFullscreen);
 
   useEffect(() => {
     openExternalRef.current = onOpenExternal;
@@ -210,8 +218,17 @@ export function PdfReaderPage({
   }
 
   return (
-    <section className="reader-page" aria-label={t('pdfReader')}>
-      <header className="reader-toolbar">
+    <section
+      className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${
+        isFullscreen && !isToolbarVisible ? ' reader-page--toolbar-hidden' : ''
+      }`}
+      aria-label={t('pdfReader')}
+    >
+      <header
+        className="reader-toolbar"
+        onPointerEnter={revealToolbar}
+        onPointerLeave={() => scheduleHide(700)}
+      >
         <button
           className="reader-icon-button"
           type="button"
@@ -237,6 +254,24 @@ export function PdfReaderPage({
           >
             <span aria-hidden="true">◧</span>
             <span>{isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
+          </button>
+          <button
+            className="reader-icon-button reader-toolbar-visibility-button"
+            type="button"
+            aria-label={
+              autoHideFullscreenToolbar
+                ? t('keepFullscreenToolbarVisible')
+                : t('autoHideFullscreenToolbar')
+            }
+            aria-pressed={autoHideFullscreenToolbar}
+            onClick={() => setAutoHideFullscreenToolbar(!autoHideFullscreenToolbar)}
+          >
+            <span aria-hidden="true">{autoHideFullscreenToolbar ? '⌃' : '—'}</span>
+            <span>
+              {autoHideFullscreenToolbar
+                ? t('autoHideFullscreenToolbar')
+                : t('keepFullscreenToolbarVisible')}
+            </span>
           </button>
           <button
             className="reader-icon-button"
@@ -290,6 +325,18 @@ export function PdfReaderPage({
             localTranslationProvider={localTranslationProvider}
             installedTranslationTargets={installedTranslationTargets}
           />
+
+          <label className="reader-toggle reader-fullscreen-toolbar-setting">
+            <span>
+              <strong>{t('autoHideFullscreenToolbar')}</strong>
+              <small>{t('autoHideFullscreenToolbarDescription')}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={autoHideFullscreenToolbar}
+              onChange={(event) => setAutoHideFullscreenToolbar(event.target.checked)}
+            />
+          </label>
 
           <div className="reader-setting-group">
             <p className="reader-setting-title">{t('pdfReader')}</p>

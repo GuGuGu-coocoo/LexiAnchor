@@ -147,6 +147,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private pageGesture: HorizontalPageGestureController | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeFrame: number | null = null;
+  private resizeSettleTimer: ReturnType<typeof setTimeout> | null = null;
+  private layoutAnchor: ReaderLocator | null = null;
+  private layoutRevision = 0;
   private observedSize = '';
 
   constructor(private readonly callbacks: ReaderCallbacks) {}
@@ -204,9 +207,19 @@ export class EpubJsReaderEngine implements ReaderEngine {
             return;
           }
 
-          const anchor =
-            this.requestedLocator?.cfi ?? this.requestedLocator?.href ?? this.currentLocator?.cfi;
-          rendition.resize(width, height, anchor);
+          const anchor = this.requestedLocator ?? this.layoutAnchor ?? this.currentLocator;
+          const anchorTarget = anchor?.cfi ?? anchor?.href;
+          const revision = ++this.layoutRevision;
+          this.layoutAnchor = anchor ?? null;
+          rendition.resize(width, height, anchorTarget);
+
+          if (this.resizeSettleTimer !== null) {
+            clearTimeout(this.resizeSettleTimer);
+          }
+          this.resizeSettleTimer = setTimeout(() => {
+            this.resizeSettleTimer = null;
+            void this.restoreLayoutAnchor(revision, anchorTarget);
+          }, 60);
         });
       });
       this.resizeObserver.observe(container);
@@ -238,11 +251,18 @@ export class EpubJsReaderEngine implements ReaderEngine {
           progression,
           totalProgression: Number.isFinite(totalProgression) ? totalProgression : undefined,
         };
+
+        // A resize clears and rebuilds EPUB.js views. Its intermediate
+        // relocations are not user navigation and must never overwrite the
+        // exact CFI captured before the layout changed.
+        if (this.layoutAnchor) {
+          return;
+        }
         if (
           this.requestedLocator?.href &&
-          refersToSameDocument(this.requestedLocator.href, location.start.href)
+          !refersToSameDocument(this.requestedLocator.href, location.start.href)
         ) {
-          this.requestedLocator = null;
+          return;
         }
         this.currentLocator = nextLocator;
         this.callbacks.onLocationChange(nextLocator);
@@ -278,6 +298,10 @@ export class EpubJsReaderEngine implements ReaderEngine {
       cancelAnimationFrame(this.resizeFrame);
       this.resizeFrame = null;
     }
+    if (this.resizeSettleTimer !== null) {
+      clearTimeout(this.resizeSettleTimer);
+      this.resizeSettleTimer = null;
+    }
     this.rendition?.destroy();
     this.book?.destroy();
     this.rendition = null;
@@ -285,6 +309,8 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.preferences = null;
     this.currentLocator = null;
     this.requestedLocator = null;
+    this.layoutAnchor = null;
+    this.layoutRevision = 0;
     this.preferenceUpdate = 0;
     this.interactionRevision = 0;
     this.observedSize = '';
@@ -292,29 +318,44 @@ export class EpubJsReaderEngine implements ReaderEngine {
   }
 
   async next(): Promise<void> {
+    this.cancelLayoutRestoration();
     this.interactionRevision += 1;
     this.callbacks.onSelection(null);
     await this.rendition?.next();
   }
 
   async previous(): Promise<void> {
+    this.cancelLayoutRestoration();
     this.interactionRevision += 1;
     this.callbacks.onSelection(null);
     await this.rendition?.prev();
   }
 
   async goTo(locator: ReaderLocator): Promise<void> {
+    this.cancelLayoutRestoration();
     this.interactionRevision += 1;
     this.requestedLocator = locator;
     this.callbacks.onSelection(null);
     try {
-      await this.rendition?.display(locator.cfi ?? locator.href);
+      const rendition = this.rendition;
+      await rendition?.display(locator.cfi ?? locator.href);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      rendition?.reportLocation();
     } catch (error) {
       if (this.requestedLocator === locator) {
         this.requestedLocator = null;
       }
       throw error;
+    } finally {
+      if (this.requestedLocator === locator) {
+        this.requestedLocator = null;
+      }
     }
+  }
+
+  preserveLocationForLayoutChange(locator?: ReaderLocator): void {
+    this.interactionRevision += 1;
+    this.layoutAnchor = locator ?? this.currentLocator;
   }
 
   async getTableOfContents(): Promise<readonly EpubNavigationItem[]> {
@@ -395,6 +436,41 @@ export class EpubJsReaderEngine implements ReaderEngine {
     }
     this.pageGesture?.handleWheel(event);
   };
+
+  private cancelLayoutRestoration(): void {
+    this.layoutRevision += 1;
+    this.layoutAnchor = null;
+    if (this.resizeSettleTimer !== null) {
+      clearTimeout(this.resizeSettleTimer);
+      this.resizeSettleTimer = null;
+    }
+  }
+
+  private async restoreLayoutAnchor(revision: number, anchor: string | undefined): Promise<void> {
+    const rendition = this.rendition;
+
+    if (!rendition || revision !== this.layoutRevision) {
+      return;
+    }
+
+    try {
+      if (anchor) {
+        await rendition.display(anchor);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+    } catch (error) {
+      if (revision === this.layoutRevision) {
+        this.callbacks.onError(asError(error));
+      }
+    }
+
+    if (revision !== this.layoutRevision || rendition !== this.rendition) {
+      return;
+    }
+
+    this.layoutAnchor = null;
+    rendition.reportLocation();
+  }
 }
 
 export { applyFocusMarkup, removeFocusMarkup } from './focus-markup';

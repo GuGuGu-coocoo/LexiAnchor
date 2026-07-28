@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import {
   type ReaderLocator,
@@ -19,6 +19,7 @@ import { ReaderAppearancePanel } from './reader-appearance-panel';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import { readerColorsForTheme, type Theme } from './theme';
+import { useFullscreenToolbar } from './use-fullscreen-toolbar';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -81,6 +82,20 @@ function isCurrentHref(candidate: string, current: string | undefined): boolean 
   );
 }
 
+interface FlatNavigationItem extends EpubNavigationItem {
+  readonly depth: number;
+}
+
+function flattenNavigationItems(
+  items: readonly EpubNavigationItem[],
+  depth = 0,
+): FlatNavigationItem[] {
+  return items.flatMap((item) => [
+    { ...item, depth },
+    ...flattenNavigationItems(item.subitems, depth + 1),
+  ]);
+}
+
 function isEditableKeyTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   return (
@@ -131,11 +146,19 @@ function EpubReaderPage({
   const initialPreferencesRef = useRef(preferences);
   const [locator, setLocator] = useState<ReaderLocator>();
   const [tableOfContents, setTableOfContents] = useState<readonly EpubNavigationItem[]>([]);
-  const [sidePanel, setSidePanel] = useState<'contents' | 'settings'>('settings');
+  const [activeTocHref, setActiveTocHref] = useState('');
+  const [isTableOfContentsOpen, setIsTableOfContentsOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const {
+    autoHide: autoHideFullscreenToolbar,
+    isToolbarVisible,
+    revealToolbar,
+    scheduleHide,
+    setAutoHide: setAutoHideFullscreenToolbar,
+  } = useFullscreenToolbar(isFullscreen);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -152,6 +175,9 @@ function EpubReaderPage({
         }
 
         setLocator(nextLocator);
+        setActiveTocHref((current) =>
+          current && isCurrentHref(current, nextLocator.href) ? current : '',
+        );
         globalThis.localStorage?.setItem(storageKey(source), JSON.stringify(nextLocator));
         onLocationChange?.(
           nextLocator,
@@ -161,10 +187,6 @@ function EpubReaderPage({
       onSelection: (nextSelection) => {
         if (isActive) {
           setSelection(nextSelection);
-
-          if (nextSelection) {
-            setSidePanel('settings');
-          }
         }
       },
       onNavigationCommand: (command) => {
@@ -176,7 +198,6 @@ function EpubReaderPage({
     engineRef.current = engine;
     container.replaceChildren();
     setTableOfContents([]);
-    setSidePanel('settings');
     setIsLoading(true);
     setError('');
 
@@ -241,8 +262,31 @@ function EpubReaderPage({
   }, []);
 
   const progress = Math.round((locator?.totalProgression ?? 0) * 100);
+  const flatTableOfContents = useMemo(
+    () => flattenNavigationItems(tableOfContents),
+    [tableOfContents],
+  );
+  const currentNavigationItem = useMemo(() => {
+    const preferred = flatTableOfContents.find((item) => item.href === activeTocHref);
+    if (preferred) {
+      return preferred;
+    }
+
+    const exact = flatTableOfContents.find((item) => item.href === locator?.href);
+    return exact ?? flatTableOfContents.find((item) => isCurrentHref(item.href, locator?.href));
+  }, [activeTocHref, flatTableOfContents, locator?.href]);
+
+  function prepareForLayoutChange() {
+    engineRef.current?.preserveLocationForLayoutChange(locator);
+  }
+
+  function toggleSidebar() {
+    prepareForLayoutChange();
+    setIsSidebarOpen((current) => !current);
+  }
 
   function toggleFullscreenFromReader() {
+    prepareForLayoutChange();
     if (!isFullscreen) {
       setIsSidebarOpen(false);
     }
@@ -251,8 +295,17 @@ function EpubReaderPage({
   }
 
   return (
-    <section className="reader-page" aria-label={t('readerExperiment')}>
-      <header className="reader-toolbar">
+    <section
+      className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${
+        isFullscreen && !isToolbarVisible ? ' reader-page--toolbar-hidden' : ''
+      }`}
+      aria-label={t('readerExperiment')}
+    >
+      <header
+        className="reader-toolbar"
+        onPointerEnter={revealToolbar}
+        onPointerLeave={() => scheduleHide(700)}
+      >
         <div className="reader-toolbar-leading">
           <button
             className="reader-icon-button"
@@ -263,23 +316,52 @@ function EpubReaderPage({
             <span aria-hidden="true">←</span>
             <span>{t('backToLibrary')}</span>
           </button>
+        </div>
+        <div
+          className={`reader-title-group reader-toc-dropdown${
+            isTableOfContentsOpen ? ' reader-toc-dropdown--open' : ''
+          }`}
+        >
           <button
-            className="reader-icon-button"
+            className="reader-toc-trigger"
             type="button"
             aria-label={t('openTableOfContents')}
-            disabled={isLoading || tableOfContents.length === 0}
+            aria-haspopup="menu"
+            aria-expanded={isTableOfContentsOpen}
+            disabled={isLoading || flatTableOfContents.length === 0}
             onClick={() => {
-              setSidePanel('contents');
-              setIsSidebarOpen(true);
+              setIsTableOfContentsOpen((current) => !current);
+              revealToolbar();
             }}
           >
-            <span aria-hidden="true">☰</span>
-            <span>{t('tableOfContents')}</span>
+            <span className="reader-title">{currentNavigationItem?.label ?? source.name}</span>
+            <span className="reader-title-chevron" aria-hidden="true">
+              ⌄
+            </span>
+            <span className="reader-engine-label">
+              {source.name} · EPUB.js · {progress}%
+            </span>
           </button>
-        </div>
-        <div className="reader-title-group">
-          <p className="reader-title">{source.name}</p>
-          <p className="reader-engine-label">EPUB.js · {progress}%</p>
+          {isTableOfContentsOpen ? (
+            <EpubTableOfContents
+              items={flatTableOfContents}
+              currentHref={currentNavigationItem?.href}
+              emptyLabel={t('noTableOfContents')}
+              label={t('tableOfContents')}
+              onNavigate={(href) => {
+                setSelection(null);
+                setActiveTocHref(href);
+                setIsTableOfContentsOpen(false);
+                void engineRef.current?.goTo({ href }).catch((navigationError: unknown) => {
+                  setError(
+                    navigationError instanceof Error
+                      ? navigationError.message
+                      : String(navigationError),
+                  );
+                });
+              }}
+            />
+          ) : null}
         </div>
         <div className="reader-toolbar-actions">
           <button
@@ -287,10 +369,28 @@ function EpubReaderPage({
             type="button"
             aria-label={isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}
             aria-expanded={isSidebarOpen}
-            onClick={() => setIsSidebarOpen((current) => !current)}
+            onClick={toggleSidebar}
           >
             <span aria-hidden="true">◧</span>
             <span>{isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
+          </button>
+          <button
+            className="reader-icon-button reader-toolbar-visibility-button"
+            type="button"
+            aria-label={
+              autoHideFullscreenToolbar
+                ? t('keepFullscreenToolbarVisible')
+                : t('autoHideFullscreenToolbar')
+            }
+            aria-pressed={autoHideFullscreenToolbar}
+            onClick={() => setAutoHideFullscreenToolbar(!autoHideFullscreenToolbar)}
+          >
+            <span aria-hidden="true">{autoHideFullscreenToolbar ? '⌃' : '—'}</span>
+            <span>
+              {autoHideFullscreenToolbar
+                ? t('autoHideFullscreenToolbar')
+                : t('keepFullscreenToolbarVisible')}
+            </span>
           </button>
           <button
             className="reader-icon-button"
@@ -330,63 +430,36 @@ function EpubReaderPage({
           aria-label={t('readingSettings')}
           hidden={!isSidebarOpen}
         >
-          <div className="reader-panel-switch" aria-label={t('readerSidebar')}>
-            <button
-              type="button"
-              aria-pressed={sidePanel === 'contents'}
-              onClick={() => setSidePanel('contents')}
-            >
-              {t('tableOfContents')}
-            </button>
-            <button
-              type="button"
-              aria-pressed={sidePanel === 'settings'}
-              onClick={() => setSidePanel('settings')}
-            >
-              {t('readingSettings')}
-            </button>
-          </div>
-
-          {sidePanel === 'contents' ? (
-            <EpubTableOfContents
-              items={tableOfContents}
-              currentHref={locator?.href}
-              emptyLabel={t('noTableOfContents')}
-              label={t('tableOfContents')}
-              onNavigate={(href) => {
-                setSelection(null);
-                void engineRef.current?.goTo({ href }).catch((navigationError: unknown) => {
-                  setError(
-                    navigationError instanceof Error
-                      ? navigationError.message
-                      : String(navigationError),
-                  );
-                });
-              }}
+          <SelectionTools
+            key={selection?.text ?? 'empty'}
+            selection={selection}
+            emptyHint={t('selectionHint')}
+            locale={locale}
+            t={t}
+            onOpenExternal={onOpenExternal}
+            onAddWordCard={onAddWordCard}
+            providers={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={installedTranslationTargets}
+          />
+          <label className="reader-toggle reader-fullscreen-toolbar-setting">
+            <span>
+              <strong>{t('autoHideFullscreenToolbar')}</strong>
+              <small>{t('autoHideFullscreenToolbarDescription')}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={autoHideFullscreenToolbar}
+              onChange={(event) => setAutoHideFullscreenToolbar(event.target.checked)}
             />
-          ) : (
-            <>
-              <SelectionTools
-                key={selection?.text ?? 'empty'}
-                selection={selection}
-                emptyHint={t('selectionHint')}
-                locale={locale}
-                t={t}
-                onOpenExternal={onOpenExternal}
-                onAddWordCard={onAddWordCard}
-                providers={dictionaryProviders}
-                localTranslationProvider={localTranslationProvider}
-                installedTranslationTargets={installedTranslationTargets}
-              />
-              <ReaderAppearancePanel
-                preferences={preferences}
-                theme={theme}
-                t={t}
-                onApplyPreferences={setPreferences}
-                onThemeChange={onThemeChange}
-              />
-            </>
-          )}
+          </label>
+          <ReaderAppearancePanel
+            preferences={preferences}
+            theme={theme}
+            t={t}
+            onApplyPreferences={setPreferences}
+            onThemeChange={onThemeChange}
+          />
         </aside>
 
         <div ref={readerStageRef} className="reader-stage">
@@ -418,7 +491,7 @@ function EpubReaderPage({
 }
 
 interface EpubTableOfContentsProps {
-  readonly items: readonly EpubNavigationItem[];
+  readonly items: readonly FlatNavigationItem[];
   readonly currentHref: string | undefined;
   readonly emptyLabel: string;
   readonly label: string;
@@ -436,38 +509,30 @@ function EpubTableOfContents({
     return <p className="reader-toc-empty">{emptyLabel}</p>;
   }
 
+  const currentItem = items.find((item) => item.href === currentHref);
+  const orderedItems = currentItem
+    ? [currentItem, ...items.filter((item) => item !== currentItem)]
+    : items;
+
   return (
     <nav className="reader-toc" aria-label={label}>
-      <EpubTableOfContentsList items={items} currentHref={currentHref} onNavigate={onNavigate} />
-    </nav>
-  );
-}
-
-function EpubTableOfContentsList({
-  items,
-  currentHref,
-  onNavigate,
-}: Pick<EpubTableOfContentsProps, 'items' | 'currentHref' | 'onNavigate'>) {
-  return (
-    <ol>
-      {items.map((item) => (
-        <li key={`${item.id}:${item.href}`}>
-          <button
-            type="button"
-            aria-current={isCurrentHref(item.href, currentHref) ? 'location' : undefined}
-            onClick={() => onNavigate(item.href)}
+      <ol>
+        {orderedItems.map((item, index) => (
+          <li
+            key={`${item.id}:${item.href}`}
+            className={index === 0 && currentItem ? 'reader-toc-current-row' : undefined}
           >
-            {item.label}
-          </button>
-          {item.subitems.length > 0 ? (
-            <EpubTableOfContentsList
-              items={item.subitems}
-              currentHref={currentHref}
-              onNavigate={onNavigate}
-            />
-          ) : null}
-        </li>
-      ))}
-    </ol>
+            <button
+              type="button"
+              aria-current={item === currentItem ? 'location' : undefined}
+              style={{ '--reader-toc-depth': item.depth } as CSSProperties}
+              onClick={() => onNavigate(item.href)}
+            >
+              {item.label}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }
