@@ -971,9 +971,10 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
   await expect(page.locator('.selection-popover-shell')).toBeVisible();
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('resilient');
-  await page
-    .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
-    .click();
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }),
+  ).toBeVisible();
   await page
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
@@ -1004,26 +1005,58 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   await zoomControl.fill('1.5');
   await expect(page.locator('.reader-control output')).toHaveText('150%');
 
-  const pdfGestureTransform = await page.locator('.pdf-reader-stage').evaluate((stage) => {
-    stage.dispatchEvent(
-      new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-        deltaX: 120,
-        deltaY: 2,
-      }),
-    );
-    return stage.querySelector<HTMLElement>('[data-testid="pdf-container"]')?.style.transform ?? '';
+  const pdfLayout = page.getByRole('combobox', {
+    name: /^(Layout|阅读布局|Disposition)$/,
   });
-  expect(pdfGestureTransform).toContain('translate3d(-120px');
+  await pdfLayout.selectOption('scrolled');
+  await expect(page.locator('.pdf-page')).toHaveCount(3);
+  const pdfStage = page.locator('.pdf-reader-stage');
+  await pdfStage.evaluate((stage) => {
+    const secondPage = stage.querySelector<HTMLElement>('.pdf-page[data-page-number="2"]');
+    stage.scrollTop = secondPage?.offsetTop ?? 0;
+    stage.dispatchEvent(new Event('scroll'));
+  });
+  await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
+  await pdfStage.click({ position: { x: 24, y: 24 } });
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
+
+  await pdfLayout.selectOption('paginated');
+  await page.getByRole('spinbutton', { name: /Page|页码|Page/ }).fill('1');
+  for (let sample = 0; sample < 5; sample += 1) {
+    await pdfStage.dispatchEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaMode: 0,
+      deltaX: 8,
+      deltaY: 1,
+    });
+    await page.waitForTimeout(12);
+  }
+  await expect
+    .poll(() =>
+      page
+        .getByTestId('pdf-container')
+        .evaluate((container) => container.style.transform.includes('translate3d')),
+    )
+    .toBe(true);
   await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
   await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+  await pdfLayout.selectOption('scrolled');
+  await expect(page.locator('.pdf-page')).toHaveCount(3);
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page.locator('input[type="file"]').setInputFiles(pdfPath);
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+  await expect(
+    page.getByRole('combobox', {
+      name: /^(Layout|阅读布局|Disposition)$/,
+    }),
+  ).toHaveValue('scrolled');
+  await expect(page.locator('.pdf-page')).toHaveCount(3);
   await expect(page.locator('.reader-control output')).toHaveText('150%');
   await expect(
     page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),

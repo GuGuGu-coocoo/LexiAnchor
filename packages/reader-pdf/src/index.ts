@@ -31,6 +31,12 @@ export interface PdfPageResult {
   readonly height: number;
 }
 
+export interface PdfDocumentResult {
+  readonly pageCount: number;
+  readonly hasText: boolean;
+  readonly pages: readonly PdfPageResult[];
+}
+
 export interface PdfReaderCallbacks {
   readonly onSelection: (selection: ReaderSelection | null) => void;
   readonly onExternalLink: (url: string) => Promise<void> | void;
@@ -289,7 +295,7 @@ export class PdfJsReaderEngine {
   private document: PDFDocumentProxy | null = null;
   private renderTask: RenderTask | null = null;
   private textLayer: TextLayer | null = null;
-  private removeSelectionListener: (() => void) | null = null;
+  private removeSelectionListeners: Array<() => void> = [];
   private renderGeneration = 0;
 
   constructor(private readonly callbacks: PdfReaderCallbacks) {}
@@ -327,108 +333,44 @@ export class PdfJsReaderEngine {
     this.cancelPageRender();
     const renderGeneration = this.renderGeneration;
     container.replaceChildren();
+    container.classList.remove('pdf-document-container--continuous');
 
     try {
-      const safePageNumber = Math.min(Math.max(1, pageNumber), document.numPages);
-      const page = await document.getPage(safePageNumber);
-
-      if (renderGeneration !== this.renderGeneration) {
-        throw renderingCancelledError(safePageNumber);
+      return await this.renderPageInto(container, pageNumber, scale, renderGeneration);
+    } catch (error) {
+      if (error instanceof RenderingCancelledException) {
+        throw error;
       }
 
-      const viewport = page.getViewport({ scale });
-      const outputScale = Math.min(globalThis.devicePixelRatio || 1, 2);
-      const pageElement = container.ownerDocument.createElement('div');
-      const canvas = container.ownerDocument.createElement('canvas');
-      const textLayerElement = container.ownerDocument.createElement('div');
+      const readerError = asError(error);
+      this.callbacks.onError(readerError);
+      throw readerError;
+    }
+  }
 
-      pageElement.className = 'pdf-page';
-      pageElement.style.width = `${viewport.width}px`;
-      pageElement.style.height = `${viewport.height}px`;
-      pageElement.style.setProperty('--total-scale-factor', String(scale));
-      pageElement.setAttribute('aria-label', `Page ${safePageNumber} of ${document.numPages}`);
+  async renderDocument(container: HTMLElement, scale: number): Promise<PdfDocumentResult> {
+    const document = this.document;
 
-      canvas.className = 'pdf-canvas';
-      canvas.width = Math.floor(viewport.width * outputScale);
-      canvas.height = Math.floor(viewport.height * outputScale);
-      canvas.style.width = `${viewport.width}px`;
-      canvas.style.height = `${viewport.height}px`;
-      canvas.setAttribute('aria-hidden', 'true');
+    if (!document) {
+      throw new Error('Open a PDF before rendering its pages.');
+    }
 
-      textLayerElement.className = 'textLayer pdf-text-layer';
-      textLayerElement.setAttribute('aria-label', `Selectable text for page ${safePageNumber}`);
-      pageElement.append(canvas, textLayerElement);
-      container.append(pageElement);
+    this.cancelPageRender();
+    const renderGeneration = this.renderGeneration;
+    container.replaceChildren();
+    container.classList.add('pdf-document-container--continuous');
 
-      const renderTask = page.render({
-        canvas,
-        viewport,
-        transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0],
-      });
-      this.renderTask = renderTask;
+    try {
+      const pages: PdfPageResult[] = [];
 
-      const textContent = await page.getTextContent();
-      await renderTask.promise;
-
-      if (renderGeneration !== this.renderGeneration) {
-        throw renderingCancelledError(safePageNumber);
-      }
-
-      if (this.renderTask === renderTask) {
-        this.renderTask = null;
-      }
-
-      const textItems = textContent.items
-        .map((item) => ('str' in item ? item.str : ''))
-        .map(normalizedText)
-        .filter(Boolean);
-      const pageText = textItems.join(' ');
-      const hasText = pageText.length > 0;
-
-      if (hasText) {
-        const textLayer = new TextLayer({
-          textContentSource: textContent,
-          container: textLayerElement,
-          viewport,
-        });
-        this.textLayer = textLayer;
-        await textLayer.render();
-
-        if (renderGeneration !== this.renderGeneration) {
-          throw renderingCancelledError(safePageNumber);
-        }
-
-        if (this.textLayer === textLayer) {
-          this.textLayer = null;
-        }
-
-        this.removeSelectionListener = listenForSelection(
-          textLayerElement,
-          textItems,
-          safePageNumber,
-          this.callbacks.onSelection,
-        );
-      }
-
-      const linkCount = await renderLinkAnnotations(
-        document,
-        page,
-        viewport,
-        pageElement,
-        this.callbacks,
-      );
-
-      if (renderGeneration !== this.renderGeneration) {
-        throw renderingCancelledError(safePageNumber);
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        pages.push(await this.renderPageInto(container, pageNumber, scale, renderGeneration));
       }
 
       return {
-        pageNumber: safePageNumber,
         pageCount: document.numPages,
-        hasText,
-        linkCount,
-        width: viewport.width,
-        height: viewport.height,
+        hasText: pages.some((page) => page.hasText),
+        pages,
       };
     } catch (error) {
       if (error instanceof RenderingCancelledException) {
@@ -456,10 +398,125 @@ export class PdfJsReaderEngine {
     this.renderGeneration += 1;
     this.renderTask?.cancel();
     this.textLayer?.cancel();
-    this.removeSelectionListener?.();
+    for (const removeSelectionListener of this.removeSelectionListeners) {
+      removeSelectionListener();
+    }
     this.renderTask = null;
     this.textLayer = null;
-    this.removeSelectionListener = null;
+    this.removeSelectionListeners = [];
     this.callbacks.onSelection(null);
+  }
+
+  private async renderPageInto(
+    container: HTMLElement,
+    pageNumber: number,
+    scale: number,
+    renderGeneration: number,
+  ): Promise<PdfPageResult> {
+    const document = this.document;
+
+    if (!document) {
+      throw new Error('Open a PDF before rendering a page.');
+    }
+
+    const safePageNumber = Math.min(Math.max(1, pageNumber), document.numPages);
+    const page = await document.getPage(safePageNumber);
+
+    if (renderGeneration !== this.renderGeneration) {
+      throw renderingCancelledError(safePageNumber);
+    }
+
+    const viewport = page.getViewport({ scale });
+    const outputScale = Math.min(globalThis.devicePixelRatio || 1, 2);
+    const pageElement = container.ownerDocument.createElement('div');
+    const canvas = container.ownerDocument.createElement('canvas');
+    const textLayerElement = container.ownerDocument.createElement('div');
+
+    pageElement.className = 'pdf-page';
+    pageElement.dataset.pageNumber = String(safePageNumber);
+    pageElement.style.width = `${viewport.width}px`;
+    pageElement.style.height = `${viewport.height}px`;
+    pageElement.style.setProperty('--total-scale-factor', String(scale));
+    pageElement.setAttribute('aria-label', `Page ${safePageNumber} of ${document.numPages}`);
+
+    canvas.className = 'pdf-canvas';
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+    canvas.style.width = `${viewport.width}px`;
+    canvas.style.height = `${viewport.height}px`;
+    canvas.setAttribute('aria-hidden', 'true');
+
+    textLayerElement.className = 'textLayer pdf-text-layer';
+    textLayerElement.setAttribute('aria-label', `Selectable text for page ${safePageNumber}`);
+    pageElement.append(canvas, textLayerElement);
+    container.append(pageElement);
+
+    const renderTask = page.render({
+      canvas,
+      viewport,
+      transform: outputScale === 1 ? undefined : [outputScale, 0, 0, outputScale, 0, 0],
+    });
+    this.renderTask = renderTask;
+
+    const textContent = await page.getTextContent();
+    await renderTask.promise;
+
+    if (renderGeneration !== this.renderGeneration) {
+      throw renderingCancelledError(safePageNumber);
+    }
+
+    if (this.renderTask === renderTask) {
+      this.renderTask = null;
+    }
+
+    const textItems = textContent.items
+      .map((item) => ('str' in item ? item.str : ''))
+      .map(normalizedText)
+      .filter(Boolean);
+    const pageText = textItems.join(' ');
+    const hasText = pageText.length > 0;
+
+    if (hasText) {
+      const textLayer = new TextLayer({
+        textContentSource: textContent,
+        container: textLayerElement,
+        viewport,
+      });
+      this.textLayer = textLayer;
+      await textLayer.render();
+
+      if (renderGeneration !== this.renderGeneration) {
+        throw renderingCancelledError(safePageNumber);
+      }
+
+      if (this.textLayer === textLayer) {
+        this.textLayer = null;
+      }
+
+      this.removeSelectionListeners.push(
+        listenForSelection(textLayerElement, textItems, safePageNumber, this.callbacks.onSelection),
+      );
+    }
+
+    const linkCount = await renderLinkAnnotations(
+      document,
+      page,
+      viewport,
+      pageElement,
+      this.callbacks,
+    );
+
+    if (renderGeneration !== this.renderGeneration) {
+      throw renderingCancelledError(safePageNumber);
+    }
+
+    return {
+      pageNumber: safePageNumber,
+      pageCount: document.numPages,
+      hasText,
+      linkCount,
+      width: viewport.width,
+      height: viewport.height,
+    };
   }
 }

@@ -2449,6 +2449,14 @@ button {
   place-items: start center;
 }
 
+.pdf-document-container--continuous {
+  gap: clamp(18px, 3vh, 32px);
+}
+
+.pdf-document-container--continuous .pdf-page {
+  scroll-margin-block: 28px;
+}
+
 .pdf-page {
   position: relative;
   flex: none;

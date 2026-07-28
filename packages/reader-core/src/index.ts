@@ -197,9 +197,9 @@ export function createHorizontalPageGesture(
     const projected =
       position + Math.max(-width * 0.55, Math.min(width * 0.55, projectedDistance(velocity)));
     const direction =
-      position < -10 && (projected < -width * 0.16 || velocity < -480)
+      position < -6 && (projected < -width * 0.04 || velocity < -140)
         ? 1
-        : position > 10 && (projected > width * 0.16 || velocity > 480)
+        : position > 6 && (projected > width * 0.04 || velocity > 140)
           ? -1
           : 0;
 

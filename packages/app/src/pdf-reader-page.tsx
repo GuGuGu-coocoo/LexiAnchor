@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
-import type { ReaderLocator, ReaderSelection, ReaderSource } from '@lexianchor/reader-core';
+import type {
+  ReaderFlow,
+  ReaderLocator,
+  ReaderSelection,
+  ReaderSource,
+} from '@lexianchor/reader-core';
 import type {
   BergamotTranslationProvider,
   TranslationTargetLanguage,
@@ -41,6 +46,7 @@ interface PdfReaderPageProps {
 interface StoredPdfView {
   readonly pageNumber: number;
   readonly scale: number;
+  readonly flow: ReaderFlow;
 }
 
 function storageKey(source: ReaderSource): string {
@@ -51,7 +57,7 @@ function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): S
   const stored = globalThis.localStorage?.getItem(storageKey(source));
 
   if (!stored) {
-    return { pageNumber: initialLocator?.pageNumber ?? 1, scale: 1.15 };
+    return { pageNumber: initialLocator?.pageNumber ?? 1, scale: 1.15, flow: 'paginated' };
   }
 
   try {
@@ -59,10 +65,21 @@ function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): S
     return {
       pageNumber: Math.max(1, Math.floor(initialLocator?.pageNumber ?? view.pageNumber ?? 1)),
       scale: Math.min(2, Math.max(0.75, view.scale ?? 1.15)),
+      flow: view.flow === 'scrolled' ? 'scrolled' : 'paginated',
     };
   } catch {
-    return { pageNumber: 1, scale: 1.15 };
+    return { pageNumber: 1, scale: 1.15, flow: 'paginated' };
   }
+}
+
+function isEditableKeyTarget(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  return (
+    element?.isContentEditable === true ||
+    element?.tagName === 'INPUT' ||
+    element?.tagName === 'SELECT' ||
+    element?.tagName === 'TEXTAREA'
+  );
 }
 
 export function PdfReaderPage({
@@ -85,12 +102,16 @@ export function PdfReaderPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const readerStageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
+  const pendingScrollPageRef = useRef<number | null>(null);
   const openExternalRef = useRef(onOpenExternal);
   const [initialView] = useState(() => readStoredView(source, initialLocator));
+  const pageNumberRef = useRef(initialView.pageNumber);
   const [documentInfo, setDocumentInfo] = useState<PdfDocumentInfo>();
   const [pageResult, setPageResult] = useState<PdfPageResult>();
+  const [continuousPages, setContinuousPages] = useState<readonly PdfPageResult[]>([]);
   const [pageNumber, setPageNumber] = useState(initialView.pageNumber);
   const [scale, setScale] = useState(initialView.scale);
+  const [flow, setFlow] = useState<ReaderFlow>(initialView.flow);
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,6 +129,10 @@ export function PdfReaderPage({
   }, [onOpenExternal]);
 
   useEffect(() => {
+    pageNumberRef.current = pageNumber;
+  }, [pageNumber]);
+
+  useEffect(() => {
     let isActive = true;
     const engine = new PdfJsReaderEngine({
       onSelection: (nextSelection) => isActive && setSelection(nextSelection),
@@ -122,6 +147,7 @@ export function PdfReaderPage({
       },
       onInternalLink: (nextPageNumber) => {
         if (isActive) {
+          pendingScrollPageRef.current = nextPageNumber;
           setPageNumber(nextPageNumber);
         }
       },
@@ -152,11 +178,12 @@ export function PdfReaderPage({
     const container = containerRef.current;
     const engine = engineRef.current;
 
-    if (!container || !engine || !documentInfo) {
+    if (!container || !engine || !documentInfo || flow !== 'paginated') {
       return;
     }
 
     let isActive = true;
+    setContinuousPages([]);
 
     void engine
       .renderPage(container, pageNumber, scale)
@@ -168,19 +195,6 @@ export function PdfReaderPage({
         setPageResult(result);
         setPageNumber(result.pageNumber);
         setIsLoading(false);
-        globalThis.localStorage?.setItem(
-          storageKey(source),
-          JSON.stringify({ pageNumber: result.pageNumber, scale }),
-        );
-        onLocationChange?.(
-          {
-            href: source.name,
-            pageNumber: result.pageNumber,
-            progression: result.pageNumber / result.pageCount,
-            totalProgression: result.pageNumber / result.pageCount,
-          },
-          Math.round((result.pageNumber / result.pageCount) * 100),
-        );
       })
       .catch((renderError: unknown) => {
         if (
@@ -197,17 +211,195 @@ export function PdfReaderPage({
     return () => {
       isActive = false;
     };
-  }, [documentInfo, onLocationChange, pageNumber, scale, source]);
+  }, [documentInfo, flow, pageNumber, scale]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const engine = engineRef.current;
+
+    if (!container || !engine || !documentInfo || flow !== 'scrolled') {
+      return;
+    }
+
+    let isActive = true;
+    setIsLoading(true);
+
+    void engine
+      .renderDocument(container, scale)
+      .then((result) => {
+        if (!isActive) {
+          return;
+        }
+
+        setContinuousPages(result.pages);
+        setPageResult(result.pages[pageNumberRef.current - 1] ?? result.pages[0]);
+        setIsLoading(false);
+      })
+      .catch((renderError: unknown) => {
+        if (
+          !isActive ||
+          (renderError instanceof Error && renderError.name === 'RenderingCancelledException')
+        ) {
+          return;
+        }
+
+        setError(renderError instanceof Error ? renderError.message : String(renderError));
+        setIsLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [documentInfo, flow, scale]);
 
   const pageCount = documentInfo?.pageCount ?? 0;
   const progress = pageCount > 0 ? Math.round((pageNumber / pageCount) * 100) : 0;
   const hasText = pageResult?.hasText ?? true;
 
+  useEffect(() => {
+    if (pageCount === 0) {
+      return;
+    }
+
+    globalThis.localStorage?.setItem(
+      storageKey(source),
+      JSON.stringify({ pageNumber, scale, flow }),
+    );
+    onLocationChange?.(
+      {
+        href: source.name,
+        pageNumber,
+        progression: pageNumber / pageCount,
+        totalProgression: pageNumber / pageCount,
+      },
+      Math.round((pageNumber / pageCount) * 100),
+    );
+  }, [flow, onLocationChange, pageCount, pageNumber, scale, source]);
+
+  useEffect(() => {
+    const stage = readerStageRef.current;
+    const container = containerRef.current;
+
+    if (!stage || !container || flow !== 'scrolled' || continuousPages.length === 0) {
+      return;
+    }
+
+    let frame: number | null = null;
+    const updateVisiblePage = () => {
+      frame = null;
+      const stageRect = stage.getBoundingClientRect();
+      const readingLine = stageRect.top + Math.min(stageRect.height * 0.34, 240);
+      const pendingPage = pendingScrollPageRef.current;
+
+      if (pendingPage !== null) {
+        const pendingElement = container.querySelector<HTMLElement>(
+          `.pdf-page[data-page-number="${pendingPage}"]`,
+        );
+        const pendingDistance = pendingElement
+          ? Math.abs(pendingElement.getBoundingClientRect().top - readingLine)
+          : Number.POSITIVE_INFINITY;
+
+        if (pendingDistance > stageRect.height * 0.48) {
+          return;
+        }
+        pendingScrollPageRef.current = null;
+      }
+
+      let closestPage = pageNumber;
+      let closestDistance = Number.POSITIVE_INFINITY;
+
+      for (const page of container.querySelectorAll<HTMLElement>('.pdf-page')) {
+        const pageTop = page.getBoundingClientRect().top;
+        const distance = Math.abs(pageTop - readingLine);
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestPage = Number(page.dataset.pageNumber) || closestPage;
+        }
+      }
+
+      setPageNumber((current) => (current === closestPage ? current : closestPage));
+      setPageResult(continuousPages[closestPage - 1]);
+    };
+    const scheduleUpdate = () => {
+      if (frame === null) {
+        frame = requestAnimationFrame(updateVisiblePage);
+      }
+    };
+
+    stage.addEventListener('scroll', scheduleUpdate, { passive: true });
+    scheduleUpdate();
+    return () => {
+      stage.removeEventListener('scroll', scheduleUpdate);
+      if (frame !== null) {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, [continuousPages, flow, pageNumber]);
+
+  useEffect(() => {
+    if (
+      flow !== 'scrolled' ||
+      pendingScrollPageRef.current !== pageNumber ||
+      continuousPages.length === 0
+    ) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      containerRef.current
+        ?.querySelector<HTMLElement>(`.pdf-page[data-page-number="${pageNumber}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [continuousPages, flow, pageNumber]);
+
+  useEffect(() => {
+    function navigateWithKeyboard(event: KeyboardEvent) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        isEditableKeyTarget(event.target)
+      ) {
+        return;
+      }
+
+      const direction =
+        event.key === 'ArrowRight' || event.key === 'PageDown'
+          ? 1
+          : event.key === 'ArrowLeft' || event.key === 'PageUp'
+            ? -1
+            : 0;
+      if (direction === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      setPageNumber((current) => {
+        const next = Math.max(1, Math.min(pageCount, current + direction));
+        pendingScrollPageRef.current = next;
+        return next;
+      });
+    }
+
+    globalThis.addEventListener('keydown', navigateWithKeyboard);
+    return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
+  }, [pageCount]);
+
   useHorizontalPageSwipe(readerStageRef, containerRef, {
-    enabled: pageCount > 0,
+    enabled: flow === 'paginated' && pageCount > 0,
     onNext: () => setPageNumber((current) => Math.min(pageCount, current + 1)),
     onPrevious: () => setPageNumber((current) => Math.max(1, current - 1)),
   });
+
+  function goToPage(nextPageNumber: number) {
+    const next = Math.max(1, Math.min(pageCount || 1, nextPageNumber));
+    pendingScrollPageRef.current = next;
+    setPageNumber(next);
+  }
 
   function toggleFullscreenFromReader() {
     if (!isFullscreen) {
@@ -287,7 +479,7 @@ export function PdfReaderPage({
             type="button"
             aria-label={t('previousPage')}
             disabled={pageNumber <= 1}
-            onClick={() => setPageNumber((current) => Math.max(1, current - 1))}
+            onClick={() => goToPage(pageNumber - 1)}
           >
             <span aria-hidden="true">←</span>
             <span>{t('previousPage')}</span>
@@ -297,7 +489,7 @@ export function PdfReaderPage({
             type="button"
             aria-label={t('nextPage')}
             disabled={pageCount === 0 || pageNumber >= pageCount}
-            onClick={() => setPageNumber((current) => Math.min(pageCount, current + 1))}
+            onClick={() => goToPage(pageNumber + 1)}
           >
             <span>{t('nextPage')}</span>
             <span aria-hidden="true">→</span>
@@ -354,6 +546,24 @@ export function PdfReaderPage({
           </label>
 
           <label className="reader-control">
+            <span>{t('readingLayout')}</span>
+            <select
+              value={flow}
+              onChange={(event) => {
+                const nextFlow = event.target.value as ReaderFlow;
+                pendingScrollPageRef.current =
+                  nextFlow === 'scrolled' && pageNumber > 1 ? pageNumber : null;
+                setSelection(null);
+                setIsLoading(true);
+                setFlow(nextFlow);
+              }}
+            >
+              <option value="paginated">{t('pageMode')}</option>
+              <option value="scrolled">{t('scrollMode')}</option>
+            </select>
+          </label>
+
+          <label className="reader-control">
             <span>
               {t('zoom')} <output>{Math.round(scale * 100)}%</output>
             </span>
@@ -376,11 +586,7 @@ export function PdfReaderPage({
               min="1"
               max={pageCount || 1}
               value={pageNumber}
-              onChange={(event) =>
-                setPageNumber(
-                  Math.min(pageCount || 1, Math.max(1, Number(event.target.value) || 1)),
-                )
-              }
+              onChange={(event) => goToPage(Number(event.target.value) || 1)}
             />
             <span>
               {t('of')} {pageCount || '—'}
