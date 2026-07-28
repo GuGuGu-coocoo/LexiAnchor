@@ -156,11 +156,68 @@ test('moves between the library and word-card sections', async ({ page }) => {
   await expect(
     page.getByRole('heading', { level: 1, name: /library|书库|bibliothèque/i }),
   ).toBeVisible();
-
   await page.getByRole('button', { name: cardsLabel }).click();
   await expect(
     page.getByRole('heading', { level: 1, name: /word cards|词卡|fiches/i }),
   ).toBeVisible();
+});
+
+test('turns at least ten stacked EPUB pages without swallowing consecutive gestures', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
+    .click();
+  await expectEpubHeading(page, 'A Quiet Beginning');
+  await expect(
+    page
+      .locator('.epub-container iframe')
+      .first()
+      .contentFrame()
+      .getByRole('heading', { name: /Page Turn \d+/ }),
+  ).toHaveCount(12);
+
+  await page.locator('details.reader-appearance-panel summary').click();
+  await page
+    .getByRole('combobox', {
+      name: /Page turn effect|翻页效果|Effet de changement de page/,
+    })
+    .selectOption('stack');
+  await page.waitForTimeout(250);
+
+  const scroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
+  const initial = await scroller.evaluate((element) => ({
+    position: element.scrollLeft,
+    extent: element.clientWidth,
+  }));
+  const positions: number[] = [];
+
+  for (let index = 0; index < 10; index += 1) {
+    await page
+      .locator('.epub-container iframe')
+      .last()
+      .contentFrame()
+      .locator('body')
+      .dispatchEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaMode: 0,
+        deltaX: 560,
+        deltaY: 2,
+      });
+    await page.waitForTimeout(300);
+    positions.push(await scroller.evaluate((element) => element.scrollLeft));
+  }
+
+  await expect(scroller).not.toHaveClass(/epub-page-stack-transition/, { timeout: 2_000 });
+  const finalPosition = await scroller.evaluate((element) => element.scrollLeft);
+  expect(initial.extent).toBeGreaterThan(500);
+  expect(finalPosition).toBeGreaterThan(initial.position + initial.extent * 9);
+  expect(
+    positions.filter((position, index) => index === 0 || position > positions[index - 1]!).length,
+  ).toBe(10);
 });
 
 test('shows optional English-French and English-Chinese local translation models', async ({
@@ -1248,6 +1305,9 @@ test('restores an imported EPUB locator from SQLite after localStorage is cleare
     .click();
   await expectEpubHeading(page, 'Finding an Anchor');
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await expect(
+    page.getByRole('heading', { level: 1, name: /library|书库|bibliothèque/i }),
+  ).toBeVisible();
 
   await page.evaluate(() => localStorage.clear());
   await page.reload();

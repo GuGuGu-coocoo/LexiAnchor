@@ -359,6 +359,8 @@ export function App({ platform }: AppProps) {
   const [translationModelProgress, setTranslationModelProgress] =
     useState<TranslationModelProgress | null>(null);
   const translationInstallAbort = useRef<AbortController | null>(null);
+  const latestReadingProgress = useRef<ReadingProgressRecord | null>(null);
+  const isClosingReader = useRef(false);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
   const dictionaryProviders = useMemo<readonly DictionaryProvider[]>(() => {
@@ -719,16 +721,23 @@ export function App({ platform }: AppProps) {
       }
 
       const updatedAt = new Date().toISOString();
+      const progress = {
+        id: `progress-${bookId}`,
+        bookId,
+        locator,
+        percentage: normalizeProgress(percentage),
+        updatedAt,
+        deviceId: deviceId(),
+        version: 1,
+      } satisfies ReadingProgressRecord;
+      latestReadingProgress.current = progress;
+
+      if (isClosingReader.current) {
+        return;
+      }
+
       void repository()
-        .saveProgress({
-          id: `progress-${bookId}`,
-          bookId,
-          locator,
-          percentage: normalizeProgress(percentage),
-          updatedAt,
-          deviceId: deviceId(),
-          version: 1,
-        })
+        .saveProgress(progress)
         .catch((error: unknown) =>
           setStatusMessage(error instanceof Error ? error.message : String(error)),
         );
@@ -737,8 +746,24 @@ export function App({ platform }: AppProps) {
   );
 
   const closeReader = useCallback(() => {
-    setOpenBook(null);
-    void refreshLibrary();
+    if (isClosingReader.current) {
+      return;
+    }
+
+    isClosingReader.current = true;
+    const finalProgress = latestReadingProgress.current;
+    const flush = finalProgress ? repository().saveProgress(finalProgress) : Promise.resolve();
+
+    void flush
+      .catch((error: unknown) =>
+        setStatusMessage(error instanceof Error ? error.message : String(error)),
+      )
+      .finally(() => {
+        latestReadingProgress.current = null;
+        setOpenBook(null);
+        isClosingReader.current = false;
+        void refreshLibrary();
+      });
   }, [refreshLibrary]);
 
   const addWordCard = useCallback(

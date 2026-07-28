@@ -402,7 +402,8 @@ export class EpubJsReaderEngine implements ReaderEngine {
       return;
     }
 
-    const anchorCfi = this.currentLocator?.cfi;
+    const anchor = this.requestedLocator ?? this.layoutAnchor ?? this.currentLocator;
+    const anchorTarget = anchor?.cfi ?? anchor?.href;
     const update = ++this.preferenceUpdate;
     const interactionRevision = this.interactionRevision;
     this.preferences = preferences;
@@ -447,9 +448,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
     if (
       update === this.preferenceUpdate &&
       interactionRevision === this.interactionRevision &&
-      anchorCfi
+      anchorTarget
     ) {
-      await rendition.display(anchorCfi);
+      await this.displayAtStableLocation(rendition, anchorTarget);
     }
   }
 

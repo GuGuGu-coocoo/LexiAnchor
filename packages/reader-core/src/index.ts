@@ -460,13 +460,20 @@ export function createStackedPageScrollGesture(
   let lastInputAt = 0;
   let isTracking = false;
   let isReady = false;
+  let isSettling = false;
+  let settlingCommit = false;
   let shouldFinishWhenReady = false;
   let endTimer: ReturnType<typeof setTimeout> | null = null;
   let animationFrame: number | null = null;
   let transition: ViewTransition | null = null;
+  let closingTransition: Promise<void> | null = null;
   let sheetAnimation: Animation | null = null;
   let sequence = 0;
   let previousTransitionName = '';
+  let bufferedDistance = 0;
+  let bufferedVelocity = 0;
+  let bufferedLastInputAt = 0;
+  let isDisposed = false;
 
   const fallback = createHorizontalPageScrollGesture(options);
 
@@ -489,12 +496,52 @@ export function createStackedPageScrollGesture(
     }
   }
 
+  function beginBufferedGesture(): void {
+    if (isDisposed || closingTransition || Math.abs(bufferedDistance) < 2) {
+      return;
+    }
+
+    const scroller = options.getScroller();
+    if (!scroller) {
+      bufferedDistance = 0;
+      bufferedVelocity = 0;
+      bufferedLastInputAt = 0;
+      return;
+    }
+
+    isTracking = true;
+    distance = bufferedDistance;
+    velocity = bufferedVelocity;
+    lastInputAt = bufferedLastInputAt;
+    bufferedDistance = 0;
+    bufferedVelocity = 0;
+    bufferedLastInputAt = 0;
+
+    if (!beginTransition(scroller, distance > 0 ? 1 : -1)) {
+      isTracking = false;
+      return;
+    }
+
+    if (endTimer !== null) {
+      clearTimeout(endTimer);
+    }
+    endTimer = setTimeout(finishGesture, 160);
+  }
+
+  function bufferInput(delta: number, now: number): void {
+    const elapsed = bufferedLastInputAt > 0 ? Math.max(8, now - bufferedLastInputAt) : 16;
+    bufferedLastInputAt = now;
+    bufferedDistance += delta;
+    const instantaneousVelocity = (delta / elapsed) * 1000;
+    bufferedVelocity = bufferedVelocity * 0.42 + instantaneousVelocity * 0.58;
+  }
+
   function cleanup(committedDirection: -1 | 0 | 1): void {
     const scroller = options.getScroller();
+    const endingTransition = transition;
     stopAnimation();
     sheetAnimation?.cancel();
     sheetAnimation = null;
-    transition?.skipTransition();
     transition = null;
 
     if (scroller) {
@@ -504,6 +551,8 @@ export function createStackedPageScrollGesture(
 
     isTracking = false;
     isReady = false;
+    isSettling = false;
+    settlingCommit = false;
     shouldFinishWhenReady = false;
     direction = 0;
     distance = 0;
@@ -512,6 +561,25 @@ export function createStackedPageScrollGesture(
     progress = 0;
     activeExtent = 1;
     options.onSettled?.(committedDirection);
+
+    if (endingTransition) {
+      endingTransition.skipTransition();
+      const closing = endingTransition.finished.then(
+        () => undefined,
+        () => undefined,
+      );
+      closingTransition = closing;
+      void closing.then(() => {
+        if (closingTransition !== closing) {
+          return;
+        }
+        closingTransition = null;
+        beginBufferedGesture();
+      });
+      return;
+    }
+
+    beginBufferedGesture();
   }
 
   function settle(commit: boolean): void {
@@ -526,6 +594,8 @@ export function createStackedPageScrollGesture(
       return;
     }
 
+    isSettling = true;
+    settlingCommit = commit;
     stopAnimation();
     const ownSequence = sequence;
     const destination = commit ? 1 : 0;
@@ -678,6 +748,24 @@ export function createStackedPageScrollGesture(
       const now = performance.now();
       const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
       const delta = event.deltaX * scale;
+
+      if (isSettling) {
+        render(settlingCommit ? 1 : 0);
+        if (!settlingCommit) {
+          scroller.scrollLeft = origin;
+        }
+        const committedDirection = settlingCommit ? direction : 0;
+        cleanup(committedDirection);
+        bufferInput(delta, now);
+        beginBufferedGesture();
+        return;
+      }
+
+      if (closingTransition) {
+        bufferInput(delta, now);
+        return;
+      }
+
       const elapsed = lastInputAt > 0 ? Math.max(8, now - lastInputAt) : 16;
       lastInputAt = now;
 
@@ -715,6 +803,7 @@ export function createStackedPageScrollGesture(
       endTimer = setTimeout(finishGesture, 160);
     },
     dispose() {
+      isDisposed = true;
       fallback.dispose();
       stopAnimation();
       if (endTimer !== null) {
@@ -728,6 +817,9 @@ export function createStackedPageScrollGesture(
       if (transition) {
         cleanup(0);
       }
+      bufferedDistance = 0;
+      bufferedVelocity = 0;
+      bufferedLastInputAt = 0;
     },
   };
 }

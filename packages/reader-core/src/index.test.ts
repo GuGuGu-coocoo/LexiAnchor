@@ -168,4 +168,84 @@ describe('stacked page gesture', () => {
     expect(classes.has('epub-page-stack-transition')).toBe(false);
     gesture.dispose();
   });
+
+  it('starts a new sheet when another gesture arrives during the previous settle', async () => {
+    vi.useFakeTimers();
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.stubGlobal('WheelEvent', { DOM_DELTA_LINE: 1 });
+
+    const finishedResolvers: Array<() => void> = [];
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      let resolveFinished: () => void = () => {};
+      const finished = new Promise<void>((resolve) => {
+        resolveFinished = resolve;
+      });
+      finishedResolvers.push(resolveFinished);
+      return {
+        ready: Promise.resolve(),
+        finished,
+        updateCallbackDone: Promise.resolve(),
+        types: new Set<string>(),
+        skipTransition: vi.fn(),
+      };
+    });
+    const ownerDocument = {
+      documentElement: {
+        animate: vi.fn(
+          () =>
+            ({
+              currentTime: 0,
+              pause: vi.fn(),
+              cancel: vi.fn(),
+            }) as unknown as Animation,
+        ),
+      },
+      startViewTransition,
+    } as unknown as Document;
+    const scroller = {
+      scrollLeft: 0,
+      scrollWidth: 5_000,
+      clientWidth: 1_000,
+      ownerDocument,
+      style: { viewTransitionName: '' },
+      classList: {
+        add: vi.fn(),
+        remove: vi.fn(),
+      },
+    } as unknown as HTMLElement;
+    const gesture = createStackedPageScrollGesture({
+      getScroller: () => scroller,
+      getPageExtent: () => 1_000,
+    });
+    const wheel = {
+      deltaX: 520,
+      deltaY: 2,
+      deltaMode: 0,
+      preventDefault: vi.fn(),
+    } as unknown as WheelEvent;
+
+    gesture.handleWheel(wheel);
+    await Promise.resolve();
+    vi.advanceTimersByTime(160);
+    expect(frames.size).toBeGreaterThan(0);
+
+    gesture.handleWheel(wheel);
+    expect(startViewTransition).toHaveBeenCalledTimes(1);
+    finishedResolvers[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(startViewTransition).toHaveBeenCalledTimes(2);
+    expect(scroller.scrollLeft).toBe(2_000);
+    gesture.dispose();
+  });
 });
