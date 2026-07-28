@@ -91,6 +91,8 @@ const english = {
   cardsDescription: 'Saved locally with the definition and the sentence where you found it.',
   cardsSearch: 'Search word cards',
   cardsSearchPlaceholder: 'Word, definition, root, book, or sentence',
+  cardsResultLimit:
+    'Showing the first 200 results. Refine your search to find a specific word card.',
   noCardsFound: 'No matching word cards',
   noCardsFoundDescription: 'Try a different word or part of the saved context.',
   exportCards: 'Export backup',
@@ -370,6 +372,7 @@ const simplifiedChinese: Record<MessageKey, string> = {
   cardsDescription: '词卡保存在本机，并保留释义和遇到这个词时的原句。',
   cardsSearch: '搜索词卡',
   cardsSearchPlaceholder: '搜索词语、释义、词根、书名或原句',
+  cardsResultLimit: '当前显示前 200 条结果，请继续缩小搜索范围以找到指定词卡。',
   noCardsFound: '没有匹配的词卡',
   noCardsFoundDescription: '可以尝试其他词语或已保存上下文中的内容。',
   exportCards: '导出备份',
@@ -643,6 +646,8 @@ const french: Record<MessageKey, string> = {
     'Enregistrées localement avec la définition et la phrase où le mot a été rencontré.',
   cardsSearch: 'Rechercher dans les fiches',
   cardsSearchPlaceholder: 'Mot, définition, racine, livre ou phrase',
+  cardsResultLimit:
+    'Les 200 premiers résultats sont affichés. Affinez la recherche pour trouver une fiche précise.',
   noCardsFound: 'Aucune fiche correspondante',
   noCardsFoundDescription: 'Essayez un autre mot ou une partie du contexte enregistré.',
   exportCards: 'Exporter la sauvegarde',

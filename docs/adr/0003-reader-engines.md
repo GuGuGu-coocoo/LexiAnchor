@@ -34,7 +34,7 @@ PDF.js 6.1.200 的 Spike 也已完成核心验证：
 - 扫描型 PDF 保持可见，并自动禁用选词能力；
 - PDF link annotation overlay 支持内部页码跳转，HTTP/HTTPS 外链统一交给平台桥接；
 - PDF reader 与 worker 按需加载，不进入 Home/EPUB 首屏 bundle；
-- 尚未完成 100MB 级压力样本和 Windows 实机验证。
+- 110,140,568 字节自制压力样本已通过；尚未完成 Windows 实机验证。
 
 完整证据见 [PDF 阅读内核 Spike](../spikes/0002-pdf-engine.md)。
 

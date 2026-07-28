@@ -152,9 +152,13 @@ function mapWordCard(row: WordCardRow): WordCardRecord {
   };
 }
 
-function likePattern(query: string): string {
-  const escaped = query.trim().toLocaleLowerCase('en-US').replaceAll('\\', '\\\\');
-  return `%${escaped.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+function wordCardSearchExpression(query: string): string {
+  return query
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean)
+    .map((token) => `"${token.replaceAll('"', '""')}"*`)
+    .join(' AND ');
 }
 
 function saveWordCard(db: Database, card: WordCardRecord): void {
@@ -478,23 +482,21 @@ async function handleRequest(request: DatabaseRequest) {
       const rows = context.db.exec({
         sql: query
           ? `
-              SELECT * FROM word_cards
-              WHERE deleted_at IS NULL
-                AND (
-                  normalized_term LIKE ? ESCAPE '\\'
-                  OR LOWER(definition) LIKE ? ESCAPE '\\'
-                  OR LOWER(COALESCE(root_or_etymology, '')) LIKE ? ESCAPE '\\'
-                  OR LOWER(source_book_title) LIKE ? ESCAPE '\\'
-                  OR LOWER(source_sentence) LIKE ? ESCAPE '\\'
-                )
-              ORDER BY created_at DESC, term COLLATE NOCASE
+              SELECT word_cards.*
+              FROM word_cards
+              JOIN word_cards_fts ON word_cards_fts.rowid = word_cards.rowid
+              WHERE word_cards_fts MATCH ?
+                AND word_cards.deleted_at IS NULL
+              ORDER BY word_cards.created_at DESC, word_cards.term COLLATE NOCASE
+              LIMIT 200
             `
           : `
               SELECT * FROM word_cards
               WHERE deleted_at IS NULL
               ORDER BY created_at DESC, term COLLATE NOCASE
+              LIMIT 200
             `,
-        bind: query ? Array(5).fill(likePattern(query)) : undefined,
+        bind: query ? [wordCardSearchExpression(query)] : undefined,
         rowMode: 'object',
         returnValue: 'resultRows',
       }) as unknown as WordCardRow[];

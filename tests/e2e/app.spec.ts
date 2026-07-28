@@ -635,6 +635,24 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await page.screenshot({ path: 'test-results/pdf-text-reader.png', fullPage: true });
 });
 
+test('opens an optional 100 MB PDF stress fixture', async ({ page }) => {
+  const largePdfPath = process.env.LEXIANCHOR_LARGE_PDF;
+  test.skip(!largePdfPath, 'Set LEXIANCHOR_LARGE_PDF to run the large-file stress check.');
+  test.setTimeout(90_000);
+
+  if (!largePdfPath) {
+    return;
+  }
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page.locator('.import-button input[type="file"]').setInputFiles(largePdfPath);
+  await expect(page.locator('.pdf-page')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.reader-engine-label')).toContainText(/1.*3.*33%/);
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
+});
+
 test('keeps an image-only PDF readable and disables text-only features', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();

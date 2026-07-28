@@ -3,7 +3,7 @@
 - 日期：2026-07-24
 - 结论：v0.1 使用 PDF.js 6.1.200 的 display layer，通过
   `@lexianchor/reader-pdf` 隔离
-- 状态：核心能力通过；100MB 级压力样本仍待验证
+- 状态：核心能力与 100MB 级自制压力样本通过
 
 ## 目标
 
@@ -29,6 +29,13 @@
 两份文件均不含 DRM、远程资源、嵌入脚本或第三方受版权保护段落。文本型夹具经 pypdf
 提取到 992 个字符；扫描型夹具提取到 0 个字符。所有页面还通过 Poppler 渲染成 PNG
 进行人工视觉检查。
+
+大文件检查不把 100MB 二进制提交进 Git。生成或准备合法样本后，可重复运行：
+
+```bash
+LEXIANCHOR_LARGE_PDF=/absolute/path/to/large.pdf \
+  pnpm exec playwright test tests/e2e/app.spec.ts -g "100 MB"
+```
 
 ## 实现边界
 
@@ -61,7 +68,7 @@
 | 无文本层降级 | 通过 | canvas 可见，文本层为空，选词能力自动禁用 |
 | Web 生产构建 | 通过 | PDF.js 阅读器与 worker 形成独立延迟加载 chunk |
 | Electron 构建 | 通过 | macOS arm64 应用打包成功 |
-| 100MB 级压力样本 | 未完成 | 需要合法生成的大文件和内存测量基线 |
+| 100MB 级压力样本 | 通过 | 110,140,568 字节自制样本完成导入、首屏渲染和翻页 |
 
 ## 发现并修复的问题
 
@@ -88,11 +95,11 @@
 - 不提供 OCR，扫描 PDF 只能查看；
 - 当前进度精度为页码，不包含页内滚动位置；
 - 尚未验证密码保护或加密 PDF；产品范围仍只接受无 DRM 文件；
-- 尚未完成 100MB 级压力测试和 Windows 实机启动验证。
+- 尚未完成 Windows 实机启动验证；100MB 合成基线已通过，后续继续增加真实公版大文件矩阵。
 
 ## 决策
 
 PDF.js 6.1.200 满足 v0.1 文本型 PDF 的核心路径，并能对扫描件做诚实降级。保留自定义
 viewer，避免复制完整默认 viewer；所有 PDF.js API 继续限制在
-`@lexianchor/reader-pdf`。在进入首个公开测试版前补充 100MB 压力样本和 Windows
-实机验证，OCR 不进入 MVP。
+`@lexianchor/reader-pdf`。110,140,568 字节自制压力样本已通过；在进入首个公开测试版前
+继续补充真实公版大文件矩阵和 Windows 实机验证，OCR 不进入 MVP。

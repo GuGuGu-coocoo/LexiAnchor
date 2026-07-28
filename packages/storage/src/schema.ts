@@ -76,6 +76,68 @@ export const migrations: readonly Migration[] = [
         WHERE deleted_at IS NULL;
     `,
   },
+  {
+    version: 3,
+    sql: `
+      CREATE VIRTUAL TABLE word_cards_fts USING fts5(
+        term,
+        definition,
+        root_or_etymology,
+        source_book_title,
+        source_sentence,
+        content='word_cards',
+        content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+      );
+
+      INSERT INTO word_cards_fts(
+        rowid, term, definition, root_or_etymology, source_book_title, source_sentence
+      )
+      SELECT rowid, term, definition, root_or_etymology, source_book_title, source_sentence
+      FROM word_cards;
+
+      CREATE TRIGGER word_cards_fts_after_insert
+      AFTER INSERT ON word_cards
+      BEGIN
+        INSERT INTO word_cards_fts(
+          rowid, term, definition, root_or_etymology, source_book_title, source_sentence
+        ) VALUES (
+          new.rowid, new.term, new.definition, new.root_or_etymology,
+          new.source_book_title, new.source_sentence
+        );
+      END;
+
+      CREATE TRIGGER word_cards_fts_after_delete
+      AFTER DELETE ON word_cards
+      BEGIN
+        INSERT INTO word_cards_fts(
+          word_cards_fts, rowid, term, definition, root_or_etymology,
+          source_book_title, source_sentence
+        ) VALUES (
+          'delete', old.rowid, old.term, old.definition, old.root_or_etymology,
+          old.source_book_title, old.source_sentence
+        );
+      END;
+
+      CREATE TRIGGER word_cards_fts_after_update
+      AFTER UPDATE ON word_cards
+      BEGIN
+        INSERT INTO word_cards_fts(
+          word_cards_fts, rowid, term, definition, root_or_etymology,
+          source_book_title, source_sentence
+        ) VALUES (
+          'delete', old.rowid, old.term, old.definition, old.root_or_etymology,
+          old.source_book_title, old.source_sentence
+        );
+        INSERT INTO word_cards_fts(
+          rowid, term, definition, root_or_etymology, source_book_title, source_sentence
+        ) VALUES (
+          new.rowid, new.term, new.definition, new.root_or_etymology,
+          new.source_book_title, new.source_sentence
+        );
+      END;
+    `,
+  },
 ] as const;
 
 export function applyMigrations(db: Pick<Database, 'exec'>, appliedAt = new Date().toISOString()) {

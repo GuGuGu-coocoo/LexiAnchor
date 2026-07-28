@@ -838,7 +838,7 @@ export function App({ platform }: AppProps) {
 
   const exportWordCards = useCallback(async () => {
     try {
-      const cards = await repository().listWordCards();
+      const cards = (await repository().exportDataSnapshot()).wordCards;
       const blob = new Blob([serializeWordCards(cards)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -2080,6 +2080,11 @@ function CardsPage({
           onChange={(event) => onQueryChange(event.target.value)}
         />
       </label>
+      {cards.length === 200 ? (
+        <p className="card-result-limit" role="status">
+          {t('cardsResultLimit')}
+        </p>
+      ) : null}
 
       {deletedCard ? (
         <div className="card-delete-notice" role="status">

@@ -1417,6 +1417,13 @@ button {
   gap: 16px;
 }
 
+.card-result-limit {
+  margin: -8px 0 18px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .card-delete-notice {
   display: flex;
   align-items: center;

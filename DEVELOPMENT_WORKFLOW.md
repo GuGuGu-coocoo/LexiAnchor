@@ -135,7 +135,7 @@ Phase 0 同时验证 Electron Forge Vite 插件。该插件当前为 experimenta
 - [x] EPUB 内核对比：选择 EPUB.js 0.3.93，见
       `docs/spikes/0001-epub-engine.md` 与 ADR-0003；
 - [x] PDF.js 文本层与 PDF 核心阅读切片：见
-      `docs/spikes/0002-pdf-engine.md` 与 ADR-0003；100MB 压力验证仍待完成；
+      `docs/spikes/0002-pdf-engine.md` 与 ADR-0003；105MB 自制压力样本已通过；
 - [x] SQLite WASM + OPFS：`opfs-sahpool`、schema v1、书库与进度恢复通过，
       见 `docs/spikes/0003-sqlite-opfs.md` 与 ADR-0002；
 - [x] WordNet 3.1 英英词典包：完整资源、离线查询、manifest 与许可门禁通过，
@@ -191,7 +191,8 @@ Phase 1 结束前不大规模开发阅读 UI。
 
 ### Phase 3：PDF 垂直切片
 
-核心路径和 link annotation overlay 已随 PDF Spike 完成；大文件压力测试继续留在本阶段收尾。
+核心路径、link annotation overlay 和 100MB 自制样本基线已随 PDF Spike 完成；真实公版大文件
+矩阵和 Windows 实机验证继续留在本阶段收尾。
 
 流程：
 
@@ -263,7 +264,7 @@ Phase 1 结束前不大规模开发阅读 UI。
 - [x] 删除后的当前会话撤销；
 - [x] 编辑全部学习字段；
 - [x] 版本化 JSON 备份导出和原子导入，往返保留词卡内容；
-- [ ] 10 万词卡压力测试和全文检索优化。
+- [x] SQLite FTS5 全文检索、v2→v3 回填迁移和 10 万词卡压力测试。
 
 ### Phase 6：Web/PWA 完整化
 
