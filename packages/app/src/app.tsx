@@ -397,19 +397,25 @@ export function App({ platform }: AppProps) {
     const syncFullscreenState = () => {
       void platform.isFullscreen().then(setIsFullscreen);
     };
-    const exitPageImmersiveWithEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && document.documentElement.dataset.immersive === 'on') {
-        void platform.setFullscreen(false).then(setIsFullscreen);
+    const exitFullscreenWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
       }
+
+      void platform.isFullscreen().then((fullscreen) => {
+        if (fullscreen || document.documentElement.dataset.immersive === 'on') {
+          void platform.setFullscreen(false).then(setIsFullscreen);
+        }
+      });
     };
 
     document.addEventListener('fullscreenchange', syncFullscreenState);
-    document.addEventListener('keydown', exitPageImmersiveWithEscape);
+    document.addEventListener('keydown', exitFullscreenWithEscape);
     window.addEventListener('resize', syncFullscreenState);
 
     return () => {
       document.removeEventListener('fullscreenchange', syncFullscreenState);
-      document.removeEventListener('keydown', exitPageImmersiveWithEscape);
+      document.removeEventListener('keydown', exitFullscreenWithEscape);
       window.removeEventListener('resize', syncFullscreenState);
     };
   }, [platform]);
