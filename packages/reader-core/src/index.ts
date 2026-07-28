@@ -92,6 +92,12 @@ function projectedDistance(velocity: number, decelerationRate = 0.99): number {
   return (velocity / 1000) * (decelerationRate / (1 - decelerationRate));
 }
 
+function afterNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
 /**
  * Turns a horizontal trackpad stream into a directly manipulated page surface.
  * Content follows the gesture immediately, then settles with a critically damped
@@ -525,7 +531,7 @@ export function createStackedPageScrollGesture(
     if (endTimer !== null) {
       clearTimeout(endTimer);
     }
-    endTimer = setTimeout(finishGesture, 160);
+    endTimer = setTimeout(finishGesture, 90);
   }
 
   function bufferInput(delta: number, now: number): void {
@@ -564,10 +570,17 @@ export function createStackedPageScrollGesture(
 
     if (endingTransition) {
       endingTransition.skipTransition();
-      const closing = endingTransition.finished.then(
-        () => undefined,
-        () => undefined,
-      );
+      // Chromium normally resolves `finished` immediately after a skip, but
+      // some Electron/macOS combinations keep it pending behind the old
+      // pseudo-element animation. Never let that browser lifecycle hold the
+      // next physical gesture hostage for more than one paint.
+      const closing = Promise.race([
+        endingTransition.finished.then(
+          () => undefined,
+          () => undefined,
+        ),
+        afterNextPaint(),
+      ]);
       closingTransition = closing;
       void closing.then(() => {
         if (closingTransition !== closing) {
@@ -644,8 +657,8 @@ export function createStackedPageScrollGesture(
       distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
     const commit =
       direction > 0
-        ? projected > extent * 0.16 || velocity > 480
-        : projected < -extent * 0.16 || velocity < -480;
+        ? projected > extent * 0.04 || velocity > 140
+        : projected < -extent * 0.04 || velocity < -140;
     settle(commit);
   }
 
@@ -706,8 +719,8 @@ export function createStackedPageScrollGesture(
         if (shouldFinishWhenReady) {
           settle(
             direction > 0
-              ? distance > activeExtent * 0.16 || velocity > 480
-              : distance < -activeExtent * 0.16 || velocity < -480,
+              ? distance > activeExtent * 0.04 || velocity > 140
+              : distance < -activeExtent * 0.04 || velocity < -140,
           );
         }
       },
@@ -800,7 +813,7 @@ export function createStackedPageScrollGesture(
       if (endTimer !== null) {
         clearTimeout(endTimer);
       }
-      endTimer = setTimeout(finishGesture, 160);
+      endTimer = setTimeout(finishGesture, 90);
     },
     dispose() {
       isDisposed = true;

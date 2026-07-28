@@ -195,19 +195,22 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
   const positions: number[] = [];
 
   for (let index = 0; index < 10; index += 1) {
-    await page
-      .locator('.epub-container iframe')
-      .last()
-      .contentFrame()
-      .locator('body')
-      .dispatchEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        deltaMode: 0,
-        deltaX: 560,
-        deltaY: 2,
-      });
-    await page.waitForTimeout(300);
+    for (let sample = 0; sample < 5; sample += 1) {
+      await page
+        .locator('.epub-container iframe')
+        .last()
+        .contentFrame()
+        .locator('body')
+        .dispatchEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          deltaMode: 0,
+          deltaX: 8,
+          deltaY: 1,
+        });
+      await page.waitForTimeout(12);
+    }
+    await page.waitForTimeout(220);
     positions.push(await scroller.evaluate((element) => element.scrollLeft));
   }
 
