@@ -281,7 +281,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
       });
       await this.book.ready;
       await this.book.locations.generate(600);
-      await this.rendition.display(initialLocator?.cfi ?? initialLocator?.href);
+      const initialTarget = initialLocator?.cfi ?? initialLocator?.href;
+      this.requestedLocator = initialLocator ?? null;
+      await this.displayAtStableLocation(this.rendition, initialTarget);
+      this.requestedLocator = null;
+      this.rendition.reportLocation();
     } catch (error) {
       this.callbacks.onError(asError(error));
       await this.close();
@@ -338,8 +342,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.callbacks.onSelection(null);
     try {
       const rendition = this.rendition;
-      await rendition?.display(locator.cfi ?? locator.href);
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (rendition) {
+        await this.displayAtStableLocation(rendition, locator.cfi ?? locator.href);
+      }
       rendition?.reportLocation();
     } catch (error) {
       if (this.requestedLocator === locator) {
@@ -455,8 +460,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
     try {
       if (anchor) {
-        await rendition.display(anchor);
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await this.displayAtStableLocation(rendition, anchor);
       }
     } catch (error) {
       if (revision === this.layoutRevision) {
@@ -470,6 +474,25 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
     this.layoutAnchor = null;
     rendition.reportLocation();
+  }
+
+  private async displayAtStableLocation(
+    rendition: ContinuousRendition,
+    target: string | undefined,
+  ): Promise<void> {
+    await rendition.display(target);
+
+    if (!target) {
+      return;
+    }
+
+    // The continuous manager fills the strip with adjacent spine items after
+    // its first display. Prepending those items changes the strip's pixel
+    // origin in large books. Re-apply the same target after the fill so the
+    // visible page stays on the chapter the reader explicitly chose.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await rendition.display(target);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 }
 
