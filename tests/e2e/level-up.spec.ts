@@ -18,7 +18,7 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
     timeout: 60_000,
   });
 
-  const settledPositions: number[] = [];
+  const settledPages: Array<{ position: number; extent: number }> = [];
   for (let index = 0; index < 5; index += 1) {
     const body = page.locator('.epub-container iframe').last().contentFrame().locator('body');
     await body.dispatchEvent('wheel', {
@@ -29,16 +29,21 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
       deltaY: 2,
     });
     await page.waitForTimeout(700);
-    const position = await page.evaluate(() => {
+    const settledPage = await page.evaluate(() => {
       const scroller = document
         .querySelector('[data-testid="epub-container"]')
         ?.querySelector<HTMLElement>('.epub-container');
-      return scroller?.scrollLeft ?? 0;
+      return {
+        position: scroller?.scrollLeft ?? 0,
+        extent: scroller?.clientWidth ?? 0,
+      };
     });
-    settledPositions.push(position);
+    settledPages.push(settledPage);
   }
 
-  for (let index = 1; index < settledPositions.length; index += 1) {
-    expect(settledPositions[index]).toBeGreaterThan((settledPositions[index - 1] ?? 0) + 500);
+  for (let index = 0; index < settledPages.length; index += 1) {
+    const page = settledPages[index];
+    expect(page?.extent).toBeGreaterThan(500);
+    expect(Math.abs((page?.position ?? 0) - (index + 1) * (page?.extent ?? 0))).toBeLessThan(6);
   }
 });

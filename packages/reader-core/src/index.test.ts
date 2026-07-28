@@ -55,6 +55,7 @@ describe('continuous page gesture', () => {
 
     gesture.handleWheel(wheel);
     vi.advanceTimersByTime(90);
+    scroller.scrollLeft = 1_000;
     gesture.handleWheel(wheel);
     vi.advanceTimersByTime(90);
 
@@ -66,7 +67,7 @@ describe('continuous page gesture', () => {
       callback(time);
     }
 
-    expect(scroller.scrollLeft).toBe(1_120);
+    expect(scroller.scrollLeft).toBe(2_000);
     gesture.dispose();
   });
 });

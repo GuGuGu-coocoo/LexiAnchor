@@ -297,12 +297,12 @@ export function createHorizontalPageScrollGesture(
   function settle(target: number, initialVelocity: number, direction: -1 | 0 | 1): void {
     stopAnimation();
     const ownSequence = animationSequence;
-    const response = 0.34;
+    const response = 0.32;
     const stiffness = ((2 * Math.PI) / response) ** 2;
-    const dampingRatio = Math.abs(initialVelocity) > 700 ? 0.88 : 1;
-    const damping = 2 * dampingRatio * Math.sqrt(stiffness);
+    const damping = 2 * Math.sqrt(stiffness);
     let springVelocity = initialVelocity;
     let previousTime = performance.now();
+    let expectedPosition = options.getScroller()?.scrollLeft ?? target;
 
     const tick = (time: number) => {
       if (ownSequence !== animationSequence) {
@@ -317,9 +317,21 @@ export function createHorizontalPageScrollGesture(
       const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
       previousTime = time;
       const position = scroller.scrollLeft;
+
+      // EPUB.js can rebase its continuous strip when it trims an off-screen
+      // section. That preserves the visible page but changes scrollLeft. Stop
+      // the old spring instead of pulling the reader back toward a stale pixel.
+      if (Math.abs(position - expectedPosition) > pageExtent() * 0.45) {
+        animationFrame = null;
+        velocity = 0;
+        options.onSettled?.(direction);
+        return;
+      }
+
       const acceleration = -stiffness * (position - target) - damping * springVelocity;
       springVelocity += acceleration * elapsed;
       scroller.scrollLeft = position + springVelocity * elapsed;
+      expectedPosition = scroller.scrollLeft;
 
       if (Math.abs(scroller.scrollLeft - target) < 0.5 && Math.abs(springVelocity) < 5) {
         scroller.scrollLeft = target;
@@ -361,7 +373,13 @@ export function createHorizontalPageScrollGesture(
           ? -1
           : 0;
     const maximum = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-    const target = Math.max(0, Math.min(maximum, origin + direction * extent));
+    const pageIndex =
+      direction > 0
+        ? Math.floor(origin / extent) + 1
+        : direction < 0
+          ? Math.ceil(origin / extent) - 1
+          : Math.round(scroller.scrollLeft / extent);
+    const target = Math.max(0, Math.min(maximum, pageIndex * extent));
 
     if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       scroller.scrollLeft = target;
