@@ -676,6 +676,72 @@ test('persists an imported book and its reading progress in local SQLite and OPF
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
 });
 
+test('batch imports books and edits persistent library metadata', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const [pdf, epub] = await Promise.all([
+    readFile(resolve('packages/test-fixtures/generated/lexianchor-text.pdf')),
+    readFile(resolve('packages/test-fixtures/generated/lexianchor-spike.epub')),
+  ]);
+  await page.evaluate(
+    ({ pdfBase64, epubBase64 }) => {
+      const decode = (value: string) =>
+        Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File([decode(pdfBase64)], 'lexianchor-text.pdf', { type: 'application/pdf' }),
+      );
+      transfer.items.add(
+        new File([decode(epubBase64)], 'lexianchor-spike.epub', {
+          type: 'application/epub+zip',
+        }),
+      );
+      const pageElement = document.querySelector<HTMLElement>('.library-page');
+
+      if (!pageElement) {
+        throw new Error('The library drop target is missing.');
+      }
+
+      pageElement.dispatchEvent(
+        new DragEvent('dragenter', { bubbles: true, dataTransfer: transfer }),
+      );
+      pageElement.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
+    },
+    {
+      pdfBase64: pdf.toString('base64'),
+      epubBase64: epub.toString('base64'),
+    },
+  );
+
+  const savedBooks = page.locator('article[data-book-id]');
+  await expect(savedBooks).toHaveCount(2);
+  await expect(page.locator('.reader-page')).toHaveCount(0);
+  await expect(
+    page.getByText(/Books imported: 2|已导入书籍： 2|Livres importés : 2/),
+  ).toBeVisible();
+
+  const epubBook = savedBooks.filter({ hasText: 'lexianchor-spike' });
+  await epubBook
+    .getByRole('button', {
+      name: /Edit details lexianchor-spike|编辑信息 lexianchor-spike|Modifier les informations lexianchor-spike/,
+    })
+    .click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox', { name: /Title|书名|Titre/ }).fill('A Personal Reading Copy');
+  await dialog.getByRole('textbox', { name: /Author|作者|Auteur/ }).fill('LexiAnchor Tester');
+  await dialog.getByRole('textbox', { name: /Book language|书籍语言|Langue du livre/ }).fill('en');
+  await dialog.getByRole('button', { name: /Save changes|保存修改|Enregistrer/ }).click();
+
+  const editedBook = savedBooks.filter({ hasText: 'A Personal Reading Copy' });
+  await expect(dialog).toHaveCount(0);
+  await expect(editedBook).toContainText('LexiAnchor Tester');
+  await page.reload();
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await expect(
+    page.locator('article[data-book-id]').filter({ hasText: 'A Personal Reading Copy' }),
+  ).toContainText('LexiAnchor Tester');
+});
+
 test('searches, sorts, and safely deletes books from the local library', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();

@@ -531,6 +531,13 @@ button {
   margin-top: 0;
 }
 
+.book-secondary-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.book-edit-action,
 .book-delete-action {
   padding: 7px 0 0;
   border: 0;
@@ -545,6 +552,11 @@ button {
     transform 120ms var(--ease-out);
 }
 
+.book-edit-action {
+  color: var(--accent-strong);
+}
+
+.book-edit-action:active,
 .book-delete-action:active {
   transform: scale(0.97);
 }
@@ -554,6 +566,30 @@ button {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 20px;
+}
+
+.library-drop-hint {
+  margin: -10px 0 22px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.library-page--dragging::after {
+  position: fixed;
+  z-index: 20;
+  inset: 18px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  color: var(--accent-strong);
+  content: 'EPUB · PDF';
+  font-size: 22px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  pointer-events: none;
 }
 
 .library-tools {
@@ -713,6 +749,12 @@ button {
   color: #fff;
 }
 
+.book-delete-dialog-actions .book-metadata-save {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface-raised);
+}
+
 .book-delete-dialog-actions button:disabled {
   cursor: default;
   opacity: 0.65;
@@ -720,6 +762,28 @@ button {
 
 .book-delete-dialog-actions button:not(:disabled):active {
   transform: scale(0.97);
+}
+
+.book-metadata-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.book-metadata-field input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 520;
 }
 
 .import-button {

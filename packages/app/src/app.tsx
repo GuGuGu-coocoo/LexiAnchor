@@ -96,6 +96,12 @@ interface WordCardEditDraft {
   readonly sourceSentence: string;
 }
 
+interface BookMetadataDraft {
+  readonly title: string;
+  readonly author: string;
+  readonly language: string;
+}
+
 type StarDictImportResponse =
   | { readonly ok: true; readonly status: StarDictInstallStatus }
   | { readonly ok: false; readonly error: string };
@@ -560,48 +566,121 @@ export function App({ platform }: AppProps) {
     }
   }, []);
 
-  const importBook = useCallback(
-    async (file: File) => {
-      try {
-        setStatusMessage(t('importingBook'));
-        const format = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'epub';
-        const data = await file.arrayBuffer();
-        const hash = await sha256(data);
-        const now = new Date().toISOString();
-        const title = file.name.replace(/\.(epub|pdf)$/i, '') || file.name;
-        const book: BookRecord = {
-          id: `book-${hash}`,
-          title,
-          author: '',
-          format,
-          language: null,
-          coverRef: null,
-          contentRef: hash,
-          contentHash: hash,
-          fileSize: data.byteLength,
-          importedAt: now,
-          lastOpenedAt: now,
-          metadata: {
-            originalFileName: file.name,
-            mimeType: file.type,
-          },
-          createdAt: now,
-          updatedAt: now,
-          deletedAt: null,
-          version: 1,
-        };
+  const importBooks = useCallback(
+    async (files: readonly File[]) => {
+      if (files.length === 0) {
+        return;
+      }
 
-        await contentStore.put(hash, data);
-        await repository().saveBook(book);
-        await refreshLibrary();
-        setStatusMessage(t('bookSaved'));
-        setOpenBook({
-          source: { data, name: file.name, format },
-          bookId: book.id,
-        });
+      setStatusMessage(t('importingBooks'));
+      const importedSessions: OpenBookSession[] = [];
+      const failures: string[] = [];
+      let existingBooks: Map<string, BookRecord>;
+
+      try {
+        existingBooks = new Map(
+          (await repository().listBooks()).map((book) => [book.id, book] as const),
+        );
       } catch (error) {
         setStatusMessage(error instanceof Error ? error.message : String(error));
+        return;
       }
+
+      for (const file of files) {
+        try {
+          const normalizedName = file.name.toLocaleLowerCase('en-US');
+          const format = normalizedName.endsWith('.pdf')
+            ? 'pdf'
+            : normalizedName.endsWith('.epub')
+              ? 'epub'
+              : null;
+
+          if (!format) {
+            throw new Error(t('unsupportedBookFormat'));
+          }
+
+          const data = await file.arrayBuffer();
+          const hash = await sha256(data);
+          const now = new Date().toISOString();
+          const id = `book-${hash}`;
+          const existing = existingBooks.get(id);
+          const title = file.name.replace(/\.(epub|pdf)$/i, '') || file.name;
+          const book: BookRecord = existing
+            ? {
+                ...existing,
+                lastOpenedAt: now,
+                updatedAt: now,
+                deletedAt: null,
+                version: existing.version + 1,
+              }
+            : {
+                id,
+                title,
+                author: '',
+                format,
+                language: null,
+                coverRef: null,
+                contentRef: hash,
+                contentHash: hash,
+                fileSize: data.byteLength,
+                importedAt: now,
+                lastOpenedAt: now,
+                metadata: {
+                  originalFileName: file.name,
+                  mimeType: file.type,
+                },
+                createdAt: now,
+                updatedAt: now,
+                deletedAt: null,
+                version: 1,
+              };
+
+          await contentStore.put(hash, data);
+          await repository().saveBook(book);
+          existingBooks.set(book.id, book);
+          importedSessions.push({
+            source: { data, name: file.name, format },
+            bookId: book.id,
+          });
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      await refreshLibrary();
+
+      if (files.length === 1 && importedSessions.length === 1) {
+        setOpenBook(importedSessions[0] ?? null);
+      }
+
+      const summary = `${t('booksImported')} ${importedSessions.length}`;
+      setStatusMessage(
+        failures.length > 0
+          ? `${summary}. ${t('booksImportFailed')} ${failures.length}: ${failures.join('; ')}`
+          : summary,
+      );
+    },
+    [refreshLibrary, t],
+  );
+
+  const updateBookMetadata = useCallback(
+    async (entry: LibraryEntry, draft: BookMetadataDraft) => {
+      const title = draft.title.trim();
+
+      if (!title) {
+        throw new Error(t('bookTitleRequired'));
+      }
+
+      await repository().saveBook({
+        ...entry.book,
+        title,
+        author: draft.author.trim(),
+        language: draft.language.trim() || null,
+        updatedAt: new Date().toISOString(),
+        version: entry.book.version + 1,
+      });
+      await refreshLibrary();
+      setStatusMessage(t('bookMetadataSaved'));
     },
     [refreshLibrary, t],
   );
@@ -1187,7 +1266,8 @@ export function App({ platform }: AppProps) {
           <LibraryPage
             library={library}
             t={t}
-            onImportBook={importBook}
+            onImportBooks={importBooks}
+            onUpdateBook={updateBookMetadata}
             onDeleteBook={deleteStoredBook}
             onOpenSample={(source) => setOpenBook({ source })}
             onOpenStored={openStoredBook}
@@ -1366,7 +1446,8 @@ function HomePage({
 interface LibraryPageProps {
   readonly library: readonly LibraryEntry[];
   readonly t: (key: MessageKey) => string;
-  readonly onImportBook: (file: File) => Promise<void>;
+  readonly onImportBooks: (files: readonly File[]) => Promise<void>;
+  readonly onUpdateBook: (entry: LibraryEntry, draft: BookMetadataDraft) => Promise<void>;
   readonly onDeleteBook: (entry: LibraryEntry, options: DeleteBookOptions) => Promise<void>;
   readonly onOpenSample: (source: ReaderSource) => void;
   readonly onOpenStored: (entry: LibraryEntry) => Promise<void>;
@@ -1375,7 +1456,8 @@ interface LibraryPageProps {
 function LibraryPage({
   library,
   t,
-  onImportBook,
+  onImportBooks,
+  onUpdateBook,
   onDeleteBook,
   onOpenSample,
   onOpenStored,
@@ -1388,6 +1470,8 @@ function LibraryPage({
       : 'recent';
   });
   const [bookToDelete, setBookToDelete] = useState<LibraryEntry | null>(null);
+  const [bookToEdit, setBookToEdit] = useState<LibraryEntry | null>(null);
+  const [isDraggingBooks, setIsDraggingBooks] = useState(false);
   const visibleLibrary = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const entries = normalizedQuery
@@ -1424,16 +1508,41 @@ function LibraryPage({
     globalThis.localStorage?.setItem('lexianchor:library-sort', sort);
   }, [sort]);
 
-  function importBook(file: File | undefined) {
-    if (!file) {
+  function importBooks(files: FileList | readonly File[] | null) {
+    if (!files || files.length === 0) {
       return;
     }
 
-    void onImportBook(file);
+    void onImportBooks(Array.from(files));
   }
 
   return (
-    <section className="page" aria-labelledby="library-title">
+    <section
+      className={`page library-page${isDraggingBooks ? ' library-page--dragging' : ''}`}
+      aria-labelledby="library-title"
+      onDragEnter={(event) => {
+        if (event.dataTransfer.types.includes('Files')) {
+          event.preventDefault();
+          setIsDraggingBooks(true);
+        }
+      }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('Files')) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setIsDraggingBooks(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDraggingBooks(false);
+        importBooks(event.dataTransfer.files);
+      }}
+    >
       <header className="page-header">
         <div>
           <p className="eyebrow">LexiAnchor</p>
@@ -1447,17 +1556,25 @@ function LibraryPage({
       <div className="library-actions">
         <label className="import-button">
           <Icon name="book-open" className="button-icon" />
-          <span>{t('importBook')}</span>
+          <span>{t('importBooks')}</span>
           <input
             type="file"
+            multiple
             accept=".epub,.pdf,application/epub+zip,application/pdf"
-            onChange={(event) => void importBook(event.target.files?.[0])}
+            onChange={(event) => {
+              const input = event.currentTarget;
+              importBooks(input.files);
+              input.value = '';
+            }}
           />
         </label>
         <button className="button" type="button" onClick={() => onOpenSample(sampleEpub)}>
           {t('openSampleBook')}
         </button>
       </div>
+      <p className="library-drop-hint" aria-live="polite">
+        {isDraggingBooks ? t('dropBooksNow') : t('dropBooksHint')}
+      </p>
 
       {library.length > 0 ? (
         <>
@@ -1496,6 +1613,7 @@ function LibraryPage({
                   headingLevel={2}
                   t={t}
                   onOpen={() => void onOpenStored(entry)}
+                  onEdit={() => setBookToEdit(entry)}
                   onDelete={() => setBookToDelete(entry)}
                 />
               ))}
@@ -1587,6 +1705,18 @@ function LibraryPage({
           }}
         />
       ) : null}
+
+      {bookToEdit ? (
+        <BookMetadataDialog
+          entry={bookToEdit}
+          t={t}
+          onCancel={() => setBookToEdit(null)}
+          onSave={async (draft) => {
+            await onUpdateBook(bookToEdit, draft);
+            setBookToEdit(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1596,10 +1726,11 @@ interface StoredBookCardProps {
   readonly headingLevel: 2 | 3;
   readonly t: (key: MessageKey) => string;
   readonly onOpen: () => void;
+  readonly onEdit?: () => void;
   readonly onDelete?: () => void;
 }
 
-function StoredBookCard({ entry, headingLevel, t, onOpen, onDelete }: StoredBookCardProps) {
+function StoredBookCard({ entry, headingLevel, t, onOpen, onEdit, onDelete }: StoredBookCardProps) {
   const progress = normalizeProgress(entry.progress?.percentage ?? 0);
   const title = entry.book.title;
   const titleElement =
@@ -1642,19 +1773,135 @@ function StoredBookCard({ entry, headingLevel, t, onOpen, onDelete }: StoredBook
           <button className="book-action" type="button" onClick={onOpen}>
             {t('openBook')} →
           </button>
-          {onDelete ? (
-            <button
-              className="book-delete-action"
-              type="button"
-              aria-label={`${t('deleteBook')} ${title}`}
-              onClick={onDelete}
-            >
-              {t('deleteBook')}
-            </button>
-          ) : null}
+          <div className="book-secondary-actions">
+            {onEdit ? (
+              <button
+                className="book-edit-action"
+                type="button"
+                aria-label={`${t('editBookMetadata')} ${title}`}
+                onClick={onEdit}
+              >
+                {t('editBookMetadata')}
+              </button>
+            ) : null}
+            {onDelete ? (
+              <button
+                className="book-delete-action"
+                type="button"
+                aria-label={`${t('deleteBook')} ${title}`}
+                onClick={onDelete}
+              >
+                {t('deleteBook')}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </article>
+  );
+}
+
+interface BookMetadataDialogProps {
+  readonly entry: LibraryEntry;
+  readonly t: (key: MessageKey) => string;
+  readonly onCancel: () => void;
+  readonly onSave: (draft: BookMetadataDraft) => Promise<void>;
+}
+
+function BookMetadataDialog({ entry, t, onCancel, onSave }: BookMetadataDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [title, setTitle] = useState(entry.book.title);
+  const [author, setAuthor] = useState(entry.book.author);
+  const [language, setLanguage] = useState(entry.book.language ?? '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+
+    return () => {
+      if (dialog?.open) {
+        dialog.close();
+      }
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="book-delete-dialog book-metadata-dialog"
+      aria-labelledby="book-metadata-title"
+      onCancel={(event) => {
+        event.preventDefault();
+
+        if (!isSaving) {
+          onCancel();
+        }
+      }}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setIsSaving(true);
+          setError('');
+          void onSave({ title, author, language }).catch((saveError: unknown) => {
+            setError(saveError instanceof Error ? saveError.message : String(saveError));
+            setIsSaving(false);
+          });
+        }}
+      >
+        <p className="eyebrow">{entry.book.format.toUpperCase()}</p>
+        <h2 id="book-metadata-title">{t('editBookMetadata')}</h2>
+        <p className="book-delete-description">{t('editBookMetadataDescription')}</p>
+
+        <label className="book-metadata-field">
+          <span>{t('bookTitleField')}</span>
+          <input
+            autoFocus
+            required
+            value={title}
+            disabled={isSaving}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </label>
+        <label className="book-metadata-field">
+          <span>{t('bookAuthorField')}</span>
+          <input
+            value={author}
+            disabled={isSaving}
+            onChange={(event) => setAuthor(event.target.value)}
+          />
+        </label>
+        <label className="book-metadata-field">
+          <span>{t('bookLanguageField')}</span>
+          <input
+            value={language}
+            disabled={isSaving}
+            placeholder={t('bookLanguagePlaceholder')}
+            onChange={(event) => setLanguage(event.target.value)}
+          />
+        </label>
+
+        {error ? (
+          <p className="book-delete-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="book-delete-dialog-actions">
+          <button type="button" disabled={isSaving} onClick={onCancel}>
+            {t('cancel')}
+          </button>
+          <button className="book-metadata-save" type="submit" disabled={isSaving}>
+            {isSaving ? t('savingChanges') : t('saveChanges')}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
