@@ -336,7 +336,7 @@ function EpubReaderPage({
           >
             <span className="reader-title">{currentNavigationItem?.label ?? source.name}</span>
             <span className="reader-title-chevron" aria-hidden="true">
-              ⌄
+              ▾
             </span>
             <span className="reader-engine-label">
               {source.name} · EPUB.js · {progress}%

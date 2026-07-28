@@ -27,6 +27,16 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
         ? ((JSON.parse(localStorage.getItem(key) ?? '{}') as { href?: string }).href ?? '')
         : '';
     });
+  const currentProgression = () =>
+    page.evaluate(() => {
+      const key = Object.keys(localStorage).find((candidate) =>
+        candidate.startsWith('lexianchor:epub-location:'),
+      );
+      return key
+        ? ((JSON.parse(localStorage.getItem(key) ?? '{}') as { totalProgression?: number })
+            .totalProgression ?? 0)
+        : 0;
+    });
   const openContents = () =>
     page
       .getByRole('button', {
@@ -49,14 +59,21 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
   await expect(contents.getByRole('button').first()).toContainText('Level 7:');
   await openContents();
 
+  const progressionBeforeSidebarChange = await currentProgression();
   await page
     .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
     .click();
   await expect.poll(currentHref).toContain('c07.xhtml');
+  await expect
+    .poll(async () => Math.abs((await currentProgression()) - progressionBeforeSidebarChange))
+    .toBeLessThan(0.002);
   await page
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
   await expect.poll(currentHref).toContain('c07.xhtml');
+  await expect
+    .poll(async () => Math.abs((await currentProgression()) - progressionBeforeSidebarChange))
+    .toBeLessThan(0.002);
 
   const settledPages: Array<{
     position: number;

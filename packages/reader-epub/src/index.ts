@@ -285,7 +285,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       this.requestedLocator = initialLocator ?? null;
       await this.displayAtStableLocation(this.rendition, initialTarget);
       this.requestedLocator = null;
-      this.rendition.reportLocation();
+      await this.rendition.reportLocation();
     } catch (error) {
       this.callbacks.onError(asError(error));
       await this.close();
@@ -345,7 +345,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       if (rendition) {
         await this.displayAtStableLocation(rendition, locator.cfi ?? locator.href);
       }
-      rendition?.reportLocation();
+      await rendition?.reportLocation();
     } catch (error) {
       if (this.requestedLocator === locator) {
         this.requestedLocator = null;
@@ -473,7 +473,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     }
 
     this.layoutAnchor = null;
-    rendition.reportLocation();
+    await rendition.reportLocation();
   }
 
   private async displayAtStableLocation(

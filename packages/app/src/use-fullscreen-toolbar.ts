@@ -47,12 +47,13 @@ export function useFullscreenToolbar(isFullscreen: boolean) {
   useEffect(() => {
     if (!isFullscreen || !autoHide) {
       clearHideTimer();
-      setIsToolbarVisible(true);
       return;
     }
 
-    setIsToolbarVisible(true);
-    scheduleHide(1500);
+    const revealFrame = requestAnimationFrame(() => {
+      setIsToolbarVisible(true);
+      scheduleHide(1500);
+    });
 
     const handlePointerMove = (event: PointerEvent) => {
       if (event.clientY <= 80) {
@@ -74,6 +75,7 @@ export function useFullscreenToolbar(isFullscreen: boolean) {
     return () => {
       globalThis.removeEventListener('pointermove', handlePointerMove);
       globalThis.removeEventListener('focusin', handleKeyboardFocus);
+      cancelAnimationFrame(revealFrame);
       clearHideTimer();
     };
   }, [autoHide, clearHideTimer, isFullscreen, revealToolbar, scheduleHide]);
