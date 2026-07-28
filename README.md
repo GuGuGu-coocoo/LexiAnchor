@@ -19,33 +19,43 @@ Un lecteur EPUB / PDF local, conçu pour lire sans distraction, consulter le dic
 
 ### 本地书库 · Local library · Bibliothèque locale
 
-![LexiAnchor local library showing a book and its reading progress](docs/images/library.jpg)
+![LexiAnchor local library showing imported EPUB and PDF books](docs/images/library.png)
 
-导入 EPUB / PDF、查看阅读进度，并从上次停下的位置继续阅读。
+导入、搜索和整理 EPUB / PDF，查看每本书的阅读进度，并从上次停下的位置继续阅读。
 
-Import EPUB / PDF books, see your progress, and continue where you stopped.
+Import, search, and organize EPUB / PDF books, see your progress, and continue where you stopped.
 
-Importez des livres EPUB / PDF, consultez votre progression et reprenez où vous vous êtes arrêté.
+Importez, recherchez et organisez vos livres EPUB / PDF, consultez votre progression et reprenez où vous vous êtes arrêté.
 
-### 专注阅读 · Focused reading · Lecture sans distraction
+### 自定义阅读页面 · Custom reading layout · Mise en page personnalisée
 
-![LexiAnchor EPUB reader with navigation and reading controls](docs/images/reader.jpg)
+![LexiAnchor reader showing typography, spacing, columns, and page-turn settings](docs/images/reader1.png)
 
-支持 EPUB / PDF、连续滚动与水平翻页、触控板手势、全屏阅读和可保存的排版预设。
+调整主题、字体、字号、字重、行距、字间距和文字宽度；还可以选择单栏 / 双栏、连续滚动 / 水平翻页及翻页效果，并把配置保存为预设。
 
-Read EPUB / PDF with continuous scrolling or horizontal pages, trackpad gestures, full screen, and reusable appearance presets.
+Adjust the theme, font, size, weight, line height, letter spacing, and text width. Choose one or two columns, continuous scrolling or horizontal pages, a page-turn effect, and save everything as a preset.
 
-Lisez les EPUB / PDF avec défilement continu ou pages horizontales, gestes du pavé tactile, plein écran et préréglages d'affichage.
+Réglez le thème, la police, la taille, la graisse, l'interligne, l'espacement des lettres et la largeur du texte. Choisissez une ou deux colonnes, le défilement continu ou les pages horizontales, un effet de changement de page, puis enregistrez le tout comme préréglage.
 
-### 离线工具与备份 · Offline tools and backup · Outils hors ligne et sauvegarde
+### 划词查询与翻译 · Selection lookup and translation · Recherche et traduction
 
-![LexiAnchor settings for local storage, backups, and offline dictionaries](docs/images/settings.jpg)
+![LexiAnchor reader showing definitions and translation tools for a selected word](docs/images/reader2.png)
 
-书籍、进度、词卡和设置保存在本机；可以管理离线词典、翻译模型并导出备份。
+选中单词即可在阅读页面旁查看多条英英释义和例句，也可以进行本地翻译、在线翻译、网页搜索或把单词加入词卡。
 
-Books, progress, word cards, and settings stay local; manage offline dictionaries and translation models, then export a backup.
+Select a word to see multiple English definitions and examples beside the page. Translate locally or online, search the Web, or add the word to your cards.
 
-Les livres, la progression, les fiches et les réglages restent en local ; gérez les dictionnaires et modèles de traduction hors ligne, puis exportez une sauvegarde.
+Sélectionnez un mot pour afficher plusieurs définitions et exemples en anglais à côté de la page. Traduisez-le localement ou en ligne, recherchez-le sur le Web ou ajoutez-le à vos fiches.
+
+### 词卡 · Word cards · Fiches de vocabulaire
+
+![LexiAnchor word cards with English definitions, search, and sorting](docs/images/wordcard.png)
+
+词卡会保存单词和英英释义，并支持查看详细内容、搜索、按时间排序、编辑、删除以及导入 / 导出备份。
+
+Word cards preserve words and English definitions, with detailed views, search, time-based sorting, editing, deletion, and backup import / export.
+
+Les fiches conservent les mots et leurs définitions anglaises, avec affichage détaillé, recherche, tri chronologique, modification, suppression et importation / exportation des sauvegardes.
 
 ---
 
