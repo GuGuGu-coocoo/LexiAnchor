@@ -1495,17 +1495,26 @@ button {
   transform: scale(0.97);
 }
 
-.card-search {
+.card-list-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 560px) minmax(150px, 190px);
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.card-search,
+.card-sort {
   display: grid;
   gap: 8px;
-  margin-bottom: 20px;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.card-search input {
-  width: min(100%, 560px);
+.card-search input,
+.card-sort select {
+  width: 100%;
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--line);
@@ -1659,15 +1668,20 @@ button {
   color: var(--accent-strong);
 }
 
-.word-card-definition {
-  display: -webkit-box;
+.word-card-definition-list {
   margin: 7px 0 0;
-  overflow: hidden;
+  padding-left: 20px;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 15px;
   line-height: 1.6;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+}
+
+.word-card-definition-list li {
+  padding-left: 3px;
+}
+
+.word-card-definition-list li + li {
+  margin-top: 5px;
 }
 
 .word-card-definition-label,
@@ -1908,8 +1922,11 @@ button {
   text-transform: uppercase;
 }
 
-.word-card-english-definition blockquote {
+.word-card-english-definition ol {
+  display: grid;
+  gap: 8px;
   margin: 10px 0 0;
+  padding-left: 22px;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 18px;
   line-height: 1.6;
@@ -2693,6 +2710,10 @@ button {
   }
 
   .library-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .card-list-controls {
     grid-template-columns: 1fr;
   }
 

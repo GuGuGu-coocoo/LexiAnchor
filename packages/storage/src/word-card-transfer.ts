@@ -58,6 +58,12 @@ function parseCard(value: unknown): WordCardRecord {
 
   const term = String(card.term).trim();
   const definition = String(card.definition).trim();
+  const definitions = Array.isArray(card.definitions)
+    ? card.definitions
+        .filter(isString)
+        .map((candidate) => candidate.trim())
+        .filter(Boolean)
+    : [];
   const dictionarySource = String(card.dictionarySource).trim();
   const sourceBookTitle = String(card.sourceBookTitle).trim();
   const sourceSentence = String(card.sourceSentence).trim();
@@ -78,6 +84,7 @@ function parseCard(value: unknown): WordCardRecord {
     normalizedTerm: term.toLocaleLowerCase('en-US'),
     partOfSpeech: String(card.partOfSpeech).trim() || 'unknown',
     definition,
+    definitions: definitions.length > 0 ? definitions : [definition],
     rootOrEtymology: card.rootOrEtymology ? String(card.rootOrEtymology).trim() || null : null,
     dictionarySource,
     // A book identifier is local to one database. The human-readable source

@@ -32,6 +32,7 @@ export interface WordCardDraft {
   readonly normalizedTerm: string;
   readonly partOfSpeech: DictionaryPartOfSpeech;
   readonly definition: string;
+  readonly definitions: readonly string[];
   readonly rootOrEtymology: string | null;
   readonly dictionarySource: string;
   readonly sourceSentence: string;
@@ -228,11 +229,15 @@ export function SelectionTools({
     setCardSaveState({ term: selectedText, status: 'saving' });
 
     try {
+      const definitions = [
+        ...new Set(result.senses.map((sense) => sense.definition.trim()).filter(Boolean)),
+      ].slice(0, 6);
       await onAddWordCard({
         term: selectedText,
         normalizedTerm: result.lemma.toLocaleLowerCase('en-US'),
         partOfSpeech: primarySense.partOfSpeech,
         definition: primarySense.definition,
+        definitions,
         rootOrEtymology: result.rootOrEtymology,
         dictionarySource: `${result.source.name} ${result.source.version}`,
         sourceSentence: selection?.sentence ?? '',

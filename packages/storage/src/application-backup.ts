@@ -176,7 +176,17 @@ function parseWordCard(value: unknown): WordCardRecord {
   ) {
     throw new Error('Backup contains an invalid word-card record.');
   }
-  return value as unknown as WordCardRecord;
+  const definitions = Array.isArray(value.definitions)
+    ? value.definitions
+        .filter(isString)
+        .map((definition) => definition.trim())
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...(value as unknown as WordCardRecord),
+    definitions: definitions.length > 0 ? definitions : [value.definition],
+  };
 }
 
 function dataLines(snapshot: ApplicationDataSnapshot, settings: Readonly<Record<string, string>>) {

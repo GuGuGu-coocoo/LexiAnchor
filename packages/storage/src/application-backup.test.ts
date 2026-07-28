@@ -89,6 +89,7 @@ async function fixture() {
         normalizedTerm: 'anchor',
         partOfSpeech: 'noun',
         definition: 'a source of stability',
+        definitions: ['a source of stability'],
         rootOrEtymology: null,
         dictionarySource: 'test',
         sourceBookId: `book-${hash}`,

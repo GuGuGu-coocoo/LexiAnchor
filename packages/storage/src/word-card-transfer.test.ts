@@ -9,6 +9,7 @@ const card: WordCardRecord = {
   normalizedTerm: 'resilient',
   partOfSpeech: 'adjective',
   definition: 'Able to recover.',
+  definitions: ['Able to recover.', 'Returning quickly to a stable state.'],
   rootOrEtymology: null,
   dictionarySource: 'Princeton WordNet 3.1',
   sourceBookId: 'book-local-only',

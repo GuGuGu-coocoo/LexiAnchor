@@ -35,6 +35,7 @@ export interface WordCardRecord {
   readonly normalizedTerm: string;
   readonly partOfSpeech: string;
   readonly definition: string;
+  readonly definitions: readonly string[];
   readonly rootOrEtymology: string | null;
   readonly dictionarySource: string;
   readonly sourceBookId: string | null;

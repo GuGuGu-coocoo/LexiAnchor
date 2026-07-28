@@ -47,6 +47,7 @@ interface WordCardRow {
   readonly normalized_term: string;
   readonly part_of_speech: string;
   readonly definition: string;
+  readonly definitions_json: string;
   readonly root_or_etymology: string | null;
   readonly dictionary_source: string;
   readonly source_book_id: string | null;
@@ -134,12 +135,27 @@ function mapProgress(row: ProgressRow): ReadingProgressRecord {
 }
 
 function mapWordCard(row: WordCardRow): WordCardRecord {
+  let definitions: string[] = [];
+
+  try {
+    const parsed: unknown = JSON.parse(row.definitions_json);
+    if (Array.isArray(parsed)) {
+      definitions = parsed
+        .filter((definition): definition is string => typeof definition === 'string')
+        .map((definition) => definition.trim())
+        .filter(Boolean);
+    }
+  } catch {
+    definitions = [];
+  }
+
   return {
     id: row.id,
     term: row.term,
     normalizedTerm: row.normalized_term,
     partOfSpeech: row.part_of_speech,
     definition: row.definition,
+    definitions: definitions.length > 0 ? definitions : [row.definition],
     rootOrEtymology: row.root_or_etymology,
     dictionarySource: row.dictionary_source,
     sourceBookId: row.source_book_id,
@@ -165,15 +181,16 @@ function saveWordCard(db: Database, card: WordCardRecord): void {
   db.exec({
     sql: `
       INSERT INTO word_cards (
-        id, term, normalized_term, part_of_speech, definition, root_or_etymology,
+        id, term, normalized_term, part_of_speech, definition, definitions_json, root_or_etymology,
         dictionary_source, source_book_id, source_book_title, source_sentence,
         created_at, updated_at, deleted_at, version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT DO UPDATE SET
         term = excluded.term,
         normalized_term = excluded.normalized_term,
         part_of_speech = excluded.part_of_speech,
         definition = excluded.definition,
+        definitions_json = excluded.definitions_json,
         root_or_etymology = excluded.root_or_etymology,
         dictionary_source = excluded.dictionary_source,
         source_book_id = COALESCE(excluded.source_book_id, word_cards.source_book_id),
@@ -190,6 +207,7 @@ function saveWordCard(db: Database, card: WordCardRecord): void {
       card.normalizedTerm,
       card.partOfSpeech,
       card.definition,
+      JSON.stringify(card.definitions),
       card.rootOrEtymology,
       card.dictionarySource,
       card.sourceBookId,
@@ -528,6 +546,7 @@ async function handleRequest(request: DatabaseRequest) {
               normalized_term = ?,
               part_of_speech = ?,
               definition = ?,
+              definitions_json = ?,
               root_or_etymology = ?,
               source_book_title = ?,
               source_sentence = ?,
@@ -541,6 +560,7 @@ async function handleRequest(request: DatabaseRequest) {
           card.normalizedTerm,
           card.partOfSpeech,
           card.definition,
+          JSON.stringify(card.definitions),
           card.rootOrEtymology,
           card.sourceBookTitle,
           card.sourceSentence,

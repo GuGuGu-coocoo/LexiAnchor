@@ -820,6 +820,12 @@ export function App({ platform }: AppProps) {
           normalizedTerm: term.toLocaleLowerCase('en-US'),
           partOfSpeech: draft.partOfSpeech.trim() || 'unknown',
           definition,
+          definitions: [
+            ...new Set([
+              definition,
+              ...card.definitions.filter((candidate) => candidate !== card.definition),
+            ]),
+          ].slice(0, 6),
           rootOrEtymology: draft.rootOrEtymology.trim() || null,
           sourceBookTitle,
           sourceSentence,
@@ -2038,6 +2044,17 @@ function CardsPage({
 }: CardsPageProps) {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [cardSort, setCardSort] = useState<'newest' | 'oldest'>(() =>
+    globalThis.localStorage?.getItem('lexianchor:card-sort') === 'oldest' ? 'oldest' : 'newest',
+  );
+  const sortedCards = useMemo(
+    () =>
+      [...cards].sort((left, right) => {
+        const difference = Date.parse(right.createdAt) - Date.parse(left.createdAt);
+        return cardSort === 'newest' ? difference : -difference;
+      }),
+    [cardSort, cards],
+  );
 
   return (
     <section className="page" aria-labelledby="cards-title">
@@ -2071,18 +2088,34 @@ function CardsPage({
         </div>
       </header>
 
-      <label className="card-search">
-        <span>{t('cardsSearch')}</span>
-        <input
-          type="search"
-          value={query}
-          placeholder={t('cardsSearchPlaceholder')}
-          onChange={(event) => {
-            setActiveCardId(null);
-            onQueryChange(event.target.value);
-          }}
-        />
-      </label>
+      <div className="card-list-controls">
+        <label className="card-search">
+          <span>{t('cardsSearch')}</span>
+          <input
+            type="search"
+            value={query}
+            placeholder={t('cardsSearchPlaceholder')}
+            onChange={(event) => {
+              setActiveCardId(null);
+              onQueryChange(event.target.value);
+            }}
+          />
+        </label>
+        <label className="card-sort">
+          <span>{t('sortCards')}</span>
+          <select
+            value={cardSort}
+            onChange={(event) => {
+              const nextSort = event.target.value === 'oldest' ? 'oldest' : 'newest';
+              setCardSort(nextSort);
+              globalThis.localStorage?.setItem('lexianchor:card-sort', nextSort);
+            }}
+          >
+            <option value="newest">{t('newestFirst')}</option>
+            <option value="oldest">{t('oldestFirst')}</option>
+          </select>
+        </label>
+      </div>
       {cards.length === 200 ? (
         <p className="card-result-limit" role="status">
           {t('cardsResultLimit')}
@@ -2108,7 +2141,7 @@ function CardsPage({
 
       {cards.length > 0 ? (
         <div className="word-card-grid">
-          {cards.map((card) => (
+          {sortedCards.map((card) => (
             <article className="word-card" data-word-card-id={card.id} key={card.id}>
               {editingCardId === card.id ? (
                 <WordCardEditor
@@ -2133,7 +2166,11 @@ function CardsPage({
                       <h2>{card.term}</h2>
                     </div>
                     <p className="word-card-definition-label">{t('englishDefinition')}</p>
-                    <p className="word-card-definition">{card.definition}</p>
+                    <ol className="word-card-definition-list">
+                      {card.definitions.slice(0, 3).map((definition) => (
+                        <li key={definition}>{definition}</li>
+                      ))}
+                    </ol>
                     <span className="word-card-detail-cue">{t('viewCardDetails')} →</span>
                   </button>
                   <div className="word-card-actions">
@@ -2170,7 +2207,7 @@ function CardsPage({
       )}
 
       <WordCardDetailDialog
-        cards={cards}
+        cards={sortedCards}
         activeCardId={activeCardId}
         locale={locale}
         t={t}

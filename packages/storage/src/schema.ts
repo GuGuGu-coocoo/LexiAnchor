@@ -138,6 +138,13 @@ export const migrations: readonly Migration[] = [
       END;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE word_cards
+      ADD COLUMN definitions_json TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
 ] as const;
 
 export function applyMigrations(db: Pick<Database, 'exec'>, appliedAt = new Date().toISOString()) {

@@ -165,7 +165,11 @@ export function WordCardDetailDialog({
 
               <section className="word-card-english-definition">
                 <p>{t('englishDefinition')}</p>
-                <blockquote>{card.definition}</blockquote>
+                <ol>
+                  {card.definitions.map((definition) => (
+                    <li key={definition}>{definition}</li>
+                  ))}
+                </ol>
               </section>
 
               <dl className="word-card-metadata">

@@ -1488,6 +1488,9 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   await expect(cardDetails).toContainText('Anchored Pages');
   await expect(cardDetails).toContainText('A resilient reader keeps the page steady');
   await expect(cardDetails).toContainText('Princeton WordNet 3.1');
+  await expect
+    .poll(() => cardDetails.locator('.word-card-english-definition li').count())
+    .toBeGreaterThan(1);
   await expect(cardDetails).toContainText(
     /Not provided by this dictionary|该词典未提供|Non fourni par ce dictionnaire/,
   );
@@ -1591,18 +1594,25 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
 
 test('opens English word-card details and swipes between cards', async ({ page }) => {
   const timestamp = '2026-07-28T08:00:00.000Z';
-  const card = (id: string, term: string, definition: string, sentence: string) => ({
+  const card = (
+    id: string,
+    term: string,
+    definitions: readonly string[],
+    sentence: string,
+    createdAt: string,
+  ) => ({
     id,
     term,
     normalizedTerm: term.toLocaleLowerCase('en-US'),
     partOfSpeech: 'adjective',
-    definition,
+    definition: definitions[0],
+    definitions,
     rootOrEtymology: null,
     dictionarySource: 'Princeton WordNet 3.1',
     sourceBookId: null,
     sourceBookTitle: 'Gesture Reading',
     sourceSentence: sentence,
-    createdAt: timestamp,
+    createdAt,
     updatedAt: timestamp,
     deletedAt: null,
     version: 1,
@@ -1619,12 +1629,31 @@ test('opens English word-card details and swipes between cards', async ({ page }
         schemaVersion: 1,
         exportedAt: timestamp,
         cards: [
-          card('carousel-1', 'attentive', 'Giving care and close attention.', 'Stay attentive.'),
-          card('carousel-2', 'resilient', 'Able to recover quickly.', 'Remain resilient.'),
+          card(
+            'carousel-1',
+            'attentive',
+            ['Giving care and close attention.', 'Taking thoughtful notice of details.'],
+            'Stay attentive.',
+            '2026-07-27T08:00:00.000Z',
+          ),
+          card(
+            'carousel-2',
+            'resilient',
+            ['Able to recover quickly.', 'Returning to a stable shape after pressure.'],
+            'Remain resilient.',
+            '2026-07-28T08:00:00.000Z',
+          ),
         ],
       }),
     ),
   });
+
+  const visibleCards = page.locator('article[data-word-card-id]');
+  await expect(visibleCards.first()).toHaveAttribute('data-word-card-id', 'carousel-2');
+  await page
+    .getByRole('combobox', { name: /Sort word cards|词卡排序|Trier les fiches/ })
+    .selectOption('oldest');
+  await expect(visibleCards.first()).toHaveAttribute('data-word-card-id', 'carousel-1');
 
   const attentiveCard = page
     .locator('article[data-word-card-id="carousel-1"]')
@@ -1636,6 +1665,7 @@ test('opens English word-card details and swipes between cards', async ({ page }
   const viewport = dialog.locator('.word-card-detail-viewport');
   await expect(dialog.locator('.word-card-detail-toolbar h2')).toHaveText('attentive');
   await expect(dialog).toContainText('Giving care and close attention.');
+  await expect(dialog).toContainText('Taking thoughtful notice of details.');
   await viewport.hover();
   await page.mouse.wheel(760, 0);
   await expect(dialog.locator('.word-card-detail-toolbar h2')).toHaveText('resilient');
