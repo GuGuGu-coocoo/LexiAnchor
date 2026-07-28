@@ -56,6 +56,12 @@ export interface DeleteBookOptions {
   readonly keepWordCards: boolean;
 }
 
+export interface ApplicationDataSnapshot {
+  readonly books: readonly BookRecord[];
+  readonly progress: readonly ReadingProgressRecord[];
+  readonly wordCards: readonly WordCardRecord[];
+}
+
 export interface BookRepository {
   initialize(): Promise<StorageStatus>;
   listBooks(): Promise<BookRecord[]>;
@@ -63,6 +69,8 @@ export interface BookRepository {
   deleteBook(bookId: string, deletedAt: string, options: DeleteBookOptions): Promise<void>;
   getProgress(bookId: string): Promise<ReadingProgressRecord | null>;
   saveProgress(progress: ReadingProgressRecord): Promise<void>;
+  exportDataSnapshot(): Promise<ApplicationDataSnapshot>;
+  restoreDataSnapshot(snapshot: ApplicationDataSnapshot): Promise<void>;
   close(): Promise<void>;
 }
 

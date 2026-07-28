@@ -1,5 +1,6 @@
 import type { DatabaseRequest, DatabaseResponse } from './protocol';
 import type {
+  ApplicationDataSnapshot,
   BookRecord,
   BookRepository,
   DeleteBookOptions,
@@ -16,6 +17,8 @@ type RequestInput =
   | Omit<Extract<DatabaseRequest, { type: 'delete-book' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'get-progress' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'save-progress' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'export-data-snapshot' }>, 'id'>
+  | Omit<Extract<DatabaseRequest, { type: 'restore-data-snapshot' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'list-word-cards' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'save-word-card' }>, 'id'>
   | Omit<Extract<DatabaseRequest, { type: 'import-word-cards' }>, 'id'>
@@ -85,6 +88,14 @@ export class SqliteBookRepository implements BookRepository, WordCardRepository 
 
   saveProgress(progress: ReadingProgressRecord): Promise<void> {
     return this.request({ type: 'save-progress', progress });
+  }
+
+  exportDataSnapshot(): Promise<ApplicationDataSnapshot> {
+    return this.request({ type: 'export-data-snapshot' });
+  }
+
+  restoreDataSnapshot(snapshot: ApplicationDataSnapshot): Promise<void> {
+    return this.request({ type: 'restore-data-snapshot', snapshot });
   }
 
   listWordCards(query = ''): Promise<WordCardRecord[]> {

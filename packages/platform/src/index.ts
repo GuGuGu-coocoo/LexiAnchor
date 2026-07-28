@@ -16,22 +16,38 @@ export const platformChannels = {
 } as const;
 
 export function createWebPlatformBridge(): PlatformBridge {
+  function isPageImmersive(): boolean {
+    return document.documentElement.dataset.immersive === 'on';
+  }
+
   return {
     target: 'web',
     getAppVersion() {
       return Promise.resolve('0.1.0');
     },
     isFullscreen() {
-      return Promise.resolve(document.fullscreenElement !== null);
+      return Promise.resolve(document.fullscreenElement !== null || isPageImmersive());
     },
     async setFullscreen(enabled) {
       if (enabled && document.fullscreenElement === null) {
-        await document.documentElement.requestFullscreen();
+        try {
+          await document.documentElement.requestFullscreen?.();
+        } catch {
+          document.documentElement.dataset.immersive = 'on';
+        }
+
+        if (document.fullscreenElement === null) {
+          document.documentElement.dataset.immersive = 'on';
+        }
       } else if (!enabled && document.fullscreenElement !== null) {
         await document.exitFullscreen();
       }
 
-      return document.fullscreenElement !== null;
+      if (!enabled) {
+        delete document.documentElement.dataset.immersive;
+      }
+
+      return document.fullscreenElement !== null || isPageImmersive();
     },
     openExternal(url) {
       const target = new URL(url);

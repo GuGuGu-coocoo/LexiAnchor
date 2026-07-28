@@ -16,6 +16,7 @@ import type {
 
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
+import { readerColorsForTheme, type Theme } from './theme';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -26,9 +27,13 @@ interface ReaderPageProps {
   readonly source: ReaderSource;
   readonly preferenceScopeId: string;
   readonly initialLocator?: ReaderLocator;
+  readonly theme: Theme;
+  readonly isFullscreen: boolean;
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onThemeChange: (theme: Theme) => void;
+  readonly onToggleFullscreen: () => Promise<void>;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
@@ -53,14 +58,6 @@ function readLocator(source: ReaderSource): ReaderLocator | undefined {
   } catch {
     return undefined;
   }
-}
-
-function readerColors(): Pick<ReaderPreferences, 'foreground' | 'background'> {
-  const styles = globalThis.getComputedStyle(document.documentElement);
-  return {
-    foreground: styles.getPropertyValue('--text').trim() || '#20211f',
-    background: styles.getPropertyValue('--surface-raised').trim() || '#faf9f6',
-  };
 }
 
 function normalizedHref(href: string | undefined): string {
@@ -108,9 +105,13 @@ function EpubReaderPage({
   source,
   preferenceScopeId,
   initialLocator,
+  theme,
+  isFullscreen,
   locale,
   t,
   onClose,
+  onThemeChange,
+  onToggleFullscreen,
   onLocationChange,
   onOpenExternal,
   onAddWordCard,
@@ -122,12 +123,13 @@ function EpubReaderPage({
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
     ...readReaderPreferences(preferenceScopeId),
-    ...readerColors(),
+    ...readerColorsForTheme(theme),
   }));
   const initialPreferencesRef = useRef(preferences);
   const [locator, setLocator] = useState<ReaderLocator>();
   const [tableOfContents, setTableOfContents] = useState<readonly EpubNavigationItem[]>([]);
   const [sidePanel, setSidePanel] = useState<'contents' | 'settings'>('settings');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -244,6 +246,19 @@ function EpubReaderPage({
     setPreferences((current) => ({ ...current, [key]: value }));
   }
 
+  function updateTheme(nextTheme: Theme) {
+    onThemeChange(nextTheme);
+    setPreferences((current) => ({ ...current, ...readerColorsForTheme(nextTheme) }));
+  }
+
+  function toggleFullscreenFromReader() {
+    if (!isFullscreen) {
+      setIsSidebarOpen(false);
+    }
+
+    void onToggleFullscreen();
+  }
+
   return (
     <section className="reader-page" aria-label={t('readerExperiment')}>
       <header className="reader-toolbar">
@@ -262,7 +277,10 @@ function EpubReaderPage({
             type="button"
             aria-label={t('openTableOfContents')}
             disabled={isLoading || tableOfContents.length === 0}
-            onClick={() => setSidePanel('contents')}
+            onClick={() => {
+              setSidePanel('contents');
+              setIsSidebarOpen(true);
+            }}
           >
             <span aria-hidden="true">☰</span>
             <span>{t('tableOfContents')}</span>
@@ -273,6 +291,25 @@ function EpubReaderPage({
           <p className="reader-engine-label">EPUB.js · {progress}%</p>
         </div>
         <div className="reader-toolbar-actions">
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}
+            aria-expanded={isSidebarOpen}
+            onClick={() => setIsSidebarOpen((current) => !current)}
+          >
+            <span aria-hidden="true">◧</span>
+            <span>{isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
+          </button>
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+            onClick={toggleFullscreenFromReader}
+          >
+            <span aria-hidden="true">⛶</span>
+            <span>{isFullscreen ? t('exitFullscreen') : t('fullscreen')}</span>
+          </button>
           <button
             className="reader-icon-button"
             type="button"
@@ -294,8 +331,14 @@ function EpubReaderPage({
         </div>
       </header>
 
-      <div className="reader-workspace">
-        <aside className="reader-settings" aria-label={t('readingSettings')}>
+      <div
+        className={`reader-workspace${isSidebarOpen ? '' : ' reader-workspace--sidebar-hidden'}`}
+      >
+        <aside
+          className="reader-settings"
+          aria-label={t('readingSettings')}
+          hidden={!isSidebarOpen}
+        >
           <div className="reader-panel-switch" aria-label={t('readerSidebar')}>
             <button
               type="button"
@@ -336,6 +379,19 @@ function EpubReaderPage({
                 <p className="reader-setting-title">{t('readerExperiment')}</p>
                 <p className="reader-setting-copy">{t('readerExperimentBody')}</p>
               </div>
+
+              <label className="reader-control">
+                <span>{t('appearance')}</span>
+                <select
+                  value={theme}
+                  onChange={(event) => updateTheme(event.target.value as Theme)}
+                >
+                  <option value="system">{t('systemTheme')}</option>
+                  <option value="light">{t('lightTheme')}</option>
+                  <option value="dark">{t('darkTheme')}</option>
+                  <option value="eye-care">{t('eyeCareTheme')}</option>
+                </select>
+              </label>
 
               <label className="reader-toggle">
                 <span>

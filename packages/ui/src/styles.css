@@ -849,6 +849,10 @@ button {
   min-height: 0;
 }
 
+.reader-workspace--sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .reader-settings {
   min-height: 0;
   padding: 22px 18px;
@@ -1634,6 +1638,100 @@ button {
   width: min(100%, 480px);
   height: 8px;
   accent-color: var(--accent);
+}
+
+.application-backup-controls {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.application-backup-controls h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.application-backup-controls p {
+  max-width: 680px;
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.application-backup-option {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.application-backup-option input {
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+
+.application-backup-option span {
+  display: grid;
+  gap: 2px;
+}
+
+.application-backup-option strong {
+  font-size: 12px;
+}
+
+.application-backup-option small {
+  max-width: 660px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.application-backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.application-backup-import {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.application-backup-import-disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.application-backup-import:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--focus) 72%, transparent);
+  outline-offset: 3px;
+}
+
+.application-backup-import input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.application-backup-message {
+  color: var(--accent-strong) !important;
+  font-weight: 650;
 }
 
 .dictionary-settings-card {

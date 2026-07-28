@@ -20,14 +20,19 @@ import {
 
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
+import type { Theme } from './theme';
 
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
   readonly preferenceScopeId: string;
   readonly initialLocator?: ReaderLocator;
+  readonly theme: Theme;
+  readonly isFullscreen: boolean;
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onThemeChange: (theme: Theme) => void;
+  readonly onToggleFullscreen: () => Promise<void>;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onAddWordCard: (draft: WordCardDraft) => Promise<void>;
@@ -67,9 +72,13 @@ export function PdfReaderPage({
   source,
   preferenceScopeId,
   initialLocator,
+  theme,
+  isFullscreen,
   locale,
   t,
   onClose,
+  onThemeChange,
+  onToggleFullscreen,
   onLocationChange,
   onOpenExternal,
   onAddWordCard,
@@ -90,6 +99,7 @@ export function PdfReaderPage({
   const [focusStrength, setFocusStrength] = useState<FocusStrength>(
     initialPreferences.focusStrength,
   );
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -186,6 +196,14 @@ export function PdfReaderPage({
   const progress = pageCount > 0 ? Math.round((pageNumber / pageCount) * 100) : 0;
   const hasText = pageResult?.hasText ?? true;
 
+  function toggleFullscreenFromReader() {
+    if (!isFullscreen) {
+      setIsSidebarOpen(false);
+    }
+
+    void onToggleFullscreen();
+  }
+
   return (
     <section className="reader-page" aria-label={t('pdfReader')}>
       <header className="reader-toolbar">
@@ -205,6 +223,25 @@ export function PdfReaderPage({
           </p>
         </div>
         <div className="reader-toolbar-actions">
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}
+            aria-expanded={isSidebarOpen}
+            onClick={() => setIsSidebarOpen((current) => !current)}
+          >
+            <span aria-hidden="true">◧</span>
+            <span>{isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
+          </button>
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+            onClick={toggleFullscreenFromReader}
+          >
+            <span aria-hidden="true">⛶</span>
+            <span>{isFullscreen ? t('exitFullscreen') : t('fullscreen')}</span>
+          </button>
           <button
             className="reader-icon-button"
             type="button"
@@ -228,12 +265,28 @@ export function PdfReaderPage({
         </div>
       </header>
 
-      <div className="reader-workspace">
-        <aside className="reader-settings" aria-label={t('readingSettings')}>
+      <div
+        className={`reader-workspace${isSidebarOpen ? '' : ' reader-workspace--sidebar-hidden'}`}
+      >
+        <aside
+          className="reader-settings"
+          aria-label={t('readingSettings')}
+          hidden={!isSidebarOpen}
+        >
           <div className="reader-setting-group">
             <p className="reader-setting-title">{t('pdfReader')}</p>
             <p className="reader-setting-copy">{t('pdfReaderDescription')}</p>
           </div>
+
+          <label className="reader-control">
+            <span>{t('appearance')}</span>
+            <select value={theme} onChange={(event) => onThemeChange(event.target.value as Theme)}>
+              <option value="system">{t('systemTheme')}</option>
+              <option value="light">{t('lightTheme')}</option>
+              <option value="dark">{t('darkTheme')}</option>
+              <option value="eye-care">{t('eyeCareTheme')}</option>
+            </select>
+          </label>
 
           <label className="reader-toggle" aria-disabled={!hasText}>
             <span>

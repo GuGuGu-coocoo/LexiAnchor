@@ -1,4 +1,5 @@
 import type {
+  ApplicationDataSnapshot,
   BookRecord,
   DeleteBookOptions,
   ReadingProgressRecord,
@@ -23,6 +24,12 @@ export type DatabaseRequest =
       readonly type: 'save-progress';
       readonly progress: ReadingProgressRecord;
     }
+  | { readonly id: number; readonly type: 'export-data-snapshot' }
+  | {
+      readonly id: number;
+      readonly type: 'restore-data-snapshot';
+      readonly snapshot: ApplicationDataSnapshot;
+    }
   | { readonly id: number; readonly type: 'list-word-cards'; readonly query: string }
   | { readonly id: number; readonly type: 'save-word-card'; readonly card: WordCardRecord }
   | {
@@ -44,7 +51,13 @@ export type DatabaseResponse =
       readonly id: number;
       readonly ok: true;
       readonly result:
-        StorageStatus | BookRecord[] | ReadingProgressRecord | WordCardRecord[] | null | undefined;
+        | StorageStatus
+        | ApplicationDataSnapshot
+        | BookRecord[]
+        | ReadingProgressRecord
+        | WordCardRecord[]
+        | null
+        | undefined;
     }
   | {
       readonly id: number;

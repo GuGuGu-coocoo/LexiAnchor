@@ -4,7 +4,13 @@ import sqlite3InitModule, { type Database } from '@sqlite.org/sqlite-wasm';
 
 import type { DatabaseRequest, DatabaseResponse } from './protocol';
 import { applyMigrations } from './schema';
-import type { BookRecord, ReadingProgressRecord, StorageStatus, WordCardRecord } from './types';
+import type {
+  ApplicationDataSnapshot,
+  BookRecord,
+  ReadingProgressRecord,
+  StorageStatus,
+  WordCardRecord,
+} from './types';
 
 interface BookRow {
   readonly id: string;
@@ -336,6 +342,130 @@ async function handleRequest(request: DatabaseRequest) {
           `,
           bind: [progress.updatedAt, progress.updatedAt, progress.bookId],
         });
+        context.db.exec('COMMIT');
+      } catch (error) {
+        context.db.exec('ROLLBACK');
+        throw error;
+      }
+      return undefined;
+    }
+    case 'export-data-snapshot': {
+      const bookRows = context.db.exec({
+        sql: `
+          SELECT * FROM books
+          WHERE deleted_at IS NULL
+             OR EXISTS (SELECT 1 FROM reading_progress WHERE reading_progress.book_id = books.id)
+             OR EXISTS (
+               SELECT 1 FROM word_cards
+               WHERE word_cards.source_book_id = books.id
+                 AND word_cards.deleted_at IS NULL
+             )
+          ORDER BY created_at, id
+        `,
+        rowMode: 'object',
+        returnValue: 'resultRows',
+      }) as unknown as BookRow[];
+      const progressRows = context.db.exec({
+        sql: 'SELECT * FROM reading_progress ORDER BY updated_at, id',
+        rowMode: 'object',
+        returnValue: 'resultRows',
+      }) as unknown as ProgressRow[];
+      const wordCardRows = context.db.exec({
+        sql: `
+          SELECT * FROM word_cards
+          WHERE deleted_at IS NULL
+          ORDER BY created_at, id
+        `,
+        rowMode: 'object',
+        returnValue: 'resultRows',
+      }) as unknown as WordCardRow[];
+      const snapshot: ApplicationDataSnapshot = {
+        books: bookRows.map(mapBook),
+        progress: progressRows.map(mapProgress),
+        wordCards: wordCardRows.map(mapWordCard),
+      };
+      return snapshot;
+    }
+    case 'restore-data-snapshot': {
+      const { books, progress, wordCards } = request.snapshot;
+      context.db.exec('BEGIN IMMEDIATE');
+
+      try {
+        for (const book of books) {
+          context.db.exec({
+            sql: `
+              INSERT INTO books (
+                id, title, author, format, language, cover_ref, content_ref, content_hash,
+                file_size, imported_at, last_opened_at, metadata_json, created_at, updated_at,
+                deleted_at, version
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                author = excluded.author,
+                format = excluded.format,
+                language = excluded.language,
+                cover_ref = excluded.cover_ref,
+                content_ref = excluded.content_ref,
+                content_hash = excluded.content_hash,
+                file_size = excluded.file_size,
+                imported_at = excluded.imported_at,
+                last_opened_at = excluded.last_opened_at,
+                metadata_json = excluded.metadata_json,
+                created_at = MIN(books.created_at, excluded.created_at),
+                updated_at = excluded.updated_at,
+                deleted_at = excluded.deleted_at,
+                version = MAX(books.version, excluded.version)
+            `,
+            bind: [
+              book.id,
+              book.title,
+              book.author,
+              book.format,
+              book.language,
+              book.coverRef,
+              book.contentRef,
+              book.contentHash,
+              book.fileSize,
+              book.importedAt,
+              book.lastOpenedAt,
+              JSON.stringify(book.metadata),
+              book.createdAt,
+              book.updatedAt,
+              book.deletedAt,
+              book.version,
+            ],
+          });
+        }
+
+        for (const item of progress) {
+          context.db.exec({
+            sql: `
+              INSERT INTO reading_progress (
+                id, book_id, locator_json, percentage, updated_at, device_id, version
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(book_id) DO UPDATE SET
+                locator_json = excluded.locator_json,
+                percentage = excluded.percentage,
+                updated_at = excluded.updated_at,
+                device_id = excluded.device_id,
+                version = MAX(reading_progress.version, excluded.version)
+            `,
+            bind: [
+              item.id,
+              item.bookId,
+              JSON.stringify(item.locator),
+              item.percentage,
+              item.updatedAt,
+              item.deviceId,
+              item.version,
+            ],
+          });
+        }
+
+        for (const card of wordCards) {
+          saveWordCard(context.db, card);
+        }
+
         context.db.exec('COMMIT');
       } catch (error) {
         context.db.exec('ROLLBACK');

@@ -21,8 +21,10 @@ import {
 import type { PlatformBridge } from '@lexianchor/platform';
 import type { ReaderLocator, ReaderSource } from '@lexianchor/reader-core';
 import {
+  createApplicationBackup,
   OpfsContentStore,
   parseWordCardExport,
+  restoreApplicationBackup,
   serializeWordCards,
   sha256,
   SqliteBookRepository,
@@ -49,9 +51,9 @@ import {
   requestPersistentStorage,
   type StorageHealth,
 } from './storage-health';
+import type { Theme } from './theme';
 
 type Section = 'home' | 'library' | 'cards' | 'settings';
-type Theme = 'system' | 'light' | 'dark' | 'eye-care';
 type IconName = Section | 'expand' | 'lock' | 'book-open';
 type DictionaryId =
   | 'princeton-wordnet-3.1'
@@ -215,6 +217,38 @@ function readStoredTheme(): Theme {
   return themes.find((theme) => theme === stored) ?? 'system';
 }
 
+function exportableSettings(): Readonly<Record<string, string>> {
+  const settings: Record<string, string> = {};
+  const storage = globalThis.localStorage;
+  const allowed = new Set([
+    'lexianchor:theme',
+    'lexianchor:locale',
+    'lexianchor:dictionary-preferences',
+    'lexianchor:library-sort',
+    'lexianchor:translation-target',
+    'lexianchor:reader-preferences',
+  ]);
+
+  if (!storage) {
+    return settings;
+  }
+
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+
+    if (!key || (!allowed.has(key) && !key.startsWith('lexianchor:reader-preferences:'))) {
+      continue;
+    }
+
+    const value = storage.getItem(key);
+    if (value !== null) {
+      settings[key] = value;
+    }
+  }
+
+  return settings;
+}
+
 function readDictionaryPreferences(): DictionaryPreferences {
   const fallback: DictionaryPreferences = {
     order: dictionaryIds,
@@ -295,6 +329,8 @@ export function App({ platform }: AppProps) {
   const [storageStatus, setStorageStatus] = useState<StorageStatus>();
   const [storageHealth, setStorageHealth] = useState<StorageHealth>();
   const [isRequestingPersistentStorage, setIsRequestingPersistentStorage] = useState(false);
+  const [applicationBackupMessage, setApplicationBackupMessage] = useState('');
+  const [isApplicationBackupBusy, setIsApplicationBackupBusy] = useState(false);
   const [library, setLibrary] = useState<LibraryEntry[]>([]);
   const [wordCards, setWordCards] = useState<WordCardRecord[]>([]);
   const [cardSearch, setCardSearch] = useState('');
@@ -354,12 +390,19 @@ export function App({ platform }: AppProps) {
     const syncFullscreenState = () => {
       void platform.isFullscreen().then(setIsFullscreen);
     };
+    const exitPageImmersiveWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && document.documentElement.dataset.immersive === 'on') {
+        void platform.setFullscreen(false).then(setIsFullscreen);
+      }
+    };
 
     document.addEventListener('fullscreenchange', syncFullscreenState);
+    document.addEventListener('keydown', exitPageImmersiveWithEscape);
     window.addEventListener('resize', syncFullscreenState);
 
     return () => {
       document.removeEventListener('fullscreenchange', syncFullscreenState);
+      document.removeEventListener('keydown', exitPageImmersiveWithEscape);
       window.removeEventListener('resize', syncFullscreenState);
     };
   }, [platform]);
@@ -940,6 +983,79 @@ export function App({ platform }: AppProps) {
     setIsRequestingPersistentStorage(false);
   }
 
+  async function exportApplicationData(includeBookFiles: boolean) {
+    setIsApplicationBackupBusy(true);
+    setApplicationBackupMessage('');
+
+    try {
+      const backup = await createApplicationBackup(repository(), contentStore, {
+        includeBookFiles,
+        settings: exportableSettings(),
+      });
+      const url = URL.createObjectURL(
+        new Blob([backup.slice().buffer], { type: 'application/zip' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `lexianchor-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setApplicationBackupMessage(t('applicationBackupExported'));
+    } catch (error) {
+      setApplicationBackupMessage(
+        `${t('applicationBackupExportFailed')} ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    } finally {
+      setIsApplicationBackupBusy(false);
+    }
+  }
+
+  async function importApplicationData(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    if (!globalThis.confirm(t('applicationBackupImportConfirm'))) {
+      return;
+    }
+
+    setIsApplicationBackupBusy(true);
+    setApplicationBackupMessage('');
+
+    try {
+      const result = await restoreApplicationBackup(
+        await file.arrayBuffer(),
+        repository(),
+        contentStore,
+      );
+
+      for (const [key, value] of Object.entries(result.settings)) {
+        globalThis.localStorage?.setItem(key, value);
+      }
+
+      setLocale(readStoredLocale());
+      setTheme(readStoredTheme());
+      setDictionaryPreferences(readDictionaryPreferences());
+      await refreshLibrary();
+      setWordCards(await repository().listWordCards());
+      setApplicationBackupMessage(
+        `${t('applicationBackupImported')} ${result.counts.books} ${t(
+          'applicationBackupBooks',
+        )}, ${result.counts.wordCards} ${t('applicationBackupCards')}.`,
+      );
+    } catch (error) {
+      setApplicationBackupMessage(
+        `${t('applicationBackupImportFailed')} ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    } finally {
+      setIsApplicationBackupBusy(false);
+    }
+  }
+
   const navigationItems: ReadonlyArray<{
     id: Section;
     label: string;
@@ -958,9 +1074,13 @@ export function App({ platform }: AppProps) {
           source={openBook.source}
           preferenceScopeId={openBook.bookId ?? openBook.source.name}
           initialLocator={openBook.initialLocator}
+          theme={theme}
+          isFullscreen={isFullscreen}
           locale={locale}
           t={t}
           onClose={closeReader}
+          onThemeChange={setTheme}
+          onToggleFullscreen={toggleFullscreen}
           onLocationChange={persistLocation}
           onOpenExternal={(url) => platform.openExternal(url)}
           onAddWordCard={addWordCard}
@@ -1092,6 +1212,8 @@ export function App({ platform }: AppProps) {
             locale={locale}
             storageHealth={storageHealth}
             isRequestingPersistentStorage={isRequestingPersistentStorage}
+            applicationBackupMessage={applicationBackupMessage}
+            isApplicationBackupBusy={isApplicationBackupBusy}
             dictionaryPreferences={dictionaryPreferences}
             installedDictionaries={installedDictionaries}
             installingDictionary={installingDictionary}
@@ -1111,6 +1233,8 @@ export function App({ platform }: AppProps) {
             onRemoveTranslationModel={removeTranslationModel}
             onOpenExternal={(url) => platform.openExternal(url)}
             onProtectLocalStorage={protectLocalStorage}
+            onExportApplicationData={exportApplicationData}
+            onImportApplicationData={importApplicationData}
           />
         )}
         <p className="sr-only" aria-live="polite">
@@ -1944,6 +2068,8 @@ interface SettingsPageProps {
   readonly locale: Locale;
   readonly storageHealth: StorageHealth | undefined;
   readonly isRequestingPersistentStorage: boolean;
+  readonly applicationBackupMessage: string;
+  readonly isApplicationBackupBusy: boolean;
   readonly dictionaryPreferences: DictionaryPreferences;
   readonly installedDictionaries: DictionaryInstallState;
   readonly installingDictionary: DownloadableDictionaryId | null;
@@ -1963,12 +2089,16 @@ interface SettingsPageProps {
   readonly onRemoveTranslationModel: (targetLanguage: TranslationTargetLanguage) => Promise<void>;
   readonly onOpenExternal: (url: string) => Promise<void>;
   readonly onProtectLocalStorage: () => Promise<void>;
+  readonly onExportApplicationData: (includeBookFiles: boolean) => Promise<void>;
+  readonly onImportApplicationData: (file: File | undefined) => Promise<void>;
 }
 
 function SettingsPage({
   locale,
   storageHealth,
   isRequestingPersistentStorage,
+  applicationBackupMessage,
+  isApplicationBackupBusy,
   dictionaryPreferences,
   installedDictionaries,
   installingDictionary,
@@ -1988,7 +2118,10 @@ function SettingsPage({
   onRemoveTranslationModel,
   onOpenExternal,
   onProtectLocalStorage,
+  onExportApplicationData,
+  onImportApplicationData,
 }: SettingsPageProps) {
+  const [includeBookFiles, setIncludeBookFiles] = useState(false);
   const descriptions: Readonly<
     Record<
       DictionaryId,
@@ -2102,6 +2235,57 @@ function SettingsPage({
             value={Math.min(storageHealth.usageBytes, storageHealth.quotaBytes)}
           />
         ) : null}
+
+        <section className="application-backup-controls" aria-labelledby="application-backup-title">
+          <div>
+            <h4 id="application-backup-title">{t('applicationBackupTitle')}</h4>
+            <p>{t('applicationBackupDescription')}</p>
+          </div>
+          <label className="application-backup-option">
+            <input
+              type="checkbox"
+              checked={includeBookFiles}
+              onChange={(event) => setIncludeBookFiles(event.target.checked)}
+            />
+            <span>
+              <strong>{t('includeBookFiles')}</strong>
+              <small>{t('includeBookFilesDescription')}</small>
+            </span>
+          </label>
+          <div className="application-backup-actions">
+            <button
+              className="storage-protect-action"
+              type="button"
+              disabled={isApplicationBackupBusy}
+              onClick={() => void onExportApplicationData(includeBookFiles)}
+            >
+              {t('exportApplicationBackup')}
+            </button>
+            <label
+              className={`application-backup-import${
+                isApplicationBackupBusy ? ' application-backup-import-disabled' : ''
+              }`}
+            >
+              <span>{t('importApplicationBackup')}</span>
+              <input
+                type="file"
+                accept=".zip,application/zip"
+                disabled={isApplicationBackupBusy}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  void onImportApplicationData(input.files?.[0]).finally(() => {
+                    input.value = '';
+                  });
+                }}
+              />
+            </label>
+          </div>
+          {applicationBackupMessage ? (
+            <p className="application-backup-message" role="status">
+              {applicationBackupMessage}
+            </p>
+          ) : null}
+        </section>
       </article>
 
       <header className="settings-section-heading">

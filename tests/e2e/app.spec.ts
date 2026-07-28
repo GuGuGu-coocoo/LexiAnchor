@@ -186,6 +186,100 @@ test('shows browser quota and requests persistent local storage', async ({ page 
   await page.screenshot({ path: 'test-results/storage-health.png', fullPage: true });
 });
 
+test('falls back to page immersive mode when the Fullscreen API is unavailable', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Element.prototype, 'requestFullscreen', {
+      configurable: true,
+      value: undefined,
+    });
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
+    .click();
+
+  await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-immersive', 'on');
+  await expect(page.locator('aside.reader-settings')).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('html')).not.toHaveAttribute('data-immersive', 'on');
+  await expect(
+    page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }),
+  ).toBeVisible();
+});
+
+test('exports and restores a self-contained application backup', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .locator('.import-button input[type="file"]')
+    .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-text.pdf'));
+  await expect(page.locator('.pdf-page')).toBeVisible();
+  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+
+  await page.getByRole('combobox', { name: /Appearance|外观|Apparence/ }).selectOption('eye-care');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'eye-care');
+  await page
+    .getByRole('checkbox', {
+      name: /Include book files|包含书籍文件|Inclure les fichiers/,
+    })
+    .check();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page
+    .getByRole('button', {
+      name: /Export app backup|导出应用备份|Exporter la sauvegarde de l'application/,
+    })
+    .click();
+  const backupPath = await (await downloadPromise).path();
+
+  if (!backupPath) {
+    throw new Error('The application backup download has no local path.');
+  }
+
+  await expect(page.getByRole('status')).toContainText(
+    /Application backup downloaded|应用备份已下载|Sauvegarde de l'application téléchargée/,
+  );
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const storedBook = page.locator('article[data-book-id]').filter({ hasText: 'lexianchor-text' });
+  await storedBook
+    .getByRole('button', {
+      name: /Delete lexianchor-text|删除 lexianchor-text|Supprimer lexianchor-text/,
+    })
+    .click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', {
+      name: /Delete local copy|删除本地副本|Supprimer la copie locale/,
+    })
+    .click();
+  await expect(storedBook).toHaveCount(0);
+
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  await page.getByRole('combobox', { name: /Appearance|外观|Apparence/ }).selectOption('light');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('.application-backup-import input[type="file"]').setInputFiles(backupPath);
+  await expect(page.getByRole('status')).toContainText(
+    /Backup restored|备份已恢复|Sauvegarde restaurée/,
+  );
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'eye-care');
+
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const restoredBook = page.locator('article[data-book-id]').filter({ hasText: 'lexianchor-text' });
+  await expect(restoredBook).toBeVisible();
+  await expect(restoredBook.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '67');
+  await restoredBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
+  await page.screenshot({ path: 'test-results/application-backup-restored.png', fullPage: true });
+});
+
 test('opens the EPUB spike and validates selection and focus markup', async ({ page }) => {
   await page.goto('/');
 
@@ -196,6 +290,46 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+
+  const readerSidebar = page.locator('aside.reader-settings');
+  const appearance = page.getByRole('combobox', {
+    name: /Appearance|外观|Apparence/,
+  });
+  await appearance.selectOption('eye-care');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'eye-care');
+  await expect
+    .poll(() =>
+      bookFrame
+        .locator('body')
+        .evaluate(
+          (body) => body.ownerDocument.defaultView?.getComputedStyle(body).backgroundColor ?? '',
+        ),
+    )
+    .toBe('rgb(248, 243, 229)');
+
+  await page
+    .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
+    .click();
+  await expect(readerSidebar).toBeHidden();
+  await expect(page.locator('.reader-workspace')).toHaveClass(/reader-workspace--sidebar-hidden/);
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await expect(readerSidebar).toBeVisible();
+
+  const progressBeforeFullscreen = await page.locator('.reader-engine-label').textContent();
+  await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  await expect(readerSidebar).toBeHidden();
+  await expect(page.locator('.reader-engine-label')).toHaveText(progressBeforeFullscreen ?? '');
+  await page
+    .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
+    .click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await appearance.selectOption('light');
 
   await page
     .getByRole('button', {
@@ -373,6 +507,19 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await expect(pdfPage).toBeVisible();
   await expect(textLayer.locator('span').first()).toBeVisible();
   await expect(page.locator('.reader-engine-label')).toContainText(/1.*3.*33%/);
+
+  const pdfSidebar = page.locator('aside.reader-settings');
+  await page.getByRole('combobox', { name: /Appearance|外观|Apparence/ }).selectOption('dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page
+    .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
+    .click();
+  await expect(pdfSidebar).toBeHidden();
+  await expect(pdfPage).toBeVisible();
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await expect(pdfSidebar).toBeVisible();
 
   await textLayer
     .locator('span', { hasText: 'resilient' })
