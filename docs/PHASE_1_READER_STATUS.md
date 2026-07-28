@@ -79,6 +79,7 @@
 | 100MB PDF 压力测试 | 110,140,568 字节自制样本导入、首屏渲染和翻页通过 |
 | `pnpm build:web` | 通过，PDF、SQLite、Bergamot worker 和 WASM 均形成生产资源 |
 | `pnpm build:desktop` | 通过，生成 macOS arm64 `.app` |
+| macOS 分发包 | 128MB arm64 ZIP 完整性校验和解压后实际启动探针通过 |
 | `pnpm audit --audit-level high` | 无已知漏洞 |
 | Electron 运行探针 | 生产 bundle 窗口启动，`opfs-sahpool` 生效 |
 | 视觉检查 | EPUB 目录/排版、三级焦点效果、词卡编辑、书库删除确认、PDF 文本/扫描与 390px 窄窗口通过 |
@@ -110,7 +111,7 @@ Playwright 当前覆盖：
 1. EN→FR 模型安装、翻译、重载和断网翻译；
 2. EN→ZH 模型安装、翻译、重载和断网翻译。
 
-## 仍未达到首个可用版本的部分
+## 后续增强与平台验证
 
 - Windows 实机启动和无签名分发验证尚未完成；
 - 书库尚未支持列表视图和封面编辑；
