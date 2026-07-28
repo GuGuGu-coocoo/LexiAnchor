@@ -213,6 +213,23 @@ export function ReaderAppearancePanel({
           </select>
         </label>
 
+        <label className="reader-control" aria-disabled={preferences.flow === 'scrolled'}>
+          <span>{t('pageTurnEffect')}</span>
+          <select
+            value={preferences.pageTurnEffect}
+            disabled={preferences.flow === 'scrolled'}
+            onChange={(event) =>
+              updatePreference(
+                'pageTurnEffect',
+                event.target.value as ReaderPreferences['pageTurnEffect'],
+              )
+            }
+          >
+            <option value="slide">{t('slidingPages')}</option>
+            <option value="stack">{t('stackedPages')}</option>
+          </select>
+        </label>
+
         <label className="reader-control">
           <span>{t('fontFamily')}</span>
           <select

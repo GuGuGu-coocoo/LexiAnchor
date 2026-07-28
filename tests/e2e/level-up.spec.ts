@@ -17,6 +17,12 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
   await expect(page.locator('.reader-engine-label')).toContainText('EPUB.js', {
     timeout: 60_000,
   });
+  await page.locator('details.reader-appearance-panel summary').click();
+  await page
+    .getByRole('combobox', {
+      name: /Page turn effect|翻页效果|Effet de changement de page/,
+    })
+    .selectOption('stack');
 
   const currentHref = () =>
     page.evaluate(() => {

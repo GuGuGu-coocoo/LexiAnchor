@@ -10,6 +10,7 @@ import type {
 } from '@lexianchor/reader-core';
 import {
   createHorizontalPageScrollGesture,
+  createStackedPageScrollGesture,
   type HorizontalPageGestureController,
 } from '@lexianchor/reader-core';
 
@@ -174,7 +175,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
         allowScriptedContent: false,
       });
 
-      this.pageGesture = createHorizontalPageScrollGesture({
+      const gestureOptions = {
         getScroller: () => this.rendition?.manager?.container ?? null,
         getPageExtent: () =>
           this.rendition?.manager?.layout?.delta ??
@@ -185,7 +186,27 @@ export class EpubJsReaderEngine implements ReaderEngine {
           this.callbacks.onSelection(null);
           void this.rendition?.reportLocation();
         },
+      };
+      const slidingGesture = createHorizontalPageScrollGesture({
+        ...gestureOptions,
+        isEnabled: () =>
+          this.preferences?.flow === 'paginated' && this.preferences.pageTurnEffect === 'slide',
       });
+      const stackedGesture = createStackedPageScrollGesture({
+        ...gestureOptions,
+        isEnabled: () =>
+          this.preferences?.flow === 'paginated' && this.preferences.pageTurnEffect === 'stack',
+      });
+      this.pageGesture = {
+        handleWheel: (event) => {
+          slidingGesture.handleWheel(event);
+          stackedGesture.handleWheel(event);
+        },
+        dispose: () => {
+          slidingGesture.dispose();
+          stackedGesture.dispose();
+        },
+      };
       this.resizeObserver = new ResizeObserver((entries) => {
         const size = entries[0]?.contentRect;
         const sizeKey = size ? `${Math.round(size.width)}x${Math.round(size.height)}` : '';

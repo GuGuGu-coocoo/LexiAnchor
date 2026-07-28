@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createHorizontalPageScrollGesture, focusFontWeight, focusPrefixLength } from './index';
+import {
+  createHorizontalPageScrollGesture,
+  createStackedPageScrollGesture,
+  focusFontWeight,
+  focusPrefixLength,
+} from './index';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -68,6 +73,91 @@ describe('continuous page gesture', () => {
     }
 
     expect(scroller.scrollLeft).toBe(2_000);
+    gesture.dispose();
+  });
+});
+
+describe('stacked page gesture', () => {
+  it('slides the captured top sheet away and commits the page underneath', async () => {
+    vi.useFakeTimers();
+    let frameId = 0;
+    const frames = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frameId += 1;
+      frames.set(frameId, callback);
+      return frameId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.stubGlobal('WheelEvent', { DOM_DELTA_LINE: 1 });
+
+    const pauseAnimation = vi.fn();
+    const cancelAnimation = vi.fn();
+    const sheetAnimation = {
+      currentTime: 0,
+      pause: pauseAnimation,
+      cancel: cancelAnimation,
+    } as unknown as Animation;
+    const skipTransition = vi.fn();
+    const update = vi.fn();
+    const ownerDocument = {
+      documentElement: {
+        animate: vi.fn(() => sheetAnimation),
+      },
+      startViewTransition: vi.fn((callback: () => void) => {
+        callback();
+        return {
+          ready: Promise.resolve(),
+          finished: Promise.resolve(),
+          updateCallbackDone: Promise.resolve(),
+          types: new Set<string>(),
+          skipTransition,
+        };
+      }),
+    } as unknown as Document;
+    const classes = new Set<string>();
+    const scroller = {
+      scrollLeft: 0,
+      scrollWidth: 5_000,
+      clientWidth: 1_000,
+      ownerDocument,
+      style: { viewTransitionName: '' },
+      classList: {
+        add: (name: string) => classes.add(name),
+        remove: (name: string) => classes.delete(name),
+      },
+    } as unknown as HTMLElement;
+    const gesture = createStackedPageScrollGesture({
+      getScroller: () => scroller,
+      getPageExtent: () => 1_000,
+      onSettled: update,
+    });
+    const wheel = {
+      deltaX: 420,
+      deltaY: 2,
+      deltaMode: 0,
+      preventDefault: vi.fn(),
+    } as unknown as WheelEvent;
+
+    gesture.handleWheel(wheel);
+    await Promise.resolve();
+    expect(scroller.scrollLeft).toBe(1_000);
+    expect(classes.has('epub-page-stack-transition')).toBe(true);
+    expect(pauseAnimation).toHaveBeenCalledOnce();
+
+    vi.advanceTimersByTime(90);
+    let time = performance.now();
+    for (let index = 0; index < 240 && frames.size > 0; index += 1) {
+      const [id, callback] = frames.entries().next().value as [number, FrameRequestCallback];
+      frames.delete(id);
+      time += 16;
+      callback(time);
+    }
+
+    expect(scroller.scrollLeft).toBe(1_000);
+    expect(update).toHaveBeenCalledWith(1);
+    expect(skipTransition).toHaveBeenCalledOnce();
+    expect(classes.has('epub-page-stack-transition')).toBe(false);
     gesture.dispose();
   });
 });

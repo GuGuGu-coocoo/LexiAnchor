@@ -644,6 +644,33 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   expect(continuousSwipe.renderedViews).toBeGreaterThan(0);
   await page.waitForTimeout(500);
 
+  const pageTurnEffect = page.getByRole('combobox', {
+    name: /Page turn effect|翻页效果|Effet de changement de page/,
+  });
+  await pageTurnEffect.selectOption('stack');
+  await page.waitForTimeout(250);
+  const stackedScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
+  const stackedStart = await stackedScroller.evaluate((scroller) => scroller.scrollLeft);
+  await page
+    .locator('.epub-container iframe')
+    .last()
+    .contentFrame()
+    .locator('body')
+    .dispatchEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaMode: 0,
+      deltaX: 420,
+      deltaY: 2,
+    });
+  await expect(stackedScroller).toHaveClass(/epub-page-stack-transition/);
+  await page.waitForTimeout(30);
+  await page.screenshot({ path: 'test-results/epub-stacked-page-turn.png', fullPage: true });
+  await expect
+    .poll(() => stackedScroller.evaluate((scroller) => scroller.scrollLeft))
+    .toBeGreaterThan(stackedStart + 100);
+  await expect(stackedScroller).not.toHaveClass(/epub-page-stack-transition/);
+
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page
     .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
@@ -663,6 +690,11 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expect(
     page.getByRole('slider', { name: /Text width|正文宽度|Largeur du texte/ }),
   ).toHaveValue('70');
+  await expect(
+    page.getByRole('combobox', {
+      name: /Page turn effect|翻页效果|Effet de changement de page/,
+    }),
+  ).toHaveValue('stack');
 
   await page.screenshot({ path: 'test-results/epub-spike.png', fullPage: true });
 });
@@ -686,9 +718,13 @@ test('saves, overwrites, restores, and reloads a reading preset with page column
   const fontSize = page.getByRole('slider', {
     name: /Text size|文字大小|Taille du texte/,
   });
+  const pageTurnEffect = page.getByRole('combobox', {
+    name: /Page turn effect|翻页效果|Effet de changement de page/,
+  });
 
   await expect(presetSelect).toHaveValue('default');
   await pageColumns.selectOption('double');
+  await pageTurnEffect.selectOption('stack');
   await fontSize.fill('125');
   await page
     .getByRole('button', {
@@ -726,6 +762,11 @@ test('saves, overwrites, restores, and reloads a reading preset with page column
       name: /Text size|文字大小|Taille du texte/,
     }),
   ).toHaveValue('135');
+  await expect(
+    page.getByRole('combobox', {
+      name: /Page turn effect|翻页效果|Effet de changement de page/,
+    }),
+  ).toHaveValue('stack');
 
   await page
     .getByRole('button', {

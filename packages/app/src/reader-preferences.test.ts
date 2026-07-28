@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe('reader preferences', () => {
-  it('upgrades saved settings without a page-spread value to single-column pages', () => {
+  it('upgrades saved settings with the default page spread and turn effect', () => {
     expect(
       normalizeReaderPreferences({
         flow: 'paginated',
@@ -37,6 +37,7 @@ describe('reader preferences', () => {
     ).toMatchObject({
       flow: 'paginated',
       pageSpread: 'single',
+      pageTurnEffect: 'slide',
       fontSizePercent: 125,
     });
   });
@@ -53,6 +54,7 @@ describe('reader preferences', () => {
           preferences: {
             ...defaultReaderPreferences,
             pageSpread: 'double' as const,
+            pageTurnEffect: 'stack' as const,
             fontSizePercent: 115,
           },
         },

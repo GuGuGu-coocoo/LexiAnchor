@@ -3,6 +3,7 @@ import {
   type FocusStrength,
   type ReaderFontFamily,
   type ReaderPageSpread,
+  type ReaderPageTurnEffect,
   type ReaderPreferences,
   type ReaderTextAlignment,
 } from '@lexianchor/reader-core';
@@ -15,6 +16,7 @@ export const defaultReaderPresetId = 'default';
 const focusStrengths: readonly FocusStrength[] = ['light', 'medium', 'strong'];
 const fontFamilies: readonly ReaderFontFamily[] = ['serif', 'sans-serif'];
 const pageSpreads: readonly ReaderPageSpread[] = ['single', 'double'];
+const pageTurnEffects: readonly ReaderPageTurnEffect[] = ['slide', 'stack'];
 const textAlignments: readonly ReaderTextAlignment[] = ['start', 'justify'];
 const themes: readonly Theme[] = ['system', 'light', 'dark', 'eye-care'];
 
@@ -56,6 +58,9 @@ export function normalizeReaderPreferences(input: Partial<ReaderPreferences>): R
     pageSpread: pageSpreads.includes(input.pageSpread as ReaderPageSpread)
       ? (input.pageSpread as ReaderPageSpread)
       : defaultReaderPreferences.pageSpread,
+    pageTurnEffect: pageTurnEffects.includes(input.pageTurnEffect as ReaderPageTurnEffect)
+      ? (input.pageTurnEffect as ReaderPageTurnEffect)
+      : defaultReaderPreferences.pageTurnEffect,
     fontSizePercent: clamp(input.fontSizePercent, 100, 80, 180),
     lineHeight: clamp(input.lineHeight, 1.55, 1.2, 2.2),
     wordSpacingEm: clamp(input.wordSpacingEm, 0, 0, 0.5),

@@ -1,5 +1,6 @@
 export type ReaderFlow = 'paginated' | 'scrolled';
 export type ReaderPageSpread = 'single' | 'double';
+export type ReaderPageTurnEffect = 'slide' | 'stack';
 export type DocumentFormat = 'epub' | 'pdf';
 export type FocusStrength = 'light' | 'medium' | 'strong';
 export type ReaderFontFamily = 'serif' | 'sans-serif';
@@ -16,6 +17,7 @@ export interface ReaderLocator {
 export interface ReaderPreferences {
   readonly flow: ReaderFlow;
   readonly pageSpread: ReaderPageSpread;
+  readonly pageTurnEffect: ReaderPageTurnEffect;
   readonly fontSizePercent: number;
   readonly lineHeight: number;
   readonly wordSpacingEm: number;
@@ -439,9 +441,293 @@ export function createHorizontalPageScrollGesture(
   };
 }
 
+/**
+ * Treats the current viewport as the top sheet in a stack. Chromium's View
+ * Transition snapshot keeps that sheet visually intact while the real
+ * scroller is moved to the adjacent page underneath. The snapshot then tracks
+ * the gesture 1:1 and settles with an interruptible, critically damped spring.
+ */
+export function createStackedPageScrollGesture(
+  options: HorizontalPageScrollGestureOptions,
+): HorizontalPageGestureController {
+  let origin = 0;
+  let target = 0;
+  let distance = 0;
+  let velocity = 0;
+  let direction: -1 | 0 | 1 = 0;
+  let progress = 0;
+  let lastInputAt = 0;
+  let isTracking = false;
+  let isReady = false;
+  let shouldFinishWhenReady = false;
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  let animationFrame: number | null = null;
+  let transition: ViewTransition | null = null;
+  let sheetAnimation: Animation | null = null;
+  let sequence = 0;
+  let previousTransitionName = '';
+
+  const fallback = createHorizontalPageScrollGesture(options);
+
+  function pageExtent(): number {
+    return Math.max(1, options.getPageExtent?.() ?? options.getScroller()?.clientWidth ?? 1);
+  }
+
+  function stopAnimation(): void {
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+    sequence += 1;
+  }
+
+  function render(nextProgress: number): void {
+    progress = Math.max(0, Math.min(1, nextProgress));
+    if (sheetAnimation) {
+      sheetAnimation.currentTime = progress * 1_000;
+    }
+  }
+
+  function cleanup(committedDirection: -1 | 0 | 1): void {
+    const scroller = options.getScroller();
+    stopAnimation();
+    sheetAnimation?.cancel();
+    sheetAnimation = null;
+    transition?.skipTransition();
+    transition = null;
+
+    if (scroller) {
+      scroller.style.viewTransitionName = previousTransitionName;
+      scroller.classList.remove('epub-page-stack-transition');
+    }
+
+    isTracking = false;
+    isReady = false;
+    shouldFinishWhenReady = false;
+    direction = 0;
+    distance = 0;
+    velocity = 0;
+    lastInputAt = 0;
+    progress = 0;
+    options.onSettled?.(committedDirection);
+  }
+
+  function settle(commit: boolean): void {
+    if (!isReady) {
+      shouldFinishWhenReady = true;
+      return;
+    }
+
+    const scroller = options.getScroller();
+    if (!scroller) {
+      cleanup(0);
+      return;
+    }
+
+    stopAnimation();
+    const ownSequence = sequence;
+    const destination = commit ? 1 : 0;
+    const response = 0.34;
+    const stiffness = ((2 * Math.PI) / response) ** 2;
+    const damping = 2 * Math.sqrt(stiffness);
+    const extent = pageExtent();
+    let springVelocity = direction === 0 ? 0 : (velocity * direction) / extent;
+    let previousTime = performance.now();
+
+    const tick = (time: number) => {
+      if (ownSequence !== sequence) {
+        return;
+      }
+
+      const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
+      previousTime = time;
+      const acceleration = -stiffness * (progress - destination) - damping * springVelocity;
+      springVelocity += acceleration * elapsed;
+      render(progress + springVelocity * elapsed);
+
+      if (Math.abs(progress - destination) < 0.001 && Math.abs(springVelocity) < 0.01) {
+        render(destination);
+        animationFrame = null;
+        if (!commit) {
+          scroller.scrollLeft = origin;
+        }
+        cleanup(commit ? direction : 0);
+        return;
+      }
+
+      animationFrame = requestAnimationFrame(tick);
+    };
+
+    animationFrame = requestAnimationFrame(tick);
+  }
+
+  function finishGesture(): void {
+    endTimer = null;
+    if (!isTracking || direction === 0) {
+      isTracking = false;
+      return;
+    }
+
+    const extent = pageExtent();
+    const projected =
+      distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
+    const commit =
+      direction > 0
+        ? projected > extent * 0.16 || velocity > 480
+        : projected < -extent * 0.16 || velocity < -480;
+    settle(commit);
+  }
+
+  function beginTransition(scroller: HTMLElement, nextDirection: -1 | 1): boolean {
+    const document = scroller.ownerDocument;
+    if (
+      typeof document.startViewTransition !== 'function' ||
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return false;
+    }
+
+    const extent = pageExtent();
+    const maximum = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    origin = scroller.scrollLeft;
+    target = Math.max(0, Math.min(maximum, origin + nextDirection * extent));
+    if (Math.abs(target - origin) < 1) {
+      return false;
+    }
+
+    direction = nextDirection;
+    previousTransitionName = scroller.style.viewTransitionName;
+    scroller.style.viewTransitionName = 'lexianchor-page';
+    scroller.classList.add('epub-page-stack-transition');
+    const ownSequence = ++sequence;
+    transition = document.startViewTransition(() => {
+      scroller.scrollLeft = target;
+    });
+
+    void transition.ready.then(
+      () => {
+        if (ownSequence !== sequence || !transition) {
+          return;
+        }
+
+        sheetAnimation = document.documentElement.animate(
+          direction > 0
+            ? [{ transform: 'translate3d(0, 0, 0)' }, { transform: 'translate3d(-100%, 0, 0)' }]
+            : [{ transform: 'translate3d(0, 0, 0)' }, { transform: 'translate3d(100%, 0, 0)' }],
+          {
+            duration: 1_000,
+            easing: 'linear',
+            fill: 'both',
+            pseudoElement: '::view-transition-old(lexianchor-page)',
+          },
+        );
+        sheetAnimation.pause();
+        isReady = true;
+        render(Math.min(0.92, Math.abs(distance) / extent));
+
+        if (shouldFinishWhenReady) {
+          settle(
+            direction > 0
+              ? distance > extent * 0.16 || velocity > 480
+              : distance < -extent * 0.16 || velocity < -480,
+          );
+        }
+      },
+      () => {
+        if (ownSequence === sequence) {
+          scroller.scrollLeft = origin;
+          cleanup(0);
+        }
+      },
+    );
+    return true;
+  }
+
+  return {
+    handleWheel(event: WheelEvent) {
+      if (
+        options.isEnabled?.() === false ||
+        Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
+      ) {
+        return;
+      }
+
+      const scroller = options.getScroller();
+      if (!scroller) {
+        return;
+      }
+
+      const document = scroller.ownerDocument;
+      if (
+        typeof document.startViewTransition !== 'function' ||
+        globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ) {
+        fallback.handleWheel(event);
+        return;
+      }
+
+      event.preventDefault();
+      const now = performance.now();
+      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+      const delta = event.deltaX * scale;
+      const elapsed = lastInputAt > 0 ? Math.max(8, now - lastInputAt) : 16;
+      lastInputAt = now;
+
+      if (!isTracking) {
+        isTracking = true;
+        origin = scroller.scrollLeft;
+        distance = 0;
+        velocity = 0;
+      }
+
+      shouldFinishWhenReady = false;
+      if (animationFrame !== null) {
+        stopAnimation();
+      }
+      distance += delta;
+      const instantaneousVelocity = (delta / elapsed) * 1000;
+      velocity = velocity * 0.42 + instantaneousVelocity * 0.58;
+
+      if (direction === 0 && Math.abs(distance) >= 10) {
+        if (!beginTransition(scroller, distance > 0 ? 1 : -1)) {
+          isTracking = false;
+          fallback.handleWheel(event);
+          return;
+        }
+      }
+
+      if (direction !== 0 && isReady) {
+        const directionalDistance = Math.max(0, distance * direction);
+        render(Math.min(0.92, directionalDistance / pageExtent()));
+      }
+
+      if (endTimer !== null) {
+        clearTimeout(endTimer);
+      }
+      endTimer = setTimeout(finishGesture, 90);
+    },
+    dispose() {
+      fallback.dispose();
+      stopAnimation();
+      if (endTimer !== null) {
+        clearTimeout(endTimer);
+        endTimer = null;
+      }
+      const scroller = options.getScroller();
+      if (scroller && transition) {
+        scroller.scrollLeft = origin;
+      }
+      if (transition) {
+        cleanup(0);
+      }
+    },
+  };
+}
+
 export const defaultReaderPreferences: ReaderPreferences = {
   flow: 'paginated',
   pageSpread: 'single',
+  pageTurnEffect: 'slide',
   fontSizePercent: 100,
   lineHeight: 1.55,
   wordSpacingEm: 0,
