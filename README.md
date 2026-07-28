@@ -15,6 +15,38 @@ Un lecteur EPUB / PDF local, conçu pour lire sans distraction, consulter le dic
 >
 > LexiAnchor est actuellement en version de test. Ouvrez uniquement des fichiers EPUB ou PDF fiables et sans DRM, et sauvegardez régulièrement vos données importantes.
 
+## 功能一览 · Feature tour · Aperçu
+
+### 本地书库 · Local library · Bibliothèque locale
+
+![LexiAnchor local library showing a book and its reading progress](docs/images/library.jpg)
+
+导入 EPUB / PDF、查看阅读进度，并从上次停下的位置继续阅读。
+
+Import EPUB / PDF books, see your progress, and continue where you stopped.
+
+Importez des livres EPUB / PDF, consultez votre progression et reprenez où vous vous êtes arrêté.
+
+### 专注阅读 · Focused reading · Lecture sans distraction
+
+![LexiAnchor EPUB reader with navigation and reading controls](docs/images/reader.jpg)
+
+支持 EPUB / PDF、连续滚动与水平翻页、触控板手势、全屏阅读和可保存的排版预设。
+
+Read EPUB / PDF with continuous scrolling or horizontal pages, trackpad gestures, full screen, and reusable appearance presets.
+
+Lisez les EPUB / PDF avec défilement continu ou pages horizontales, gestes du pavé tactile, plein écran et préréglages d'affichage.
+
+### 离线工具与备份 · Offline tools and backup · Outils hors ligne et sauvegarde
+
+![LexiAnchor settings for local storage, backups, and offline dictionaries](docs/images/settings.jpg)
+
+书籍、进度、词卡和设置保存在本机；可以管理离线词典、翻译模型并导出备份。
+
+Books, progress, word cards, and settings stay local; manage offline dictionaries and translation models, then export a backup.
+
+Les livres, la progression, les fiches et les réglages restent en local ; gérez les dictionnaires et modèles de traduction hors ligne, puis exportez une sauvegarde.
+
 ---
 
 ## 中文
