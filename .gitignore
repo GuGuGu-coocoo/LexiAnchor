@@ -111,6 +111,10 @@ packages/dictionary/resources/freedict-*/
 *.swo
 *~
 
+# Local planning, architecture notes, and agent tooling
+.local-docs/
+.agents/
+
 # Operating-system files
 .DS_Store
 .AppleDouble

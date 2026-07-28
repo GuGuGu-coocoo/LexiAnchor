@@ -38,8 +38,11 @@ pnpm dev:web
 pnpm dev:desktop
 ```
 
-For a guided hands-on pass, follow the
-[Chinese testing and acceptance guide](./docs/TESTING_GUIDE.md).
+Create a local desktop test package:
+
+```bash
+pnpm --filter @lexianchor/desktop make
+```
 
 Quality checks:
 
@@ -47,24 +50,6 @@ Quality checks:
 pnpm check
 pnpm test:e2e
 ```
-
-## Documentation
-
-- [Product requirements](./PRD.md)
-- [Technical architecture](./TECHNICAL_ARCHITECTURE.md)
-- [Development workflow](./DEVELOPMENT_WORKFLOW.md)
-- [Architecture decisions](./docs/adr)
-- [Phase 0 status](./docs/PHASE_0_STATUS.md)
-- [Current reader status](./docs/PHASE_1_READER_STATUS.md)
-- [Testing and acceptance guide](./docs/TESTING_GUIDE.md)
-- [EPUB engine spike](./docs/spikes/0001-epub-engine.md)
-- [PDF engine spike](./docs/spikes/0002-pdf-engine.md)
-- [SQLite and OPFS spike](./docs/spikes/0003-sqlite-opfs.md)
-- [WordNet offline dictionary spike](./docs/spikes/0004-wordnet.md)
-- [FreeDict English–French spike](./docs/spikes/0005-freedict-eng-fra.md)
-- [FreeDict/WikDict English–Chinese spike](./docs/spikes/0006-freedict-eng-zho.md)
-- [StarDict user dictionary import spike](./docs/spikes/0007-stardict-import.md)
-- [Bergamot local translation spike](./docs/spikes/0008-bergamot-local-translation.md)
 
 ## Project status
 
