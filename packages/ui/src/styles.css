@@ -1110,6 +1110,107 @@ button {
   accent-color: var(--accent);
 }
 
+.reader-settings > .selection-inspector {
+  margin-top: 0;
+}
+
+.reader-settings > .selection-inspector + .reader-setting-group {
+  margin-top: 18px;
+}
+
+.reader-appearance-panel {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.reader-appearance-panel summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 13px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 740;
+  transition:
+    background-color 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.reader-appearance-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.reader-appearance-panel summary::after {
+  content: '⌄';
+  color: var(--text-muted);
+  font-size: 15px;
+  transition: transform 180ms var(--ease-out);
+}
+
+.reader-appearance-panel[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.reader-appearance-panel summary:active {
+  transform: scale(0.985);
+}
+
+.reader-appearance-panel summary small {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 560;
+}
+
+.reader-appearance-content {
+  padding: 0 13px 13px;
+  border-top: 1px solid var(--line);
+}
+
+.reader-preset-control {
+  padding-top: 13px;
+}
+
+.reader-preset-actions {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.reader-preset-actions button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 680;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.reader-preset-actions button:last-child {
+  color: var(--accent-strong);
+}
+
+.reader-preset-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.reader-preset-actions button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .selection-inspector {
   margin-top: 22px;
   padding: 14px;
@@ -1144,6 +1245,60 @@ button {
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.selection-dismiss {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    transform 120ms var(--ease-out);
+}
+
+.selection-dismiss:active {
+  transform: scale(0.94);
+}
+
+.selection-popover-shell {
+  position: fixed;
+  z-index: 30;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(430px, calc(100vh - 24px));
+  filter: drop-shadow(0 18px 38px rgb(0 0 0 / 22%));
+}
+
+.selection-popover-shell .selection-inspector {
+  max-height: inherit;
+  margin: 0;
+  overflow-y: auto;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+.selection-inspector--compact .selection-sentence {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.selection-inspector--compact .dictionary-attribution,
+.selection-inspector--compact .dictionary-example,
+.selection-inspector--compact .dictionary-detail {
+  display: none;
 }
 
 .dictionary-result {

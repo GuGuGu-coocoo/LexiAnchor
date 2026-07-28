@@ -21,6 +21,25 @@ p {
   margin: 0 0 1.25rem;
 }
 
+figure {
+  margin: 1.75rem 0;
+  text-align: center;
+}
+
+figure img {
+  display: block;
+  width: min(100%, 30rem);
+  height: auto;
+  margin: 0 auto;
+  border-radius: 1rem;
+}
+
+figcaption {
+  margin-top: 0.65rem;
+  color: #676b63;
+  font-size: 0.82rem;
+}
+
 [data-lexianchor-focus='anchor'] {
   font-weight: 750;
 }

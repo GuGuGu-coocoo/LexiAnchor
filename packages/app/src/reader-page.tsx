@@ -14,9 +14,12 @@ import type {
   TranslationTargetLanguage,
 } from '@lexianchor/translation';
 
+import { FloatingSelectionTools } from './floating-selection-tools';
+import { ReaderAppearancePanel } from './reader-appearance-panel';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import { readerColorsForTheme, type Theme } from './theme';
+import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -120,6 +123,7 @@ function EpubReaderPage({
   installedTranslationTargets,
 }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const readerStageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
     ...readReaderPreferences(preferenceScopeId),
@@ -237,19 +241,13 @@ function EpubReaderPage({
     return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
   }, []);
 
+  useHorizontalPageSwipe(readerStageRef, {
+    enabled: preferences.flow === 'paginated',
+    onNext: () => void engineRef.current?.next(),
+    onPrevious: () => void engineRef.current?.previous(),
+  });
+
   const progress = Math.round((locator?.totalProgression ?? 0) * 100);
-
-  function updatePreference<Key extends keyof ReaderPreferences>(
-    key: Key,
-    value: ReaderPreferences[Key],
-  ) {
-    setPreferences((current) => ({ ...current, [key]: value }));
-  }
-
-  function updateTheme(nextTheme: Theme) {
-    onThemeChange(nextTheme);
-    setPreferences((current) => ({ ...current, ...readerColorsForTheme(nextTheme) }));
-  }
 
   function toggleFullscreenFromReader() {
     if (!isFullscreen) {
@@ -375,196 +373,6 @@ function EpubReaderPage({
             />
           ) : (
             <>
-              <div className="reader-setting-group">
-                <p className="reader-setting-title">{t('readerExperiment')}</p>
-                <p className="reader-setting-copy">{t('readerExperimentBody')}</p>
-              </div>
-
-              <label className="reader-control">
-                <span>{t('appearance')}</span>
-                <select
-                  value={theme}
-                  onChange={(event) => updateTheme(event.target.value as Theme)}
-                >
-                  <option value="system">{t('systemTheme')}</option>
-                  <option value="light">{t('lightTheme')}</option>
-                  <option value="dark">{t('darkTheme')}</option>
-                  <option value="eye-care">{t('eyeCareTheme')}</option>
-                </select>
-              </label>
-
-              <label className="reader-toggle">
-                <span>
-                  <strong>{t('focusMode')}</strong>
-                  <small>{t('focusModeDescription')}</small>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={preferences.focusMode}
-                  onChange={(event) => updatePreference('focusMode', event.target.checked)}
-                />
-              </label>
-
-              <label className="reader-control">
-                <span>{t('focusStrength')}</span>
-                <select
-                  value={preferences.focusStrength}
-                  onChange={(event) =>
-                    updatePreference(
-                      'focusStrength',
-                      event.target.value as ReaderPreferences['focusStrength'],
-                    )
-                  }
-                >
-                  <option value="light">{t('lightStrength')}</option>
-                  <option value="medium">{t('mediumStrength')}</option>
-                  <option value="strong">{t('strongStrength')}</option>
-                </select>
-              </label>
-
-              <label className="reader-control">
-                <span>{t('readingLayout')}</span>
-                <select
-                  value={preferences.flow}
-                  onChange={(event) =>
-                    updatePreference('flow', event.target.value as ReaderPreferences['flow'])
-                  }
-                >
-                  <option value="paginated">{t('pageMode')}</option>
-                  <option value="scrolled">{t('scrollMode')}</option>
-                </select>
-              </label>
-
-              <label className="reader-control">
-                <span>{t('fontFamily')}</span>
-                <select
-                  value={preferences.fontFamily}
-                  onChange={(event) =>
-                    updatePreference(
-                      'fontFamily',
-                      event.target.value as ReaderPreferences['fontFamily'],
-                    )
-                  }
-                >
-                  <option value="serif">{t('serifFont')}</option>
-                  <option value="sans-serif">{t('sansSerifFont')}</option>
-                </select>
-              </label>
-
-              <label className="reader-control">
-                <span>
-                  {t('fontSize')} <output>{preferences.fontSizePercent}%</output>
-                </span>
-                <input
-                  type="range"
-                  aria-label={t('fontSize')}
-                  min="80"
-                  max="180"
-                  step="5"
-                  value={preferences.fontSizePercent}
-                  onChange={(event) =>
-                    updatePreference('fontSizePercent', Number(event.target.value))
-                  }
-                />
-              </label>
-
-              <label className="reader-control">
-                <span>
-                  {t('fontWeight')} <output>{preferences.fontWeight}</output>
-                </span>
-                <input
-                  type="range"
-                  aria-label={t('fontWeight')}
-                  min="350"
-                  max="700"
-                  step="50"
-                  value={preferences.fontWeight}
-                  onChange={(event) => updatePreference('fontWeight', Number(event.target.value))}
-                />
-              </label>
-
-              <label className="reader-control">
-                <span>
-                  {t('lineHeight')} <output>{preferences.lineHeight.toFixed(2)}</output>
-                </span>
-                <input
-                  type="range"
-                  aria-label={t('lineHeight')}
-                  min="1.2"
-                  max="2.2"
-                  step="0.05"
-                  value={preferences.lineHeight}
-                  onChange={(event) => updatePreference('lineHeight', Number(event.target.value))}
-                />
-              </label>
-
-              <label className="reader-control">
-                <span>
-                  {t('letterSpacing')} <output>{preferences.letterSpacingEm.toFixed(2)} em</output>
-                </span>
-                <input
-                  type="range"
-                  aria-label={t('letterSpacing')}
-                  min="0"
-                  max="0.15"
-                  step="0.01"
-                  value={preferences.letterSpacingEm}
-                  onChange={(event) =>
-                    updatePreference('letterSpacingEm', Number(event.target.value))
-                  }
-                />
-              </label>
-
-              <label className="reader-control">
-                <span>
-                  {t('contentWidth')} <output>{preferences.contentWidthPercent}%</output>
-                </span>
-                <input
-                  type="range"
-                  aria-label={t('contentWidth')}
-                  min="55"
-                  max="100"
-                  step="5"
-                  value={preferences.contentWidthPercent}
-                  onChange={(event) =>
-                    updatePreference('contentWidthPercent', Number(event.target.value))
-                  }
-                />
-              </label>
-
-              <label className="reader-control">
-                <span>{t('textAlignment')}</span>
-                <select
-                  value={preferences.textAlignment}
-                  onChange={(event) =>
-                    updatePreference(
-                      'textAlignment',
-                      event.target.value as ReaderPreferences['textAlignment'],
-                    )
-                  }
-                >
-                  <option value="start">{t('alignLeft')}</option>
-                  <option value="justify">{t('justifyText')}</option>
-                </select>
-              </label>
-
-              <label className="reader-control">
-                <span>
-                  {t('wordSpacing')} <output>{preferences.wordSpacingEm.toFixed(2)} em</output>
-                </span>
-                <input
-                  type="range"
-                  aria-label={t('wordSpacing')}
-                  min="0"
-                  max="0.5"
-                  step="0.05"
-                  value={preferences.wordSpacingEm}
-                  onChange={(event) =>
-                    updatePreference('wordSpacingEm', Number(event.target.value))
-                  }
-                />
-              </label>
-
               <SelectionTools
                 key={selection?.text ?? 'empty'}
                 selection={selection}
@@ -577,11 +385,18 @@ function EpubReaderPage({
                 localTranslationProvider={localTranslationProvider}
                 installedTranslationTargets={installedTranslationTargets}
               />
+              <ReaderAppearancePanel
+                preferences={preferences}
+                theme={theme}
+                t={t}
+                onApplyPreferences={setPreferences}
+                onThemeChange={onThemeChange}
+              />
             </>
           )}
         </aside>
 
-        <div className="reader-stage">
+        <div ref={readerStageRef} className="reader-stage">
           {isLoading ? <p className="reader-status">{t('loadingBook')}</p> : null}
           {error ? (
             <div className="reader-error" role="alert">
@@ -591,6 +406,19 @@ function EpubReaderPage({
           ) : null}
           <div ref={containerRef} className="epub-container" data-testid="epub-container" />
         </div>
+        {selection && !isSidebarOpen ? (
+          <FloatingSelectionTools
+            selection={selection}
+            locale={locale}
+            t={t}
+            onDismiss={() => setSelection(null)}
+            onOpenExternal={onOpenExternal}
+            onAddWordCard={onAddWordCard}
+            providers={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={installedTranslationTargets}
+          />
+        ) : null}
       </div>
     </section>
   );

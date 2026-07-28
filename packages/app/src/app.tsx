@@ -233,6 +233,7 @@ function exportableSettings(): Readonly<Record<string, string>> {
     'lexianchor:library-sort',
     'lexianchor:translation-target',
     'lexianchor:reader-preferences',
+    'lexianchor:reader-presets',
   ]);
 
   if (!storage) {

@@ -18,9 +18,11 @@ import {
   type PdfPageResult,
 } from '@lexianchor/reader-pdf';
 
+import { FloatingSelectionTools } from './floating-selection-tools';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import type { Theme } from './theme';
+import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
 
 interface PdfReaderPageProps {
   readonly source: ReaderSource;
@@ -87,6 +89,7 @@ export function PdfReaderPage({
   installedTranslationTargets,
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const readerStageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
   const openExternalRef = useRef(onOpenExternal);
   const [initialPreferences] = useState(() => readReaderPreferences(preferenceScopeId));
@@ -215,6 +218,12 @@ export function PdfReaderPage({
   const progress = pageCount > 0 ? Math.round((pageNumber / pageCount) * 100) : 0;
   const hasText = pageResult?.hasText ?? true;
 
+  useHorizontalPageSwipe(readerStageRef, {
+    enabled: pageCount > 0,
+    onNext: () => setPageNumber((current) => Math.min(pageCount, current + 1)),
+    onPrevious: () => setPageNumber((current) => Math.max(1, current - 1)),
+  });
+
   function toggleFullscreenFromReader() {
     if (!isFullscreen) {
       setIsSidebarOpen(false);
@@ -292,6 +301,19 @@ export function PdfReaderPage({
           aria-label={t('readingSettings')}
           hidden={!isSidebarOpen}
         >
+          <SelectionTools
+            key={selection?.text ?? 'empty'}
+            selection={selection}
+            emptyHint={hasText ? t('pdfSelectionHint') : t('imageOnlyDescription')}
+            locale={locale}
+            t={t}
+            onOpenExternal={onOpenExternal}
+            onAddWordCard={onAddWordCard}
+            providers={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={installedTranslationTargets}
+          />
+
           <div className="reader-setting-group">
             <p className="reader-setting-title">{t('pdfReader')}</p>
             <p className="reader-setting-copy">{t('pdfReaderDescription')}</p>
@@ -373,22 +395,9 @@ export function PdfReaderPage({
               <span>{t('imageOnlyDescription')}</span>
             </div>
           ) : null}
-
-          <SelectionTools
-            key={selection?.text ?? 'empty'}
-            selection={selection}
-            emptyHint={hasText ? t('pdfSelectionHint') : t('imageOnlyDescription')}
-            locale={locale}
-            t={t}
-            onOpenExternal={onOpenExternal}
-            onAddWordCard={onAddWordCard}
-            providers={dictionaryProviders}
-            localTranslationProvider={localTranslationProvider}
-            installedTranslationTargets={installedTranslationTargets}
-          />
         </aside>
 
-        <div className="reader-stage pdf-reader-stage">
+        <div ref={readerStageRef} className="reader-stage pdf-reader-stage">
           {isLoading ? <p className="reader-status">{t('loadingBook')}</p> : null}
           {error ? (
             <div className="reader-error" role="alert">
@@ -398,6 +407,19 @@ export function PdfReaderPage({
           ) : null}
           <div ref={containerRef} className="pdf-document-container" data-testid="pdf-container" />
         </div>
+        {selection && !isSidebarOpen ? (
+          <FloatingSelectionTools
+            selection={selection}
+            locale={locale}
+            t={t}
+            onDismiss={() => setSelection(null)}
+            onOpenExternal={onOpenExternal}
+            onAddWordCard={onAddWordCard}
+            providers={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={installedTranslationTargets}
+          />
+        ) : null}
       </div>
     </section>
   );

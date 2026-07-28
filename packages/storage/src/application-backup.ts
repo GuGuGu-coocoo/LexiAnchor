@@ -87,6 +87,7 @@ function isAllowedSettingKey(key: string): boolean {
       'lexianchor:library-sort',
       'lexianchor:translation-target',
       'lexianchor:reader-preferences',
+      'lexianchor:reader-presets',
     ].includes(key) || key.startsWith('lexianchor:reader-preferences:')
   );
 }

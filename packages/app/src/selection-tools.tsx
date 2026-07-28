@@ -16,6 +16,7 @@ import type {
 interface SelectionToolsProps {
   readonly selection: ReaderSelection | null;
   readonly emptyHint: string;
+  readonly compact?: boolean;
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onOpenExternal: (url: string) => Promise<void>;
@@ -23,6 +24,7 @@ interface SelectionToolsProps {
   readonly providers: readonly DictionaryProvider[];
   readonly localTranslationProvider: BergamotTranslationProvider;
   readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
+  readonly onDismiss?: () => void;
 }
 
 export interface WordCardDraft {
@@ -71,6 +73,7 @@ function translationUrl(text: string, targetLanguage: TranslationTargetLanguage)
 export function SelectionTools({
   selection,
   emptyHint,
+  compact = false,
   locale,
   t,
   onOpenExternal,
@@ -78,6 +81,7 @@ export function SelectionTools({
   providers,
   localTranslationProvider,
   installedTranslationTargets,
+  onDismiss,
 }: SelectionToolsProps) {
   const selectedText = selection?.text.trim() ?? '';
   const canUseDictionary = isSingleWord(selectedText);
@@ -249,17 +253,79 @@ export function SelectionTools({
   }
 
   const cardResult = results.find((candidate) => candidate.source.languages[1] === 'en');
+  const translationPanel = (
+    <section className="local-translation-panel" aria-labelledby="local-translation-title">
+      <div className="local-translation-heading">
+        <strong id="local-translation-title">{t('localTranslation')}</strong>
+        <label>
+          <span className="sr-only">{t('translationTarget')}</span>
+          <select
+            value={translationTarget}
+            onChange={(event) =>
+              setTranslationTarget(event.target.value as TranslationTargetLanguage)
+            }
+          >
+            <option value="zh">{t('simplifiedChinese')}</option>
+            <option value="fr">{t('french')}</option>
+          </select>
+        </label>
+      </div>
+
+      {localModelInstalled ? (
+        <button
+          className="dictionary-action local-translation-action"
+          type="button"
+          disabled={selectedText.length > 2_000 || activeTranslation?.status === 'translating'}
+          onClick={() => void translateLocally()}
+        >
+          {activeTranslation?.status === 'translating'
+            ? t('translatingLocally')
+            : t('translateLocally')}
+        </button>
+      ) : (
+        <p className="dictionary-status">{t('localModelNotInstalled')}</p>
+      )}
+
+      {selectedText.length > 2_000 ? (
+        <p className="dictionary-error">{t('translationSelectionTooLong')}</p>
+      ) : null}
+      {activeTranslation?.result ? (
+        <div className="local-translation-result">
+          <p>{activeTranslation.result.translatedText}</p>
+          <span>{activeTranslation.result.model.attribution}</span>
+        </div>
+      ) : null}
+      {activeTranslation?.status === 'error' ? (
+        <p className="dictionary-error">{activeTranslation.error}</p>
+      ) : null}
+    </section>
+  );
 
   return (
-    <div className="selection-inspector dictionary-panel" aria-live="polite">
+    <div
+      className={`selection-inspector dictionary-panel${compact ? ' selection-inspector--compact' : ''}`}
+      aria-live="polite"
+    >
       <div className="dictionary-heading">
         <div>
           <p className="reader-setting-title">{t('localDictionary')}</p>
           <p className="selection-word">{selectedText}</p>
         </div>
+        {onDismiss ? (
+          <button
+            className="selection-dismiss"
+            type="button"
+            aria-label={t('dismissSelection')}
+            onClick={onDismiss}
+          >
+            ×
+          </button>
+        ) : null}
       </div>
 
       <p className="selection-sentence">{selection.sentence}</p>
+
+      {translationPanel}
 
       {isLoading ? <p className="dictionary-status">{t('lookingUpWord')}</p> : null}
       {error ? <p className="dictionary-error">{error}</p> : null}
@@ -267,7 +333,7 @@ export function SelectionTools({
         <p className="dictionary-status">{t('noDictionaryEntry')}</p>
       ) : null}
 
-      {results.map((result) => (
+      {(compact ? results.slice(0, 1) : results).map((result) => (
         <article className="dictionary-result" key={result.source.id}>
           <div className="dictionary-source-heading">
             <strong>{result.source.name}</strong>
@@ -276,7 +342,7 @@ export function SelectionTools({
             </span>
           </div>
           <ol className="dictionary-senses">
-            {result.senses.slice(0, 6).map((sense, index) => (
+            {result.senses.slice(0, compact ? 1 : 6).map((sense, index) => (
               <li key={`${sense.partOfSpeech}-${sense.definition}`}>
                 <span className="part-of-speech">
                   {index + 1}. {t(partOfSpeechKey(sense.partOfSpeech))}
@@ -317,52 +383,6 @@ export function SelectionTools({
         </article>
       ))}
 
-      <section className="local-translation-panel" aria-labelledby="local-translation-title">
-        <div className="local-translation-heading">
-          <strong id="local-translation-title">{t('localTranslation')}</strong>
-          <label>
-            <span className="sr-only">{t('translationTarget')}</span>
-            <select
-              value={translationTarget}
-              onChange={(event) =>
-                setTranslationTarget(event.target.value as TranslationTargetLanguage)
-              }
-            >
-              <option value="zh">{t('simplifiedChinese')}</option>
-              <option value="fr">{t('french')}</option>
-            </select>
-          </label>
-        </div>
-
-        {localModelInstalled ? (
-          <button
-            className="dictionary-action local-translation-action"
-            type="button"
-            disabled={selectedText.length > 2_000 || activeTranslation?.status === 'translating'}
-            onClick={() => void translateLocally()}
-          >
-            {activeTranslation?.status === 'translating'
-              ? t('translatingLocally')
-              : t('translateLocally')}
-          </button>
-        ) : (
-          <p className="dictionary-status">{t('localModelNotInstalled')}</p>
-        )}
-
-        {selectedText.length > 2_000 ? (
-          <p className="dictionary-error">{t('translationSelectionTooLong')}</p>
-        ) : null}
-        {activeTranslation?.result ? (
-          <div className="local-translation-result">
-            <p>{activeTranslation.result.translatedText}</p>
-            <span>{activeTranslation.result.model.attribution}</span>
-          </div>
-        ) : null}
-        {activeTranslation?.status === 'error' ? (
-          <p className="dictionary-error">{activeTranslation.error}</p>
-        ) : null}
-      </section>
-
       {cardResult ? (
         <button
           className="add-card-action"
@@ -383,18 +403,24 @@ export function SelectionTools({
         </p>
       ) : null}
 
-      <div className="selection-actions">
-        <button className="dictionary-action" type="button" onClick={() => void openTranslation()}>
-          {t('onlineTranslation')}
-        </button>
-        <button
-          className="dictionary-action"
-          type="button"
-          onClick={() => void onOpenExternal(searchUrl(selectedText))}
-        >
-          {t('searchOnWeb')}
-        </button>
-      </div>
+      {compact ? null : (
+        <div className="selection-actions">
+          <button
+            className="dictionary-action"
+            type="button"
+            onClick={() => void openTranslation()}
+          >
+            {t('onlineTranslation')}
+          </button>
+          <button
+            className="dictionary-action"
+            type="button"
+            onClick={() => void onOpenExternal(searchUrl(selectedText))}
+          >
+            {t('searchOnWeb')}
+          </button>
+        </div>
+      )}
 
       {showTranslationConsent ? (
         <div className="external-consent" role="alert">

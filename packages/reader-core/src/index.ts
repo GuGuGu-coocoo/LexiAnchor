@@ -1,4 +1,5 @@
 export type ReaderFlow = 'paginated' | 'scrolled';
+export type ReaderPageSpread = 'single' | 'double';
 export type DocumentFormat = 'epub' | 'pdf';
 export type FocusStrength = 'light' | 'medium' | 'strong';
 export type ReaderFontFamily = 'serif' | 'sans-serif';
@@ -14,6 +15,7 @@ export interface ReaderLocator {
 
 export interface ReaderPreferences {
   readonly flow: ReaderFlow;
+  readonly pageSpread: ReaderPageSpread;
   readonly fontSizePercent: number;
   readonly lineHeight: number;
   readonly wordSpacingEm: number;
@@ -33,6 +35,12 @@ export interface ReaderSelection {
   readonly sentence: string;
   readonly cfiRange?: string;
   readonly pageNumber?: number;
+  readonly anchorRect?: {
+    readonly left: number;
+    readonly top: number;
+    readonly right: number;
+    readonly bottom: number;
+  };
 }
 
 export interface ReaderCallbacks {
@@ -61,6 +69,7 @@ export interface ReaderEngine {
 
 export const defaultReaderPreferences: ReaderPreferences = {
   flow: 'paginated',
+  pageSpread: 'single',
   fontSizePercent: 100,
   lineHeight: 1.55,
   wordSpacingEm: 0,

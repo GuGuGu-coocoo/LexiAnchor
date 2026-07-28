@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-labelledby="title description">
+  <title id="title">Reading lamp and open book</title>
+  <desc id="description">A warm lamp casts a pool of light over an open book on a quiet desk.</desc>
+  <rect width="720" height="360" rx="32" fill="#26312d"/>
+  <path d="M0 278C162 244 252 252 360 279c111 28 211 17 360-24v105H0Z" fill="#16201c"/>
+  <path d="M482 78h28l38 118h-28Z" fill="#d6b26e"/>
+  <path d="M449 64h92l31 52H418Z" fill="#efcc83"/>
+  <circle cx="495" cy="119" r="16" fill="#fff0b0"/>
+  <path d="M495 137 606 300H378Z" fill="#f7d98c" opacity=".34"/>
+  <path d="M214 246c58-24 107-20 146 13v69c-43-26-92-30-146-9Z" fill="#f4efe1"/>
+  <path d="M506 246c-58-24-107-20-146 13v69c43-26 92-30 146-9Z" fill="#fffaf0"/>
+  <path d="M360 259v69" stroke="#bd9f66" stroke-width="4"/>
+  <path d="M243 271c38-10 70-7 96 8M243 289c38-10 70-7 96 8M477 271c-38-10-70-7-96 8M477 289c-38-10-70-7-96 8" fill="none" stroke="#8a8171" stroke-linecap="round" stroke-width="5" opacity=".72"/>
+</svg>

@@ -290,8 +290,22 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  const embeddedImage = bookFrame.getByRole('img', {
+    name: 'A reading lamp illuminating an open book',
+  });
+  await expect(embeddedImage).toHaveAttribute('src', /^blob:/);
+  await expect
+    .poll(() =>
+      embeddedImage.evaluate(
+        (image) =>
+          (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
 
   const readerSidebar = page.locator('aside.reader-settings');
+  const appearancePanel = page.locator('details.reader-appearance-panel');
+  await appearancePanel.locator('summary').click();
   const appearance = page.getByRole('combobox', {
     name: /Appearance|外观|Apparence/,
   });
@@ -358,7 +372,8 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     range.selectNodeContents(element);
     selection?.removeAllRanges();
     selection?.addRange(range);
-    element.ownerDocument.dispatchEvent(new Event('selectionchange'));
+    element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
 
   await expect(page.locator('.selection-word')).toHaveText('attentive');
@@ -376,6 +391,32 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
       /Install this language model in Settings|请先在设置中安装|Installez ce modèle linguistique/,
     ),
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const selectionTools = document.querySelector('.selection-inspector');
+        const appearanceSettings = document.querySelector('.reader-appearance-panel');
+        return Boolean(
+          selectionTools &&
+          appearanceSettings &&
+          selectionTools.compareDocumentPosition(appearanceSettings) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }),
+    )
+    .toBe(true);
+
+  await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
+  await expect(page.locator('.selection-popover-shell')).toBeVisible();
+  await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
+  await page.screenshot({ path: 'test-results/epub-selection-popover.png', fullPage: true });
+  await page
+    .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
+    .click();
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await appearancePanel.locator('summary').click();
 
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).check();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]').first()).toBeVisible();
@@ -437,12 +478,18 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expect(bookFrame.locator('em')).toHaveText('attentive');
 
   await bookFrame.locator('body').click({ position: { x: 24, y: 24 } });
-  await page.keyboard.press('PageDown');
-  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  const progressBeforeSwipe = await page.locator('.reader-engine-label').textContent();
+  await bookFrame.locator('body').dispatchEvent('wheel', {
+    deltaMode: 0,
+    deltaX: 120,
+    deltaY: 2,
+  });
+  await expect(page.locator('.reader-engine-label')).not.toHaveText(progressBeforeSwipe ?? '');
+  const progressAfterSwipe = await page.locator('.reader-engine-label').textContent();
   await page.getByRole('button', { name: /Previous|上一页|Précédent/ }).click();
-  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  await expect(page.locator('.reader-engine-label')).toHaveText(progressBeforeSwipe ?? '');
   await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
-  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await expect(page.locator('.reader-engine-label')).toHaveText(progressAfterSwipe ?? '');
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page
@@ -450,9 +497,10 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .click();
   await expect(
     page.locator('.epub-container iframe').first().contentFrame().getByRole('heading', {
-      name: 'Finding an Anchor',
+      name: 'A Quiet Beginning',
     }),
   ).toBeVisible();
+  await page.locator('details.reader-appearance-panel summary').click();
   await expect(
     page.getByRole('combobox', { name: /Focus strength|焦点强度|Intensité/ }),
   ).toHaveValue('strong');
@@ -464,6 +512,88 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   ).toHaveValue('70');
 
   await page.screenshot({ path: 'test-results/epub-spike.png', fullPage: true });
+});
+
+test('saves, overwrites, restores, and reloads a reading preset with page columns', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
+    .click();
+
+  await page.locator('details.reader-appearance-panel summary').click();
+  const presetSelect = page.getByRole('combobox', {
+    name: /Current preset|当前预设|Préréglage actuel/,
+  });
+  const pageColumns = page.getByRole('combobox', {
+    name: /Page columns|页面分栏|Colonnes de page/,
+  });
+  const fontSize = page.getByRole('slider', {
+    name: /Text size|文字大小|Taille du texte/,
+  });
+
+  await expect(presetSelect).toHaveValue('default');
+  await pageColumns.selectOption('double');
+  await fontSize.fill('125');
+  await page
+    .getByRole('button', {
+      name: /Save as preset|保存为预设|Enregistrer comme préréglage/,
+    })
+    .click();
+  const savedPresetId = await presetSelect.inputValue();
+  expect(savedPresetId).not.toBe('default');
+
+  await fontSize.fill('135');
+  await page
+    .getByRole('button', {
+      name: /Overwrite current preset|覆盖当前预设|Remplacer le préréglage actuel/,
+    })
+    .click();
+
+  await page.reload();
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  await page
+    .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
+    .click();
+  await page.locator('details.reader-appearance-panel summary').click();
+  await expect(
+    page.getByRole('combobox', {
+      name: /Current preset|当前预设|Préréglage actuel/,
+    }),
+  ).toHaveValue(savedPresetId);
+  await expect(
+    page.getByRole('combobox', {
+      name: /Page columns|页面分栏|Colonnes de page/,
+    }),
+  ).toHaveValue('double');
+  await expect(
+    page.getByRole('slider', {
+      name: /Text size|文字大小|Taille du texte/,
+    }),
+  ).toHaveValue('135');
+
+  await page
+    .getByRole('button', {
+      name: /Restore default settings|回归到默认设置|Rétablir les réglages par défaut/,
+    })
+    .click();
+  await expect(
+    page.getByRole('combobox', {
+      name: /Current preset|当前预设|Préréglage actuel/,
+    }),
+  ).toHaveValue('default');
+  await expect(
+    page.getByRole('combobox', {
+      name: /Page columns|页面分栏|Colonnes de page/,
+    }),
+  ).toHaveValue('single');
+  await expect(
+    page.getByRole('slider', {
+      name: /Text size|文字大小|Taille du texte/,
+    }),
+  ).toHaveValue('100');
 });
 
 test('imports a DRM-free EPUB 2 file from the local device', async ({ page }) => {
@@ -581,6 +711,16 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   );
   await page.screenshot({ path: 'test-results/dictionary-panel.png', fullPage: true });
 
+  await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
+  await expect(page.locator('.selection-popover-shell')).toBeVisible();
+  await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('resilient');
+  await page
+    .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
+    .click();
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+
   await page
     .getByRole('button', { name: /Online translation|在线翻译|Traduction en ligne/ })
     .click();
@@ -617,7 +757,12 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await zoomControl.fill('1.5');
   await expect(page.locator('.reader-control output')).toHaveText('150%');
 
-  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await page.locator('.pdf-reader-stage').dispatchEvent('wheel', {
+    deltaMode: 0,
+    deltaX: 120,
+    deltaY: 2,
+  });
+  await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
   await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
 
@@ -900,7 +1045,15 @@ test('restores an imported EPUB locator from SQLite after localStorage is cleare
 
   let bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
-  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  await page
+    .getByRole('navigation', { name: /Contents|目录|Sommaire/ })
+    .getByRole('button', { name: 'Finding an Anchor' })
+    .click();
   await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
 

@@ -322,11 +322,21 @@ function listenForSelection(
     if (!anchorNode || !container.contains(anchorNode)) {
       return;
     }
+    const rangeRect =
+      selection.rangeCount > 0 ? selection.getRangeAt(0).getBoundingClientRect() : null;
 
     onSelection({
       text: selectedText,
       sentence: sentenceForSelection(pageSegments, selectedText),
       pageNumber,
+      anchorRect: rangeRect
+        ? {
+            left: rangeRect.left,
+            top: rangeRect.top,
+            right: rangeRect.right,
+            bottom: rangeRect.bottom,
+          }
+        : undefined,
     });
   };
 

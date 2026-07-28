@@ -92,8 +92,18 @@ function selectionFrom(contents: Contents, cfiRange: string): ReaderSelection | 
   const sentence =
     parent?.closest('p,li,blockquote,figcaption,dd,dt')?.textContent?.replace(/\s+/g, ' ').trim() ??
     text;
+  const selectionRect = range.getBoundingClientRect();
+  const frameRect = contents.document.defaultView?.frameElement?.getBoundingClientRect();
+  const anchorRect = frameRect
+    ? {
+        left: frameRect.left + selectionRect.left,
+        top: frameRect.top + selectionRect.top,
+        right: frameRect.left + selectionRect.right,
+        bottom: frameRect.top + selectionRect.bottom,
+      }
+    : undefined;
 
-  return { text, sentence, cfiRange };
+  return { text, sentence, cfiRange, anchorRect };
 }
 
 export class EpubJsReaderEngine implements ReaderEngine {
@@ -103,6 +113,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private book: Book | null = null;
   private rendition: Rendition | null = null;
   private preferences: ReaderPreferences | null = null;
+  private wheelDeltaX = 0;
+  private wheelResetTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastWheelNavigationAt = 0;
 
   constructor(private readonly callbacks: ReaderCallbacks) {}
 
@@ -132,6 +145,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
         contents.document.addEventListener('keydown', (event) =>
           handleNavigationKey(event, this.callbacks.onNavigationCommand),
         );
+        contents.document.addEventListener('wheel', this.handleWheelNavigation, {
+          passive: false,
+        });
       });
 
       this.rendition.on('relocated', (location: EpubLocation) => {
@@ -154,7 +170,13 @@ export class EpubJsReaderEngine implements ReaderEngine {
         this.callbacks.onSelection(selectionFrom(contents, cfiRange));
       });
 
-      this.rendition.on('click', () => this.callbacks.onSelection(null));
+      this.rendition.on('click', (_event: MouseEvent, contents: Contents) => {
+        const liveSelection = contents?.window.getSelection();
+
+        if (!liveSelection || liveSelection.isCollapsed || !liveSelection.toString().trim()) {
+          this.callbacks.onSelection(null);
+        }
+      });
       await this.book.ready;
       await this.book.locations.generate(600);
       await this.rendition.display(initialLocator?.cfi ?? initialLocator?.href);
@@ -171,18 +193,26 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.rendition = null;
     this.book = null;
     this.preferences = null;
+    this.wheelDeltaX = 0;
+    if (this.wheelResetTimer !== null) {
+      clearTimeout(this.wheelResetTimer);
+      this.wheelResetTimer = null;
+    }
     return Promise.resolve();
   }
 
   async next(): Promise<void> {
+    this.callbacks.onSelection(null);
     await this.rendition?.next();
   }
 
   async previous(): Promise<void> {
+    this.callbacks.onSelection(null);
     await this.rendition?.prev();
   }
 
   async goTo(locator: ReaderLocator): Promise<void> {
+    this.callbacks.onSelection(null);
     await this.rendition?.display(locator.cfi ?? locator.href);
   }
 
@@ -205,7 +235,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
     }
 
     const flowChanged = this.preferences?.flow !== preferences.flow;
+    const spreadChanged = this.preferences?.pageSpread !== preferences.pageSpread;
     rendition.flow(preferences.flow === 'paginated' ? 'paginated' : 'scrolled-doc');
+    rendition.spread(
+      preferences.flow === 'paginated' && preferences.pageSpread === 'double' ? 'always' : 'none',
+    );
     rendition.themes.override('font-size', `${preferences.fontSizePercent}%`, true);
     rendition.themes.override('line-height', String(preferences.lineHeight), true);
     rendition.themes.override('word-spacing', `${preferences.wordSpacingEm}em`, true);
@@ -238,12 +272,43 @@ export class EpubJsReaderEngine implements ReaderEngine {
       }
     }
 
-    if (flowChanged && this.preferences) {
+    if ((flowChanged || spreadChanged) && this.preferences) {
       await rendition.display();
     }
 
     this.preferences = preferences;
   }
+
+  private readonly handleWheelNavigation = (event: WheelEvent): void => {
+    if (
+      this.preferences?.flow !== 'paginated' ||
+      Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
+    ) {
+      this.wheelDeltaX = 0;
+      return;
+    }
+
+    const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+    this.wheelDeltaX += event.deltaX * scale;
+
+    if (this.wheelResetTimer !== null) {
+      clearTimeout(this.wheelResetTimer);
+    }
+    this.wheelResetTimer = setTimeout(() => {
+      this.wheelDeltaX = 0;
+      this.wheelResetTimer = null;
+    }, 180);
+
+    const now = Date.now();
+    if (Math.abs(this.wheelDeltaX) < 72 || now - this.lastWheelNavigationAt < 420) {
+      return;
+    }
+
+    event.preventDefault();
+    this.callbacks.onNavigationCommand?.(this.wheelDeltaX > 0 ? 'next' : 'previous');
+    this.lastWheelNavigationAt = now;
+    this.wheelDeltaX = 0;
+  };
 }
 
 export { applyFocusMarkup, removeFocusMarkup } from './focus-markup';
