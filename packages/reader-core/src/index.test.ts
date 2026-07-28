@@ -144,8 +144,16 @@ describe('stacked page gesture', () => {
     expect(scroller.scrollLeft).toBe(1_000);
     expect(classes.has('epub-page-stack-transition')).toBe(true);
     expect(pauseAnimation).toHaveBeenCalledOnce();
+    expect(sheetAnimation.currentTime).toBe(420);
 
-    vi.advanceTimersByTime(90);
+    gesture.handleWheel({
+      ...wheel,
+      deltaX: 80,
+      preventDefault: vi.fn(),
+    });
+    expect(sheetAnimation.currentTime).toBe(500);
+
+    vi.advanceTimersByTime(160);
     let time = performance.now();
     for (let index = 0; index < 240 && frames.size > 0; index += 1) {
       const [id, callback] = frames.entries().next().value as [number, FrameRequestCallback];

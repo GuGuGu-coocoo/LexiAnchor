@@ -456,6 +456,7 @@ export function createStackedPageScrollGesture(
   let velocity = 0;
   let direction: -1 | 0 | 1 = 0;
   let progress = 0;
+  let activeExtent = 1;
   let lastInputAt = 0;
   let isTracking = false;
   let isReady = false;
@@ -509,6 +510,7 @@ export function createStackedPageScrollGesture(
     velocity = 0;
     lastInputAt = 0;
     progress = 0;
+    activeExtent = 1;
     options.onSettled?.(committedDirection);
   }
 
@@ -530,8 +532,7 @@ export function createStackedPageScrollGesture(
     const response = 0.34;
     const stiffness = ((2 * Math.PI) / response) ** 2;
     const damping = 2 * Math.sqrt(stiffness);
-    const extent = pageExtent();
-    let springVelocity = direction === 0 ? 0 : (velocity * direction) / extent;
+    let springVelocity = direction === 0 ? 0 : (velocity * direction) / activeExtent;
     let previousTime = performance.now();
 
     const tick = (time: number) => {
@@ -568,7 +569,7 @@ export function createStackedPageScrollGesture(
       return;
     }
 
-    const extent = pageExtent();
+    const extent = activeExtent;
     const projected =
       distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
     const commit =
@@ -596,6 +597,7 @@ export function createStackedPageScrollGesture(
     }
 
     direction = nextDirection;
+    activeExtent = Math.abs(target - origin);
     previousTransitionName = scroller.style.viewTransitionName;
     scroller.style.viewTransitionName = 'lexianchor-page';
     scroller.classList.add('epub-page-stack-transition');
@@ -612,8 +614,14 @@ export function createStackedPageScrollGesture(
 
         sheetAnimation = document.documentElement.animate(
           direction > 0
-            ? [{ transform: 'translate3d(0, 0, 0)' }, { transform: 'translate3d(-100%, 0, 0)' }]
-            : [{ transform: 'translate3d(0, 0, 0)' }, { transform: 'translate3d(100%, 0, 0)' }],
+            ? [
+                { transform: 'translate3d(0, 0, 0)' },
+                { transform: `translate3d(${-activeExtent}px, 0, 0)` },
+              ]
+            : [
+                { transform: 'translate3d(0, 0, 0)' },
+                { transform: `translate3d(${activeExtent}px, 0, 0)` },
+              ],
           {
             duration: 1_000,
             easing: 'linear',
@@ -623,13 +631,13 @@ export function createStackedPageScrollGesture(
         );
         sheetAnimation.pause();
         isReady = true;
-        render(Math.min(0.92, Math.abs(distance) / extent));
+        render(Math.min(1, Math.abs(distance) / activeExtent));
 
         if (shouldFinishWhenReady) {
           settle(
             direction > 0
-              ? distance > extent * 0.16 || velocity > 480
-              : distance < -extent * 0.16 || velocity < -480,
+              ? distance > activeExtent * 0.16 || velocity > 480
+              : distance < -activeExtent * 0.16 || velocity < -480,
           );
         }
       },
@@ -688,7 +696,7 @@ export function createStackedPageScrollGesture(
       const instantaneousVelocity = (delta / elapsed) * 1000;
       velocity = velocity * 0.42 + instantaneousVelocity * 0.58;
 
-      if (direction === 0 && Math.abs(distance) >= 10) {
+      if (direction === 0 && Math.abs(distance) >= 2) {
         if (!beginTransition(scroller, distance > 0 ? 1 : -1)) {
           isTracking = false;
           fallback.handleWheel(event);
@@ -698,13 +706,13 @@ export function createStackedPageScrollGesture(
 
       if (direction !== 0 && isReady) {
         const directionalDistance = Math.max(0, distance * direction);
-        render(Math.min(0.92, directionalDistance / pageExtent()));
+        render(Math.min(1, directionalDistance / activeExtent));
       }
 
       if (endTimer !== null) {
         clearTimeout(endTimer);
       }
-      endTimer = setTimeout(finishGesture, 90);
+      endTimer = setTimeout(finishGesture, 160);
     },
     dispose() {
       fallback.dispose();

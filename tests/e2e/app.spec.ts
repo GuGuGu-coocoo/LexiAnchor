@@ -651,18 +651,21 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page.waitForTimeout(250);
   const stackedScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
   const stackedStart = await stackedScroller.evaluate((scroller) => scroller.scrollLeft);
-  await page
+  const stackedPageBody = page
     .locator('.epub-container iframe')
     .last()
     .contentFrame()
-    .locator('body')
-    .dispatchEvent('wheel', {
+    .locator('body');
+  for (let index = 0; index < 6; index += 1) {
+    await stackedPageBody.dispatchEvent('wheel', {
       bubbles: true,
       cancelable: true,
       deltaMode: 0,
-      deltaX: 420,
+      deltaX: 70,
       deltaY: 2,
     });
+    await page.waitForTimeout(16);
+  }
   await expect(stackedScroller).toHaveClass(/epub-page-stack-transition/);
   await page.waitForTimeout(30);
   await page.screenshot({ path: 'test-results/epub-stacked-page-turn.png', fullPage: true });
