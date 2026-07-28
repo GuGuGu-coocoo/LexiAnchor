@@ -47,6 +47,41 @@ async function ensureServiceWorkerControl(page: Page) {
     .toBe(true);
 }
 
+async function expectEpubHeading(page: Page, name: string) {
+  await expect
+    .poll(async () => {
+      for (const frame of page.frames()) {
+        if (
+          await frame
+            .getByRole('heading', { name })
+            .isVisible()
+            .catch(() => false)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    })
+    .toBe(true);
+}
+
+async function currentEpubHref(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const key = Object.keys(localStorage).find((candidate) =>
+      candidate.startsWith('lexianchor:epub-location:'),
+    );
+    if (!key) {
+      return '';
+    }
+
+    try {
+      return (JSON.parse(localStorage.getItem(key) ?? '{}') as { href?: string }).href ?? '';
+    } catch {
+      return '';
+    }
+  });
+}
+
 async function installFreeDictFixtures(page: Page) {
   await page.evaluate(
     async (fixtures) => {
@@ -363,10 +398,12 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   const secondChapter = tableOfContents.getByRole('button', { name: 'Finding an Anchor' });
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
   await secondChapter.click();
-  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-2.xhtml');
+  await expectEpubHeading(page, 'Finding an Anchor');
   await expect(secondChapter).toHaveAttribute('aria-current', 'location');
   await firstChapter.click();
-  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-1.xhtml');
+  await expectEpubHeading(page, 'A Quiet Beginning');
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
   await expect(secondChapter).not.toHaveAttribute('aria-current', 'location');
   await page.locator('.reader-title-group').hover();
@@ -388,6 +425,28 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   );
   await expect(page.getByText(/giving care or attention/i)).toBeVisible();
   await expect(page.locator('.dictionary-attribution')).toContainText('WordNet');
+  const sidebarSenseCount = await page
+    .locator('aside.reader-settings .dictionary-result')
+    .first()
+    .locator('.dictionary-senses > li')
+    .count();
+  expect(sidebarSenseCount).toBeGreaterThan(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const dictionary = document.querySelector('aside.reader-settings .dictionary-result');
+        const sentenceTranslation = document.querySelector(
+          'aside.reader-settings .local-translation-panel',
+        );
+        return Boolean(
+          dictionary &&
+          sentenceTranslation &&
+          dictionary.compareDocumentPosition(sentenceTranslation) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }),
+    )
+    .toBe(true);
   await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
   await expect(
     page.getByRole('combobox', { name: /Translation target|翻译目标语言|Langue cible/ }),
@@ -415,6 +474,29 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
   await expect(page.locator('.selection-popover-shell')).toBeVisible();
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
+  await expect(page.locator('.selection-popover-shell .dictionary-result').first()).toBeVisible();
+  await expect(
+    page
+      .locator('.selection-popover-shell .dictionary-result')
+      .first()
+      .locator('.dictionary-senses > li'),
+  ).toHaveCount(sidebarSenseCount);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const dictionary = document.querySelector('.selection-popover-shell .dictionary-result');
+        const sentenceTranslation = document.querySelector(
+          '.selection-popover-shell .local-translation-panel',
+        );
+        return Boolean(
+          dictionary &&
+          sentenceTranslation &&
+          dictionary.compareDocumentPosition(sentenceTranslation) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }),
+    )
+    .toBe(true);
   await expect(page.locator('.selection-popover-shell .selection-inspector')).toHaveCSS(
     'overflow-y',
     'scroll',
@@ -424,7 +506,9 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .evaluate((popover) => {
       popover.style.maxHeight = '120px';
       popover.scrollTop = 80;
-      return popover.scrollTop;
+      const scrollTop = popover.scrollTop;
+      popover.style.removeProperty('max-height');
+      return scrollTop;
     });
   expect(popoverScrollTop).toBeGreaterThan(0);
   const fullscreenReaderWidth = await page.getByTestId('epub-container').evaluate((container) => {
@@ -500,14 +584,20 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   expect(bodyPresentation.fontFamily.toLowerCase()).toContain('sans');
   expect(bodyPresentation.letterSpacing).toBeGreaterThan(0);
   expect(bodyPresentation.paddingLeft).toBeGreaterThan(0);
+  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
 
   await page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }).uncheck();
   await expect(bookFrame.locator('[data-lexianchor-focus="anchor"]')).toHaveCount(0);
   await expect(bookFrame.locator('em')).toHaveText('attentive');
 
   await bookFrame.locator('body').click({ position: { x: 24, y: 24 } });
-  const progressBeforeSwipe = await page.locator('.reader-engine-label').textContent();
-  const gestureTransform = await bookFrame.locator('body').evaluate((body) => {
+  const continuousSwipe = await bookFrame.locator('body').evaluate((body) => {
+    const frame = body.ownerDocument.defaultView?.frameElement;
+    const reader = frame?.ownerDocument.querySelector<HTMLElement>(
+      '[data-testid="epub-container"]',
+    );
+    const scroller = reader?.querySelector<HTMLElement>('.epub-container');
+    const before = scroller?.scrollLeft ?? 0;
     body.dispatchEvent(
       new WheelEvent('wheel', {
         bubbles: true,
@@ -517,19 +607,18 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
         deltaY: 2,
       }),
     );
-    const frame = body.ownerDocument.defaultView?.frameElement;
-    const container = frame?.ownerDocument.querySelector<HTMLElement>(
-      '[data-testid="epub-container"]',
-    );
-    return container?.style.transform ?? '';
+    return {
+      before,
+      after: scroller?.scrollLeft ?? 0,
+      clientWidth: scroller?.clientWidth ?? 0,
+      scrollWidth: scroller?.scrollWidth ?? 0,
+      renderedViews: scroller?.querySelectorAll('.epub-view').length ?? 0,
+    };
   });
-  expect(gestureTransform).toContain('translate3d(-120px');
-  await expect(page.locator('.reader-engine-label')).not.toHaveText(progressBeforeSwipe ?? '');
-  const progressAfterSwipe = await page.locator('.reader-engine-label').textContent();
-  await page.getByRole('button', { name: /Previous|上一页|Précédent/ }).click();
-  await expect(page.locator('.reader-engine-label')).toHaveText(progressBeforeSwipe ?? '');
-  await page.getByRole('button', { name: /Next|下一页|Suivant/ }).click();
-  await expect(page.locator('.reader-engine-label')).toHaveText(progressAfterSwipe ?? '');
+  expect(continuousSwipe.after - continuousSwipe.before).toBeGreaterThan(100);
+  expect(continuousSwipe.scrollWidth).toBeGreaterThan(continuousSwipe.clientWidth);
+  expect(continuousSwipe.renderedViews).toBeGreaterThan(0);
+  await page.waitForTimeout(500);
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page
@@ -1078,7 +1167,7 @@ test('restores an imported EPUB locator from SQLite after localStorage is cleare
     .locator('input[type="file"]')
     .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-spike.epub'));
 
-  let bookFrame = page.locator('.epub-container iframe').first().contentFrame();
+  const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
   await page
     .getByRole('button', {
@@ -1089,7 +1178,7 @@ test('restores an imported EPUB locator from SQLite after localStorage is cleare
     .getByRole('navigation', { name: /Contents|目录|Sommaire/ })
     .getByRole('button', { name: 'Finding an Anchor' })
     .click();
-  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await expectEpubHeading(page, 'Finding an Anchor');
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
 
   await page.evaluate(() => localStorage.clear());
@@ -1101,8 +1190,7 @@ test('restores an imported EPUB locator from SQLite after localStorage is cleare
   await expect(recentBook).toBeVisible();
   await recentBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
 
-  bookFrame = page.locator('.epub-container iframe').first().contentFrame();
-  await expect(bookFrame.getByRole('heading', { name: 'Finding an Anchor' })).toBeVisible();
+  await expectEpubHeading(page, 'Finding an Anchor');
 });
 
 test('keeps the PDF reader usable in a narrow window', async ({ page }) => {

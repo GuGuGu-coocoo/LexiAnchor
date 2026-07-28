@@ -31,14 +31,24 @@ function floatingStyle(selection: ReaderSelection): CSSProperties {
 
   const viewportWidth = globalThis.innerWidth || 1024;
   const viewportHeight = globalThis.innerHeight || 768;
-  const left = Math.min(viewportWidth - 184, Math.max(184, (anchor.left + anchor.right) / 2));
-  const placeBelow = anchor.bottom + 340 < viewportHeight;
+  const popoverWidth = Math.min(360, viewportWidth - 24);
+  const halfWidth = popoverWidth / 2;
+  const left = Math.min(
+    viewportWidth - 12 - halfWidth,
+    Math.max(12 + halfWidth, (anchor.left + anchor.right) / 2),
+  );
+  const safeTop = Math.min(76, viewportHeight / 4);
+  const maximumPopoverHeight = Math.min(430, Math.max(1, viewportHeight - safeTop - 12));
+  const placeBelow = anchor.bottom + maximumPopoverHeight + 12 <= viewportHeight;
 
   return {
+    '--selection-popover-max-height': `${maximumPopoverHeight}px`,
     left,
-    top: placeBelow ? anchor.bottom + 12 : Math.max(12, anchor.top - 12),
+    top: placeBelow
+      ? anchor.bottom + 12
+      : Math.min(viewportHeight - 12, Math.max(safeTop + maximumPopoverHeight, anchor.top - 12)),
     transform: placeBelow ? 'translateX(-50%)' : 'translate(-50%, -100%)',
-  };
+  } as CSSProperties;
 }
 
 export function FloatingSelectionTools({

@@ -1275,14 +1275,14 @@ button {
   position: fixed;
   z-index: 30;
   width: min(360px, calc(100vw - 24px));
-  max-height: min(430px, calc(100vh - 24px));
+  max-height: var(--selection-popover-max-height, min(430px, calc(100vh - 24px)));
   overflow: hidden;
   border-radius: 12px;
   filter: drop-shadow(0 18px 38px rgb(0 0 0 / 22%));
 }
 
 .selection-popover-shell .selection-inspector {
-  max-height: min(430px, calc(100vh - 24px));
+  max-height: var(--selection-popover-max-height, min(430px, calc(100vh - 24px)));
   margin: 0;
   overflow-x: hidden;
   overflow-y: scroll;
@@ -1300,12 +1300,6 @@ button {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-.selection-inspector--compact .dictionary-attribution,
-.selection-inspector--compact .dictionary-example,
-.selection-inspector--compact .dictionary-detail {
-  display: none;
 }
 
 .dictionary-result {

@@ -19,7 +19,6 @@ import { ReaderAppearancePanel } from './reader-appearance-panel';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import { readerColorsForTheme, type Theme } from './theme';
-import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
 
 const PdfReaderPage = lazy(async () => {
   const module = await import('./pdf-reader-page');
@@ -240,12 +239,6 @@ function EpubReaderPage({
     globalThis.addEventListener('keydown', navigateWithKeyboard);
     return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
   }, []);
-
-  useHorizontalPageSwipe(readerStageRef, containerRef, {
-    enabled: preferences.flow === 'paginated',
-    onNext: () => void engineRef.current?.next(),
-    onPrevious: () => void engineRef.current?.previous(),
-  });
 
   const progress = Math.round((locator?.totalProgression ?? 0) * 100);
 

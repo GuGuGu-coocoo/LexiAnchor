@@ -325,15 +325,13 @@ export function SelectionTools({
 
       <p className="selection-sentence">{selection.sentence}</p>
 
-      {translationPanel}
-
       {isLoading ? <p className="dictionary-status">{t('lookingUpWord')}</p> : null}
       {error ? <p className="dictionary-error">{error}</p> : null}
       {canUseDictionary && !isLoading && !error && results.length === 0 ? (
         <p className="dictionary-status">{t('noDictionaryEntry')}</p>
       ) : null}
 
-      {(compact ? results.slice(0, 1) : results).map((result) => (
+      {results.map((result) => (
         <article className="dictionary-result" key={result.source.id}>
           <div className="dictionary-source-heading">
             <strong>{result.source.name}</strong>
@@ -342,7 +340,7 @@ export function SelectionTools({
             </span>
           </div>
           <ol className="dictionary-senses">
-            {result.senses.slice(0, compact ? 1 : 6).map((sense, index) => (
+            {result.senses.slice(0, 6).map((sense, index) => (
               <li key={`${sense.partOfSpeech}-${sense.definition}`}>
                 <span className="part-of-speech">
                   {index + 1}. {t(partOfSpeechKey(sense.partOfSpeech))}
@@ -402,6 +400,8 @@ export function SelectionTools({
           {t('cardSaveFailed')}
         </p>
       ) : null}
+
+      {translationPanel}
 
       {compact ? null : (
         <div className="selection-actions">

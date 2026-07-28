@@ -79,6 +79,13 @@ export interface HorizontalPageGestureController {
   dispose(): void;
 }
 
+export interface HorizontalPageScrollGestureOptions {
+  readonly getScroller: () => HTMLElement | null;
+  readonly getPageExtent?: () => number;
+  readonly isEnabled?: () => boolean;
+  readonly onSettled?: (direction: -1 | 0 | 1) => void;
+}
+
 function projectedDistance(velocity: number, decelerationRate = 0.99): number {
   return (velocity / 1000) * (decelerationRate / (1 - decelerationRate));
 }
@@ -256,6 +263,156 @@ export function createHorizontalPageGesture(
         endTimer = null;
       }
       resetVisual();
+    },
+  };
+}
+
+/**
+ * Directly scrolls a pre-rendered horizontal page strip. Unlike the transform
+ * gesture above, this reveals the real adjacent page during the gesture.
+ */
+export function createHorizontalPageScrollGesture(
+  options: HorizontalPageScrollGestureOptions,
+): HorizontalPageGestureController {
+  let origin = 0;
+  let velocity = 0;
+  let lastInputAt = 0;
+  let isTracking = false;
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  let animationFrame: number | null = null;
+  let animationSequence = 0;
+
+  function stopAnimation(): void {
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+    animationSequence += 1;
+  }
+
+  function pageExtent(): number {
+    return Math.max(1, options.getPageExtent?.() ?? options.getScroller()?.clientWidth ?? 1);
+  }
+
+  function settle(target: number, initialVelocity: number, direction: -1 | 0 | 1): void {
+    stopAnimation();
+    const ownSequence = animationSequence;
+    const response = 0.34;
+    const stiffness = ((2 * Math.PI) / response) ** 2;
+    const dampingRatio = Math.abs(initialVelocity) > 700 ? 0.88 : 1;
+    const damping = 2 * dampingRatio * Math.sqrt(stiffness);
+    let springVelocity = initialVelocity;
+    let previousTime = performance.now();
+
+    const tick = (time: number) => {
+      if (ownSequence !== animationSequence) {
+        return;
+      }
+
+      const scroller = options.getScroller();
+      if (!scroller) {
+        return;
+      }
+
+      const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
+      previousTime = time;
+      const position = scroller.scrollLeft;
+      const acceleration = -stiffness * (position - target) - damping * springVelocity;
+      springVelocity += acceleration * elapsed;
+      scroller.scrollLeft = position + springVelocity * elapsed;
+
+      if (Math.abs(scroller.scrollLeft - target) < 0.5 && Math.abs(springVelocity) < 5) {
+        scroller.scrollLeft = target;
+        animationFrame = null;
+        isTracking = false;
+        velocity = 0;
+        options.onSettled?.(direction);
+        return;
+      }
+
+      animationFrame = requestAnimationFrame(tick);
+    };
+
+    animationFrame = requestAnimationFrame(tick);
+  }
+
+  function finishGesture(): void {
+    endTimer = null;
+    const scroller = options.getScroller();
+
+    if (!scroller) {
+      isTracking = false;
+      return;
+    }
+
+    const extent = pageExtent();
+    const distance = scroller.scrollLeft - origin;
+    const projected =
+      distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
+    const direction: -1 | 0 | 1 =
+      distance > 10 && (projected > extent * 0.16 || velocity > 480)
+        ? 1
+        : distance < -10 && (projected < -extent * 0.16 || velocity < -480)
+          ? -1
+          : 0;
+    const maximum = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    const target = Math.max(0, Math.min(maximum, origin + direction * extent));
+
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      scroller.scrollLeft = target;
+      isTracking = false;
+      velocity = 0;
+      options.onSettled?.(target === origin ? 0 : direction);
+      return;
+    }
+
+    settle(target, velocity, target === origin ? 0 : direction);
+  }
+
+  return {
+    handleWheel(event: WheelEvent) {
+      if (
+        options.isEnabled?.() === false ||
+        Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
+      ) {
+        return;
+      }
+
+      const scroller = options.getScroller();
+      if (!scroller) {
+        return;
+      }
+
+      event.preventDefault();
+      const now = performance.now();
+      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+      const delta = event.deltaX * scale;
+      const elapsed = lastInputAt > 0 ? Math.max(8, now - lastInputAt) : 16;
+      lastInputAt = now;
+
+      if (!isTracking) {
+        origin = scroller.scrollLeft;
+        isTracking = true;
+      }
+
+      stopAnimation();
+      const instantaneousVelocity = (delta / elapsed) * 1000;
+      velocity = velocity * 0.42 + instantaneousVelocity * 0.58;
+      scroller.scrollLeft += delta;
+
+      if (endTimer !== null) {
+        clearTimeout(endTimer);
+      }
+      endTimer = setTimeout(finishGesture, 90);
+    },
+    dispose() {
+      stopAnimation();
+      if (endTimer !== null) {
+        clearTimeout(endTimer);
+        endTimer = null;
+      }
+      isTracking = false;
+      velocity = 0;
     },
   };
 }
