@@ -17,8 +17,19 @@ h1 {
   line-height: 1.1;
 }
 
+h2 {
+  margin: 0 0 1.5rem;
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
 p {
   margin: 0 0 1.25rem;
+}
+
+.test-page {
+  break-before: page;
+  page-break-before: always;
 }
 
 figure {
