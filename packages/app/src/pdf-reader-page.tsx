@@ -88,6 +88,7 @@ export function PdfReaderPage({
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
+  const openExternalRef = useRef(onOpenExternal);
   const [initialPreferences] = useState(() => readReaderPreferences(preferenceScopeId));
   const storedPreferencesRef = useRef(initialPreferences);
   const [initialView] = useState(() => readStoredView(source, initialLocator));
@@ -105,9 +106,27 @@ export function PdfReaderPage({
   const [error, setError] = useState('');
 
   useEffect(() => {
+    openExternalRef.current = onOpenExternal;
+  }, [onOpenExternal]);
+
+  useEffect(() => {
     let isActive = true;
     const engine = new PdfJsReaderEngine({
       onSelection: (nextSelection) => isActive && setSelection(nextSelection),
+      onExternalLink: async (url) => {
+        try {
+          await openExternalRef.current(url);
+        } catch (linkError) {
+          if (isActive) {
+            setError(linkError instanceof Error ? linkError.message : String(linkError));
+          }
+        }
+      },
+      onInternalLink: (nextPageNumber) => {
+        if (isActive) {
+          setPageNumber(nextPageNumber);
+        }
+      },
       onError: (readerError) => isActive && setError(readerError.message),
     });
     engineRef.current = engine;

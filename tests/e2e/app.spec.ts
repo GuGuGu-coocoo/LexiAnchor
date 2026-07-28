@@ -508,6 +508,26 @@ test('imports and reads a text-layer PDF with zoom, selection, focus, and restor
   await expect(textLayer.locator('span').first()).toBeVisible();
   await expect(page.locator('.reader-engine-label')).toContainText(/1.*3.*33%/);
 
+  const pdfLinks = page.locator('.pdf-annotation-link');
+  await expect(pdfLinks).toHaveCount(2);
+  await page.context().route('https://example.com/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'text/html',
+      body: '<title>LexiAnchor link</title>',
+    }),
+  );
+  const externalPopupPromise = page.waitForEvent('popup');
+  await page.locator('.pdf-annotation-link[data-external-url]').click();
+  const externalPage = await externalPopupPromise;
+  await expect(externalPage).toHaveURL('https://example.com/lexianchor');
+  await externalPage.close();
+
+  await page.locator('.pdf-annotation-link[data-internal-page="3"]').click();
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
+  await page.getByRole('spinbutton', { name: /Page|页码|Page/ }).fill('1');
+  await expect(page.locator('.reader-engine-label')).toContainText(/1.*3.*33%/);
+
   const pdfSidebar = page.locator('aside.reader-settings');
   await page.getByRole('combobox', { name: /Appearance|外观|Apparence/ }).selectOption('dark');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');

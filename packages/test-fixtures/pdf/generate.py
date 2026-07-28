@@ -84,6 +84,33 @@ def create_text_pdf(path: Path) -> None:
     canvas.setFont("Helvetica-Oblique", 11)
     canvas.setFillColor(HexColor("#345c4c"))
     canvas.drawString(54, y, "English text layer baseline - 100% scale")
+    link_y = y - 34
+    canvas.setFont("Helvetica-Bold", 11)
+    canvas.setFillColor(HexColor("#245f86"))
+    canvas.drawString(54, link_y, "Open LexiAnchor documentation")
+    canvas.linkURL(
+        "https://example.com/lexianchor",
+        (54, link_y - 3, 220, link_y + 12),
+        relative=0,
+        thickness=0,
+    )
+    canvas.drawString(270, link_y, "Jump to the final page")
+    canvas.linkRect(
+        "",
+        "final-page",
+        (270, link_y - 3, 390, link_y + 12),
+        relative=0,
+        thickness=0,
+    )
+    blocked_link_y = link_y - 27
+    canvas.setFillColor(HexColor("#6b6d67"))
+    canvas.drawString(54, blocked_link_y, "Blocked non-web link security fixture")
+    canvas.linkURL(
+        "mailto:test@example.com",
+        (54, blocked_link_y - 3, 235, blocked_link_y + 12),
+        relative=0,
+        thickness=0,
+    )
     canvas.showPage()
 
     draw_header(canvas, "Language and spacing", 2)
@@ -101,6 +128,7 @@ def create_text_pdf(path: Path) -> None:
     canvas.drawString(54, y, "中文：清晰的文字层应当与页面保持对齐。")
     canvas.showPage()
 
+    canvas.bookmarkPage("final-page")
     draw_header(canvas, "Zoom and position", 3)
     draw_paragraph(
         canvas,

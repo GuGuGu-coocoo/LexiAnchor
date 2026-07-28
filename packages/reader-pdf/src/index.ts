@@ -7,6 +7,8 @@ import {
   TextLayer,
   type PDFDocumentLoadingTask,
   type PDFDocumentProxy,
+  type PDFPageProxy,
+  type PageViewport,
   type RenderTask,
 } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -30,13 +32,25 @@ export interface PdfPageResult {
   readonly pageNumber: number;
   readonly pageCount: number;
   readonly hasText: boolean;
+  readonly linkCount: number;
   readonly width: number;
   readonly height: number;
 }
 
 export interface PdfReaderCallbacks {
   readonly onSelection: (selection: ReaderSelection | null) => void;
+  readonly onExternalLink: (url: string) => Promise<void> | void;
+  readonly onInternalLink: (pageNumber: number) => void;
   readonly onError: (error: Error) => void;
+}
+
+interface PdfLinkAnnotation {
+  readonly subtype?: unknown;
+  readonly url?: unknown;
+  readonly dest?: unknown;
+  readonly rect?: unknown;
+  readonly contentsObj?: unknown;
+  readonly titleObj?: unknown;
 }
 
 function asError(error: unknown): Error {
@@ -51,6 +65,155 @@ function renderingCancelledError(pageNumber: number): Error {
 
 function normalizedText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function annotationText(value: unknown): string {
+  if (typeof value !== 'object' || value === null || !('str' in value)) {
+    return '';
+  }
+
+  return typeof value.str === 'string' ? value.str.trim() : '';
+}
+
+function safeExternalUrl(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+async function destinationPageNumber(
+  document: PDFDocumentProxy,
+  destination: unknown,
+): Promise<number | null> {
+  const explicitDestination: unknown =
+    typeof destination === 'string' ? await document.getDestination(destination) : destination;
+
+  if (!Array.isArray(explicitDestination)) {
+    return null;
+  }
+
+  const reference: unknown = (explicitDestination as unknown[])[0];
+
+  if (Number.isInteger(reference)) {
+    return (reference as number) + 1;
+  }
+
+  if (typeof reference !== 'object' || reference === null) {
+    return null;
+  }
+
+  const typedReference = reference as Parameters<PDFDocumentProxy['getPageIndex']>[0];
+  const cached = document.cachedPageNumber(typedReference);
+  return cached ?? (await document.getPageIndex(typedReference)) + 1;
+}
+
+function positionLink(
+  link: HTMLAnchorElement,
+  rect: readonly number[],
+  viewport: PageViewport,
+): void {
+  const firstPoint: unknown = viewport.convertToViewportPoint(rect[0] ?? 0, rect[1] ?? 0);
+  const secondPoint: unknown = viewport.convertToViewportPoint(rect[2] ?? 0, rect[3] ?? 0);
+
+  if (
+    !Array.isArray(firstPoint) ||
+    !Array.isArray(secondPoint) ||
+    firstPoint.length < 2 ||
+    secondPoint.length < 2 ||
+    !firstPoint.every((value) => typeof value === 'number' && Number.isFinite(value)) ||
+    !secondPoint.every((value) => typeof value === 'number' && Number.isFinite(value))
+  ) {
+    return;
+  }
+
+  const [firstX = 0, firstY = 0] = firstPoint as number[];
+  const [secondX = 0, secondY = 0] = secondPoint as number[];
+  const left = Math.min(firstX, secondX);
+  const top = Math.min(firstY, secondY);
+
+  link.style.left = `${left}px`;
+  link.style.top = `${top}px`;
+  link.style.width = `${Math.abs(secondX - firstX)}px`;
+  link.style.height = `${Math.abs(secondY - firstY)}px`;
+}
+
+async function renderLinkAnnotations(
+  document: PDFDocumentProxy,
+  page: PDFPageProxy,
+  viewport: PageViewport,
+  pageElement: HTMLElement,
+  callbacks: PdfReaderCallbacks,
+): Promise<number> {
+  const annotations = (await page.getAnnotations({ intent: 'display' })) as PdfLinkAnnotation[];
+  const layer = pageElement.ownerDocument.createElement('div');
+  let linkCount = 0;
+
+  layer.className = 'annotationLayer pdf-annotation-layer';
+  layer.setAttribute('aria-label', 'PDF links');
+
+  for (const annotation of annotations) {
+    if (
+      annotation.subtype !== 'Link' ||
+      !Array.isArray(annotation.rect) ||
+      annotation.rect.length !== 4 ||
+      !annotation.rect.every((value) => typeof value === 'number' && Number.isFinite(value))
+    ) {
+      continue;
+    }
+
+    const externalUrl = safeExternalUrl(annotation.url);
+    const internalPage = externalUrl
+      ? null
+      : await destinationPageNumber(document, annotation.dest).catch(() => null);
+
+    if (!externalUrl && internalPage === null) {
+      continue;
+    }
+
+    const link = pageElement.ownerDocument.createElement('a');
+    const annotationLabel =
+      annotationText(annotation.contentsObj) || annotationText(annotation.titleObj);
+
+    link.className = 'pdf-annotation-link';
+    positionLink(link, annotation.rect, viewport);
+
+    if (externalUrl) {
+      const hostname = new URL(externalUrl).hostname;
+      link.href = externalUrl;
+      link.title = annotationLabel || externalUrl;
+      link.setAttribute('aria-label', annotationLabel || `Open ${hostname}`);
+      link.dataset.externalUrl = externalUrl;
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        void Promise.resolve(callbacks.onExternalLink(externalUrl)).catch(callbacks.onError);
+      });
+    } else if (internalPage !== null) {
+      link.href = `#page=${internalPage}`;
+      link.title = annotationLabel || `Go to page ${internalPage}`;
+      link.setAttribute('aria-label', annotationLabel || `Go to page ${internalPage}`);
+      link.dataset.internalPage = String(internalPage);
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        callbacks.onInternalLink(internalPage);
+      });
+    }
+
+    layer.append(link);
+    linkCount += 1;
+  }
+
+  if (linkCount > 0) {
+    pageElement.append(layer);
+  }
+
+  return linkCount;
 }
 
 function sentenceForSelection(pageSegments: readonly string[], selectedText: string): string {
@@ -312,10 +475,23 @@ export class PdfJsReaderEngine {
         );
       }
 
+      const linkCount = await renderLinkAnnotations(
+        document,
+        page,
+        viewport,
+        pageElement,
+        this.callbacks,
+      );
+
+      if (renderGeneration !== this.renderGeneration) {
+        throw renderingCancelledError(safePageNumber);
+      }
+
       return {
         pageNumber: safePageNumber,
         pageCount: document.numPages,
         hasText,
+        linkCount,
         width: viewport.width,
         height: viewport.height,
       };

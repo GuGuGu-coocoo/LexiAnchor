@@ -191,7 +191,7 @@ Phase 1 结束前不大规模开发阅读 UI。
 
 ### Phase 3：PDF 垂直切片
 
-核心路径已提前随 PDF Spike 完成；压力测试和 annotation layer 继续留在本阶段收尾。
+核心路径和 link annotation overlay 已随 PDF Spike 完成；大文件压力测试继续留在本阶段收尾。
 
 流程：
 

@@ -1997,6 +1997,29 @@ button {
   white-space: pre;
 }
 
+.pdf-annotation-layer {
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-annotation-link {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in srgb, #4c76b8 12%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, #315f9f 45%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.pdf-annotation-link:focus-visible {
+  outline: calc(2px / var(--total-scale-factor)) solid #315f9f;
+  outline-offset: calc(2px / var(--total-scale-factor));
+}
+
 .pdf-page-jump {
   display: grid;
   grid-template-columns: auto minmax(54px, 1fr) auto;

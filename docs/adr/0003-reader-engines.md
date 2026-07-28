@@ -32,8 +32,9 @@ PDF.js 6.1.200 的 Spike 也已完成核心验证：
 - 选词、原句、三级焦点加粗、75%–200% 缩放和页码恢复通过；
 - 英文、法语重音和中文夹具通过视觉与提取检查；
 - 扫描型 PDF 保持可见，并自动禁用选词能力；
+- PDF link annotation overlay 支持内部页码跳转，HTTP/HTTPS 外链统一交给平台桥接；
 - PDF reader 与 worker 按需加载，不进入 Home/EPUB 首屏 bundle；
-- 尚未完成 100MB 级压力样本、annotation layer 和 Windows 实机验证。
+- 尚未完成 100MB 级压力样本和 Windows 实机验证。
 
 完整证据见 [PDF 阅读内核 Spike](../spikes/0002-pdf-engine.md)。
 
@@ -63,6 +64,7 @@ Readium 仍有明显优点：维护活跃、偏好与 locator 模型完整、无
 - 使用 display layer 构建自定义 viewer，不复制完整默认 viewer；
 - 保持原始版式；
 - 焦点加粗只作用于可用文本层；
+- 链接注释只绘制可验证矩形；内部目标解析为页码，外链仅允许 HTTP/HTTPS 并交给宿主；
 - 扫描 PDF 在 MVP 中降级为页面查看；
 - 当前只渲染可见页，并取消过期渲染任务；
 - 连续调整缩放或焦点强度时以渲染代次隔离任务，旧任务不能覆盖最新页面；

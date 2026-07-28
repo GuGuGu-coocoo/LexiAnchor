@@ -56,6 +56,7 @@
 | 三级焦点加粗 | 通过 | 弱/中/强共用产品规则，独立覆盖层产生对齐前缀，原始文本层与 canvas 不变 |
 | 75%–200% 缩放 | 通过 | 自动化在 150% 重新渲染并继续翻页 |
 | 页码与进度 | 通过 | 1/3 显示 33%，3/3 显示 100% |
+| PDF 链接 | 通过 | link annotation overlay 支持内部跳至第 3 页；HTTP/HTTPS 外链交给平台桥接 |
 | 重新打开恢复 | 通过 | 恢复第 3 页和 150% 缩放 |
 | 无文本层降级 | 通过 | canvas 可见，文本层为空，选词能力自动禁用 |
 | Web 生产构建 | 通过 | PDF.js 阅读器与 worker 形成独立延迟加载 chunk |
@@ -77,11 +78,13 @@
    与 150% 缩放下通过截图检查。
 6. 快速连续切换焦点开关和强度时，旧渲染任务会在等待文本内容期间读到被新任务清空的共享
    `renderTask`；改为保存本次任务引用并校验渲染代次，过期任务只取消自身且不能覆盖新页面。
+7. PDF.js 完整 viewer 的 link service 会扩大产品层依赖面；当前 adapter 只读取 `Link`
+   annotation，验证矩形与目标后绘制透明 overlay。内部目标解析为页码，外部目标只接受
+   HTTP/HTTPS 并交给 Web/Electron 平台桥接。
 
 ## 当前限制
 
 - 只显示单页，不提供连续滚动和缩略图导航；
-- annotation layer 尚未接入，因此 PDF 内链接暂不可点；
 - 不提供 OCR，扫描 PDF 只能查看；
 - 当前进度精度为页码，不包含页内滚动位置；
 - 尚未验证密码保护或加密 PDF；产品范围仍只接受无 DRM 文件；
@@ -91,5 +94,5 @@
 
 PDF.js 6.1.200 满足 v0.1 文本型 PDF 的核心路径，并能对扫描件做诚实降级。保留自定义
 viewer，避免复制完整默认 viewer；所有 PDF.js API 继续限制在
-`@lexianchor/reader-pdf`。在进入首个公开测试版前补充 100MB 压力样本、annotation
-layer 和 Windows 实机验证，OCR 不进入 MVP。
+`@lexianchor/reader-pdf`。在进入首个公开测试版前补充 100MB 压力样本和 Windows
+实机验证，OCR 不进入 MVP。
