@@ -52,6 +52,7 @@ import {
   type StorageHealth,
 } from './storage-health';
 import type { Theme } from './theme';
+import { WordCardDetailDialog } from './word-card-detail-dialog';
 
 type Section = 'home' | 'library' | 'cards' | 'settings';
 type IconName = Section | 'expand' | 'lock' | 'book-open';
@@ -2036,6 +2037,7 @@ function CardsPage({
   transferMessage,
 }: CardsPageProps) {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
 
   return (
     <section className="page" aria-labelledby="cards-title">
@@ -2075,7 +2077,10 @@ function CardsPage({
           type="search"
           value={query}
           placeholder={t('cardsSearchPlaceholder')}
-          onChange={(event) => onQueryChange(event.target.value)}
+          onChange={(event) => {
+            setActiveCardId(null);
+            onQueryChange(event.target.value);
+          }}
         />
       </label>
       {cards.length === 200 ? (
@@ -2117,58 +2122,38 @@ function CardsPage({
                 />
               ) : (
                 <>
-                  <div className="word-card-heading">
-                    <div>
+                  <button
+                    className="word-card-preview"
+                    type="button"
+                    aria-label={`${t('viewCardDetails')} ${card.term}`}
+                    onClick={() => setActiveCardId(card.id)}
+                  >
+                    <div className="word-card-heading">
                       <span className="badge">{card.partOfSpeech}</span>
                       <h2>{card.term}</h2>
                     </div>
-                    <div className="word-card-actions">
-                      <button
-                        className="word-card-edit"
-                        type="button"
-                        aria-label={`${t('editCard')} ${card.term}`}
-                        onClick={() => setEditingCardId(card.id)}
-                      >
-                        {t('editCard')}
-                      </button>
-                      <button
-                        className="word-card-delete"
-                        type="button"
-                        aria-label={`${t('deleteCard')} ${card.term}`}
-                        onClick={() => void onDelete(card.id)}
-                      >
-                        {t('deleteCard')}
-                      </button>
-                    </div>
+                    <p className="word-card-definition-label">{t('englishDefinition')}</p>
+                    <p className="word-card-definition">{card.definition}</p>
+                    <span className="word-card-detail-cue">{t('viewCardDetails')} →</span>
+                  </button>
+                  <div className="word-card-actions">
+                    <button
+                      className="word-card-edit"
+                      type="button"
+                      aria-label={`${t('editCard')} ${card.term}`}
+                      onClick={() => setEditingCardId(card.id)}
+                    >
+                      {t('editCard')}
+                    </button>
+                    <button
+                      className="word-card-delete"
+                      type="button"
+                      aria-label={`${t('deleteCard')} ${card.term}`}
+                      onClick={() => void onDelete(card.id)}
+                    >
+                      {t('deleteCard')}
+                    </button>
                   </div>
-                  <p className="word-card-definition">{card.definition}</p>
-                  <dl className="word-card-metadata">
-                    <div>
-                      <dt>{t('wordRoot')}</dt>
-                      <dd>{card.rootOrEtymology ?? t('notProvided')}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('sourceBook')}</dt>
-                      <dd>{card.sourceBookTitle}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('originalSentence')}</dt>
-                      <dd>“{card.sourceSentence}”</dd>
-                    </div>
-                    <div>
-                      <dt>{t('dictionarySource')}</dt>
-                      <dd>{card.dictionarySource}</dd>
-                    </div>
-                    <div>
-                      <dt>{t('createdAt')}</dt>
-                      <dd>
-                        {new Intl.DateTimeFormat(locale, {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        }).format(new Date(card.createdAt))}
-                      </dd>
-                    </div>
-                  </dl>
                 </>
               )}
             </article>
@@ -2183,6 +2168,15 @@ function CardsPage({
           <p className="empty-copy">{query ? t('noCardsFoundDescription') : t('cardsEmptyBody')}</p>
         </div>
       )}
+
+      <WordCardDetailDialog
+        cards={cards}
+        activeCardId={activeCardId}
+        locale={locale}
+        t={t}
+        onActiveCardChange={setActiveCardId}
+        onClose={() => setActiveCardId(null)}
+      />
     </section>
   );
 }

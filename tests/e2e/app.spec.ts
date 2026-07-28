@@ -1479,13 +1479,20 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   const savedCard = page.locator('article[data-word-card-id]').filter({ hasText: 'resilient' });
   await expect(savedCard).toBeVisible();
   await expect(savedCard).toContainText('recovering readily from adversity');
-  await expect(savedCard).toContainText('Anchored Pages');
-  await expect(savedCard).toContainText('A resilient reader keeps the page steady');
-  await expect(savedCard).toContainText('Princeton WordNet 3.1');
-  await expect(savedCard).toContainText(
+  await expect(savedCard).toContainText(/English definition|英语释义|Définition anglaise/);
+  await savedCard
+    .getByRole('button', { name: /View details resilient|查看详情 resilient|Voir les détails/ })
+    .click();
+  const cardDetails = page.locator('.word-card-detail-dialog');
+  await expect(cardDetails).toBeVisible();
+  await expect(cardDetails).toContainText('Anchored Pages');
+  await expect(cardDetails).toContainText('A resilient reader keeps the page steady');
+  await expect(cardDetails).toContainText('Princeton WordNet 3.1');
+  await expect(cardDetails).toContainText(
     /Not provided by this dictionary|该词典未提供|Non fourni par ce dictionnaire/,
   );
   await page.screenshot({ path: 'test-results/word-cards.png', fullPage: true });
+  await cardDetails.getByRole('button', { name: /Close|关闭|Fermer/ }).click();
 
   await ensureServiceWorkerControl(page);
   await page.context().setOffline(true);
@@ -1523,8 +1530,12 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   await page.screenshot({ path: 'test-results/word-card-editor.png', fullPage: true });
   await editor.getByRole('button', { name: /Save changes|保存修改|Enregistrer/ }).click();
   await expect(savedCard).toContainText('Able to recover and keep going.');
-  await expect(savedCard).toContainText('Latin resilire');
-  await expect(savedCard).toContainText('A resilient reader returns to the page.');
+  await savedCard
+    .getByRole('button', { name: /View details resilient|查看详情 resilient|Voir les détails/ })
+    .click();
+  await expect(cardDetails).toContainText('Latin resilire');
+  await expect(cardDetails).toContainText('A resilient reader returns to the page.');
+  await cardDetails.getByRole('button', { name: /Close|关闭|Fermer/ }).click();
 
   await search.fill('latin');
   await expect(savedCard).toBeVisible();
@@ -1576,4 +1587,59 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   await page.reload();
   await page.getByRole('button', { name: /Word cards|词卡|Fiches de mots/ }).click();
   await expect(page.locator('article[data-word-card-id]')).toHaveCount(0);
+});
+
+test('opens English word-card details and swipes between cards', async ({ page }) => {
+  const timestamp = '2026-07-28T08:00:00.000Z';
+  const card = (id: string, term: string, definition: string, sentence: string) => ({
+    id,
+    term,
+    normalizedTerm: term.toLocaleLowerCase('en-US'),
+    partOfSpeech: 'adjective',
+    definition,
+    rootOrEtymology: null,
+    dictionarySource: 'Princeton WordNet 3.1',
+    sourceBookId: null,
+    sourceBookTitle: 'Gesture Reading',
+    sourceSentence: sentence,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    version: 1,
+  });
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /Word cards|词卡|Fiches de mots/ }).click();
+  await page.locator('.card-transfer-actions input[type="file"]').setInputFiles({
+    name: 'word-card-carousel.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(
+      JSON.stringify({
+        format: 'lexianchor.word-cards',
+        schemaVersion: 1,
+        exportedAt: timestamp,
+        cards: [
+          card('carousel-1', 'attentive', 'Giving care and close attention.', 'Stay attentive.'),
+          card('carousel-2', 'resilient', 'Able to recover quickly.', 'Remain resilient.'),
+        ],
+      }),
+    ),
+  });
+
+  const attentiveCard = page
+    .locator('article[data-word-card-id="carousel-1"]')
+    .getByRole('button', { name: /View details attentive|查看详情 attentive|Voir les détails/ });
+  await expect(attentiveCard).toContainText('Giving care and close attention.');
+  await attentiveCard.click();
+
+  const dialog = page.locator('.word-card-detail-dialog');
+  const viewport = dialog.locator('.word-card-detail-viewport');
+  await expect(dialog.locator('.word-card-detail-toolbar h2')).toHaveText('attentive');
+  await expect(dialog).toContainText('Giving care and close attention.');
+  await viewport.hover();
+  await page.mouse.wheel(760, 0);
+  await expect(dialog.locator('.word-card-detail-toolbar h2')).toHaveText('resilient');
+  await expect(dialog).toContainText('Able to recover quickly.');
+  await page.keyboard.press('ArrowLeft');
+  await expect(dialog.locator('.word-card-detail-toolbar h2')).toHaveText('attentive');
 });

@@ -324,7 +324,6 @@ export function createHorizontalPageScrollGesture(
       if (Math.abs(scroller.scrollLeft - target) < 0.5 && Math.abs(springVelocity) < 5) {
         scroller.scrollLeft = target;
         animationFrame = null;
-        isTracking = false;
         velocity = 0;
         options.onSettled?.(direction);
         return;
@@ -342,9 +341,15 @@ export function createHorizontalPageScrollGesture(
 
     if (!scroller) {
       isTracking = false;
+      lastInputAt = 0;
       return;
     }
 
+    // The wheel burst owns its origin only until input ends. A later gesture
+    // interrupts the spring from the live presentation position and must not
+    // inherit the page where an earlier gesture began.
+    isTracking = false;
+    lastInputAt = 0;
     const extent = pageExtent();
     const distance = scroller.scrollLeft - origin;
     const projected =
@@ -360,7 +365,6 @@ export function createHorizontalPageScrollGesture(
 
     if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       scroller.scrollLeft = target;
-      isTracking = false;
       velocity = 0;
       options.onSettled?.(target === origin ? 0 : direction);
       return;
