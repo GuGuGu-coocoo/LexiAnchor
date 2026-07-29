@@ -1118,6 +1118,11 @@ button {
   list-style: none;
 }
 
+.reader-toc-dropdown > .reader-toc ol::after {
+  height: min(62vh, 520px);
+  content: '';
+}
+
 .reader-toc button {
   display: flex;
   width: 100%;

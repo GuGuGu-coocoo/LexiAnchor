@@ -593,7 +593,18 @@ function EpubTableOfContents({
   const currentRowRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
-    currentRowRef.current?.scrollIntoView({ block: 'start' });
+    const frame = requestAnimationFrame(() => {
+      const row = currentRowRef.current;
+      const navigation = row?.closest<HTMLElement>('.reader-toc');
+      if (row && navigation) {
+        const naturalTop =
+          row.getBoundingClientRect().top -
+          navigation.getBoundingClientRect().top +
+          navigation.scrollTop;
+        navigation.scrollTop = naturalTop;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [currentHref, items]);
 
   if (items.length === 0) {

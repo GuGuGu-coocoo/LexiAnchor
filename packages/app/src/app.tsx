@@ -763,6 +763,9 @@ export function App({ platform }: AppProps) {
     }
 
     isClosingReader.current = true;
+    if (isFullscreen) {
+      void platform.setFullscreen(false).then(setIsFullscreen);
+    }
     const finalProgress = latestReadingProgress.current;
     const flush = finalProgress ? repository().saveProgress(finalProgress) : Promise.resolve();
 
@@ -777,7 +780,7 @@ export function App({ platform }: AppProps) {
         isClosingReader.current = false;
         void refreshLibrary();
       });
-  }, [refreshLibrary]);
+  }, [isFullscreen, platform, refreshLibrary]);
 
   const addWordCard = useCallback(
     async (draft: WordCardDraft) => {

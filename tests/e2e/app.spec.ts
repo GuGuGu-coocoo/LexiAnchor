@@ -391,6 +391,22 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  const hrefBeforeSettings = await currentEpubHref(page);
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  const readerSettingsOverlay = page.locator('.reader-settings-overlay');
+  await expect(readerSettingsOverlay).toBeVisible();
+  await expect(
+    readerSettingsOverlay.getByRole('heading', {
+      level: 1,
+      name: /Settings|设置|Réglages/,
+    }),
+  ).toBeVisible();
+  await readerSettingsOverlay
+    .getByRole('button', { name: /Close settings|关闭设置|Fermer les réglages/ })
+    .click();
+  await expect(readerSettingsOverlay).toBeHidden();
+  await expect.poll(() => currentEpubHref(page)).toBe(hrefBeforeSettings);
+  await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
   const epubScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
   const pageBeforeKeyboardTurn = await epubScroller.evaluate((element) => element.scrollLeft);
   await bookFrame.locator('body').press('ArrowRight');
@@ -472,7 +488,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   const firstChapter = tableOfContents.getByRole('button', { name: 'A Quiet Beginning' });
   const secondChapter = tableOfContents.getByRole('button', { name: 'Finding an Anchor' });
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
-  await expect(tableOfContents.getByRole('button').first()).toHaveText('A Quiet Beginning');
+  await expect(tableOfContents.getByRole('button').first()).toContainText('A Quiet Beginning');
   await secondChapter.click();
   await expect.poll(() => currentEpubHref(page)).toContain('chapter-2.xhtml');
   await expectEpubHeading(page, 'Finding an Anchor');
@@ -482,7 +498,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     })
     .click();
   await expect(secondChapter).toHaveAttribute('aria-current', 'location');
-  await expect(tableOfContents.getByRole('button').first()).toHaveText('A Quiet Beginning');
+  await expect(tableOfContents.getByRole('button').first()).toContainText('A Quiet Beginning');
   await expect
     .poll(async () => {
       const currentBox = await secondChapter.boundingBox();
@@ -927,7 +943,10 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
 
   await page.locator('.pdf-annotation-link[data-internal-page="3"]').click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
-  await page.getByRole('spinbutton', { name: /Page|页码|Page/ }).fill('1');
+  await page.locator('.pdf-reader-stage').hover();
+  const backToLinkedPage = page.locator('.reader-footer-leading button');
+  await expect(backToLinkedPage).toBeVisible();
+  await backToLinkedPage.click();
   await expect(page.locator('.reader-engine-label')).toContainText(/1.*3.*33%/);
 
   const pdfSidebar = page.locator('aside.reader-settings');
@@ -1018,7 +1037,7 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
 
   const zoomControl = page.getByRole('slider', { name: /Zoom|缩放/ });
   await zoomControl.fill('1.5');
-  await expect(page.locator('.reader-control output')).toHaveText('150%');
+  await expect(page.getByRole('status', { name: /Zoom|缩放/ })).toHaveText('150%');
 
   const pdfLayout = page.getByRole('combobox', {
     name: /^(Layout|阅读布局|Disposition)$/,
@@ -1072,7 +1091,7 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
     }),
   ).toHaveValue('scrolled');
   await expect(page.locator('.pdf-page')).toHaveCount(3);
-  await expect(page.locator('.reader-control output')).toHaveText('150%');
+  await expect(page.getByRole('status', { name: /Zoom|缩放/ })).toHaveText('150%');
   await expect(
     page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),
   ).toHaveCount(0);
