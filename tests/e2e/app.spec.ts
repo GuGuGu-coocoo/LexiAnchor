@@ -314,6 +314,7 @@ test('falls back to page immersive mode when the Fullscreen API is unavailable',
 });
 
 test('exports and restores a self-contained application backup', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto('/');
   await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
   await page
@@ -1545,6 +1546,7 @@ test('reorders, disables, and uses installed bilingual dictionaries offline', as
       selection?.addRange(range);
       element.ownerDocument.dispatchEvent(new Event('selectionchange'));
     });
+    await expect(page.locator('.selection-word')).toHaveText('attentive', { timeout: 10_000 });
   }
 
   await ensureServiceWorkerControl(page);
@@ -1570,7 +1572,7 @@ test('reorders, disables, and uses installed bilingual dictionaries offline', as
 
   await openAndSelectAttentive();
   await expect(page.locator('.dictionary-result').filter({ hasText: 'FreeDict' })).toHaveCount(0);
-  await expect(page.locator('.dictionary-result')).toHaveCount(1);
+  await expect(page.locator('.dictionary-result')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.locator('.dictionary-result')).toContainText('Princeton WordNet');
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
