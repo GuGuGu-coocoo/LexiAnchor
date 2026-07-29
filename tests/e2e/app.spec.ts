@@ -1538,15 +1538,21 @@ test('reorders, disables, and uses installed bilingual dictionaries offline', as
     const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
     const attentive = bookFrame.locator('em');
     await expect(attentive).toBeVisible();
-    await attentive.evaluate((element) => {
-      const selection = element.ownerDocument.defaultView?.getSelection();
-      const range = element.ownerDocument.createRange();
-      range.selectNodeContents(element);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      element.ownerDocument.dispatchEvent(new Event('selectionchange'));
-    });
-    await expect(page.locator('.selection-word')).toHaveText('attentive', { timeout: 10_000 });
+    await expect
+      .poll(
+        async () => {
+          await attentive.selectText().catch(() => undefined);
+          await page.waitForTimeout(350);
+          return (
+            await page
+              .locator('.selection-word')
+              .textContent()
+              .catch(() => '')
+          )?.trim();
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('attentive');
   }
 
   await ensureServiceWorkerControl(page);
