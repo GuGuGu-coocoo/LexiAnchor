@@ -41,6 +41,7 @@ export interface WordCardRecord {
   readonly sourceBookId: string | null;
   readonly sourceBookTitle: string;
   readonly sourceSentence: string;
+  readonly occurrenceCount: number;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly deletedAt: string | null;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
@@ -19,6 +19,8 @@ import {
 } from '@lexianchor/reader-pdf';
 
 import { FloatingSelectionTools } from './floating-selection-tools';
+import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
+import { ReaderFooter } from './reader-footer';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import type { Theme } from './theme';
 import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
@@ -33,6 +35,7 @@ interface PdfReaderPageProps {
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onOpenSettings: () => void;
   readonly onThemeChange: (theme: Theme) => void;
   readonly onToggleFullscreen: () => Promise<void>;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
@@ -49,12 +52,22 @@ interface StoredPdfView {
   readonly flow: ReaderFlow;
 }
 
-function storageKey(source: ReaderSource): string {
+function storageKey(scopeId: string): string {
+  return `lexianchor:pdf-view:${encodeURIComponent(scopeId)}`;
+}
+
+function legacyStorageKey(source: ReaderSource): string {
   return `lexianchor:pdf-view:${source.name}`;
 }
 
-function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): StoredPdfView {
-  const stored = globalThis.localStorage?.getItem(storageKey(source));
+function readStoredView(
+  source: ReaderSource,
+  scopeId: string,
+  initialLocator?: ReaderLocator,
+): StoredPdfView {
+  const stored =
+    globalThis.localStorage?.getItem(storageKey(scopeId)) ??
+    globalThis.localStorage?.getItem(legacyStorageKey(source));
 
   if (!stored) {
     return { pageNumber: initialLocator?.pageNumber ?? 1, scale: 1.15, flow: 'paginated' };
@@ -63,12 +76,12 @@ function readStoredView(source: ReaderSource, initialLocator?: ReaderLocator): S
   try {
     const view = JSON.parse(stored) as Partial<StoredPdfView>;
     return {
-      pageNumber: Math.max(1, Math.floor(initialLocator?.pageNumber ?? view.pageNumber ?? 1)),
+      pageNumber: Math.max(1, Math.floor(view.pageNumber ?? initialLocator?.pageNumber ?? 1)),
       scale: Math.min(2, Math.max(0.75, view.scale ?? 1.15)),
       flow: view.flow === 'scrolled' ? 'scrolled' : 'paginated',
     };
   } catch {
-    return { pageNumber: 1, scale: 1.15, flow: 'paginated' };
+    return { pageNumber: initialLocator?.pageNumber ?? 1, scale: 1.15, flow: 'paginated' };
   }
 }
 
@@ -84,12 +97,14 @@ function isEditableKeyTarget(target: EventTarget | null): boolean {
 
 export function PdfReaderPage({
   source,
+  preferenceScopeId,
   initialLocator,
   theme,
   isFullscreen,
   locale,
   t,
   onClose,
+  onOpenSettings,
   onThemeChange,
   onToggleFullscreen,
   onLocationChange,
@@ -104,7 +119,7 @@ export function PdfReaderPage({
   const engineRef = useRef<PdfJsReaderEngine | null>(null);
   const pendingScrollPageRef = useRef<number | null>(null);
   const openExternalRef = useRef(onOpenExternal);
-  const [initialView] = useState(() => readStoredView(source, initialLocator));
+  const [initialView] = useState(() => readStoredView(source, preferenceScopeId, initialLocator));
   const pageNumberRef = useRef(initialView.pageNumber);
   const [documentInfo, setDocumentInfo] = useState<PdfDocumentInfo>();
   const [pageResult, setPageResult] = useState<PdfPageResult>();
@@ -112,6 +127,10 @@ export function PdfReaderPage({
   const [pageNumber, setPageNumber] = useState(initialView.pageNumber);
   const [scale, setScale] = useState(initialView.scale);
   const [flow, setFlow] = useState<ReaderFlow>(initialView.flow);
+  const [linkOriginPage, setLinkOriginPage] = useState<number | null>(null);
+  const [selectionFontSizePercent, setSelectionFontSizePercent] = useState(
+    () => readReaderPreferences(preferenceScopeId).selectionFontSizePercent,
+  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,6 +152,13 @@ export function PdfReaderPage({
   }, [pageNumber]);
 
   useEffect(() => {
+    persistReaderPreferences(preferenceScopeId, {
+      ...readReaderPreferences(preferenceScopeId),
+      selectionFontSizePercent,
+    });
+  }, [preferenceScopeId, selectionFontSizePercent]);
+
+  useEffect(() => {
     let isActive = true;
     const engine = new PdfJsReaderEngine({
       onSelection: (nextSelection) => isActive && setSelection(nextSelection),
@@ -147,6 +173,9 @@ export function PdfReaderPage({
       },
       onInternalLink: (nextPageNumber) => {
         if (isActive) {
+          if (pageNumberRef.current !== nextPageNumber) {
+            setLinkOriginPage(pageNumberRef.current);
+          }
           pendingScrollPageRef.current = nextPageNumber;
           setPageNumber(nextPageNumber);
         }
@@ -262,7 +291,7 @@ export function PdfReaderPage({
     }
 
     globalThis.localStorage?.setItem(
-      storageKey(source),
+      storageKey(preferenceScopeId),
       JSON.stringify({ pageNumber, scale, flow }),
     );
     onLocationChange?.(
@@ -274,7 +303,7 @@ export function PdfReaderPage({
       },
       Math.round((pageNumber / pageCount) * 100),
     );
-  }, [flow, onLocationChange, pageCount, pageNumber, scale, source]);
+  }, [flow, onLocationChange, pageCount, pageNumber, preferenceScopeId, scale, source.name]);
 
   useEffect(() => {
     const stage = readerStageRef.current;
@@ -414,6 +443,11 @@ export function PdfReaderPage({
       className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${
         isFullscreen && !isToolbarVisible ? ' reader-page--toolbar-hidden' : ''
       }`}
+      style={
+        {
+          '--selection-font-scale': selectionFontSizePercent / 100,
+        } as CSSProperties
+      }
       aria-label={t('pdfReader')}
     >
       <header
@@ -464,6 +498,15 @@ export function PdfReaderPage({
                 ? t('autoHideFullscreenToolbar')
                 : t('keepFullscreenToolbarVisible')}
             </span>
+          </button>
+          <button
+            className="reader-icon-button reader-toolbar-settings-button"
+            type="button"
+            aria-label={t('settings')}
+            onClick={onOpenSettings}
+          >
+            <span aria-hidden="true">⚙</span>
+            <span>{t('settings')}</span>
           </button>
           <button
             className="reader-icon-button"
@@ -546,6 +589,21 @@ export function PdfReaderPage({
           </label>
 
           <label className="reader-control">
+            <span>
+              {t('selectionFontSize')} <output>{selectionFontSizePercent}%</output>
+            </span>
+            <input
+              type="range"
+              aria-label={t('selectionFontSize')}
+              min="80"
+              max="160"
+              step="5"
+              value={selectionFontSizePercent}
+              onChange={(event) => setSelectionFontSizePercent(Number(event.target.value))}
+            />
+          </label>
+
+          <label className="reader-control">
             <span>{t('readingLayout')}</span>
             <select
               value={flow}
@@ -610,6 +668,27 @@ export function PdfReaderPage({
             </div>
           ) : null}
           <div ref={containerRef} className="pdf-document-container" data-testid="pdf-container" />
+          {!isLoading ? (
+            <ReaderFooter
+              currentPage={pageNumber}
+              totalPages={pageCount || undefined}
+              pagesRemaining={pageCount > 0 ? Math.max(0, pageCount - pageNumber) : undefined}
+              backLabel={
+                linkOriginPage === null ? undefined : `${t('backToPage')} ${linkOriginPage}`
+              }
+              pagesRemainingLabel={t('pagesLeftInDocument')}
+              ofLabel={t('of')}
+              onBack={
+                linkOriginPage === null
+                  ? undefined
+                  : () => {
+                      const origin = linkOriginPage;
+                      setLinkOriginPage(null);
+                      goToPage(origin);
+                    }
+              }
+            />
+          ) : null}
         </div>
         {selection && !isSidebarOpen ? (
           <FloatingSelectionTools

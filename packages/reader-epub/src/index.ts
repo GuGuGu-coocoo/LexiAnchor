@@ -44,15 +44,20 @@ export interface EpubNavigationItem {
   readonly id: string;
   readonly href: string;
   readonly label: string;
+  readonly pageNumber?: number;
   readonly subitems: readonly EpubNavigationItem[];
 }
 
-function navigationItems(items: readonly NavItem[]): EpubNavigationItem[] {
+function navigationItems(
+  items: readonly NavItem[],
+  pageNumberForHref: (href: string) => number | undefined,
+): EpubNavigationItem[] {
   return items.map((item) => ({
     id: item.id,
     href: item.href,
     label: item.label.trim() || item.href,
-    subitems: navigationItems(item.subitems ?? []),
+    pageNumber: pageNumberForHref(item.href),
+    subitems: navigationItems(item.subitems ?? [], pageNumberForHref),
   }));
 }
 
@@ -62,6 +67,12 @@ function handleNavigationKey(
 ): void {
   const element = event.target as HTMLElement | null;
   const tagName = element?.tagName;
+
+  if (!event.defaultPrevented && event.key === 'Escape') {
+    event.preventDefault();
+    onCommand?.('escape');
+    return;
+  }
 
   if (
     event.defaultPrevented ||
@@ -132,6 +143,23 @@ function selectionFrom(contents: Contents, cfiRange: string): ReaderSelection | 
     : undefined;
 
   return { text, sentence, cfiRange, anchorRect };
+}
+
+function fontFamilyValue(preferences: ReaderPreferences): string {
+  if (preferences.fontFamily === 'system') {
+    return "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  }
+  if (preferences.fontFamily === 'sans-serif') {
+    return "Arial, Helvetica, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  }
+  if (preferences.fontFamily === 'custom') {
+    const family = preferences.customFontFamily.replace(/[\\"'\n\r]/g, '').trim();
+    return family
+      ? `"${family}", -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+      : "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  }
+
+  return "Georgia, 'Times New Roman', serif";
 }
 
 export class EpubJsReaderEngine implements ReaderEngine {
@@ -256,6 +284,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
         contents.document.addEventListener('wheel', this.handleWheelNavigation, {
           passive: false,
         });
+        contents.on('linkClicked', () => {
+          if (this.currentLocator) {
+            this.callbacks.onLinkNavigation?.(this.currentLocator);
+          }
+        });
       });
 
       this.rendition.on('relocated', (location: EpubLocation) => {
@@ -265,12 +298,25 @@ export class EpubJsReaderEngine implements ReaderEngine {
           (displayed && displayed.total > 0 ? displayed.page / displayed.total : undefined);
 
         const totalProgression = this.book?.locations.percentageFromCfi(location.start.cfi);
+        const totalPageCount = this.book?.locations.length() ?? 0;
+        const rawTotalLocation = this.book?.locations.locationFromCfi(
+          location.start.cfi,
+        ) as unknown;
+        const totalLocation = typeof rawTotalLocation === 'number' ? rawTotalLocation : -1;
 
         const nextLocator = {
           href: location.start.href,
           cfi: location.start.cfi,
           progression,
           totalProgression: Number.isFinite(totalProgression) ? totalProgression : undefined,
+          pageNumber: displayed?.page,
+          pageCount: displayed?.total,
+          totalPageNumber: totalLocation >= 0 ? totalLocation + 1 : undefined,
+          totalPageCount: totalPageCount > 0 ? totalPageCount : undefined,
+          chapterPagesRemaining:
+            displayed && displayed.total > 0
+              ? Math.max(0, displayed.total - displayed.page)
+              : undefined,
         };
 
         // A resize clears and rebuilds EPUB.js views. Its intermediate
@@ -300,13 +346,32 @@ export class EpubJsReaderEngine implements ReaderEngine {
           this.callbacks.onSelection(null);
         }
       });
-      await this.book.ready;
-      await this.book.locations.generate(600);
+      const openedBook = this.book;
+      const openedRendition = this.rendition;
+      await openedBook.ready;
       const initialTarget = initialLocator?.cfi ?? initialLocator?.href;
       this.requestedLocator = initialLocator ?? null;
-      await this.displayAtStableLocation(this.rendition, initialTarget);
+      await this.displayAtStableLocation(openedRendition, initialTarget);
       this.requestedLocator = null;
-      await this.rendition.reportLocation();
+      await openedRendition.reportLocation();
+
+      // Generating a full-book locations index can take several seconds for a
+      // long EPUB. The exact saved CFI does not depend on that index, so show
+      // the requested page first and calculate the percentage in the
+      // background. A later report enriches the same locator once ready.
+      void openedBook.locations
+        .generate(600)
+        .then(async () => {
+          if (this.book === openedBook && this.rendition === openedRendition) {
+            await openedRendition.reportLocation();
+            this.callbacks.onPaginationReady?.();
+          }
+        })
+        .catch((error: unknown) => {
+          if (this.book === openedBook) {
+            this.callbacks.onError(asError(error));
+          }
+        });
     } catch (error) {
       this.callbacks.onError(asError(error));
       await this.close();
@@ -392,7 +457,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     }
 
     const navigation = await book.loaded.navigation;
-    return navigationItems(navigation.toc);
+    return navigationItems(navigation.toc, (href) => this.pageNumberForHref(href));
   }
 
   async setPreferences(preferences: ReaderPreferences): Promise<void> {
@@ -415,13 +480,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     rendition.themes.override('line-height', String(preferences.lineHeight), true);
     rendition.themes.override('word-spacing', `${preferences.wordSpacingEm}em`, true);
     rendition.themes.override('letter-spacing', `${preferences.letterSpacingEm}em`, true);
-    rendition.themes.override(
-      'font-family',
-      preferences.fontFamily === 'serif'
-        ? "Georgia, 'Times New Roman', serif"
-        : "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      true,
-    );
+    rendition.themes.override('font-family', fontFamilyValue(preferences), true);
     rendition.themes.override('font-weight', String(preferences.fontWeight), true);
     rendition.themes.override('text-align', preferences.textAlignment, true);
     rendition.themes.override('color', preferences.foreground, true);
@@ -515,6 +574,28 @@ export class EpubJsReaderEngine implements ReaderEngine {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     await rendition.display(target);
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
+  private pageNumberForHref(href: string): number | undefined {
+    const book = this.book;
+    if (!book || book.locations.length() === 0) {
+      return undefined;
+    }
+
+    try {
+      const section = book.spine.get(href.split('#')[0] ?? href);
+      if (!section?.cfiBase) {
+        return undefined;
+      }
+
+      const rawLocation = book.locations.locationFromCfi(
+        `epubcfi(${section.cfiBase}!/4/2)`,
+      ) as unknown;
+      const location = typeof rawLocation === 'number' ? rawLocation : -1;
+      return location >= 0 ? location + 1 : undefined;
+    } catch {
+      return undefined;
+    }
   }
 }
 

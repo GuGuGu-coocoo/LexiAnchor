@@ -121,10 +121,15 @@ describe('storage migrations', () => {
       });
 
       expect(matches).toEqual(['card-before-fts']);
-      expect(db.selectValue('SELECT MAX(version) FROM schema_migrations')).toBe(4);
+      expect(db.selectValue('SELECT MAX(version) FROM schema_migrations')).toBe(
+        migrations.at(-1)?.version,
+      );
       expect(
         db.selectValue("SELECT definitions_json FROM word_cards WHERE id = 'card-before-fts'"),
       ).toBe('[]');
+      expect(
+        db.selectValue("SELECT occurrence_count FROM word_cards WHERE id = 'card-before-fts'"),
+      ).toBe(1);
     } finally {
       db.close();
     }

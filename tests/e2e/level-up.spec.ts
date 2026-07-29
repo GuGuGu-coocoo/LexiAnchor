@@ -62,7 +62,19 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
   await expect.poll(currentHref).toContain('c07.xhtml');
 
   await openContents();
-  await expect(contents.getByRole('button').first()).toContainText('Level 7:');
+  const currentChapter = contents.getByRole('button', { name: /^Level 7:/ });
+  await expect(currentChapter).toHaveAttribute('aria-current', 'location');
+  await expect
+    .poll(async () => {
+      const [navigationBox, chapterBox] = await Promise.all([
+        contents.boundingBox(),
+        currentChapter.boundingBox(),
+      ]);
+      return navigationBox && chapterBox
+        ? chapterBox.y - navigationBox.y
+        : Number.POSITIVE_INFINITY;
+    })
+    .toBeLessThan(24);
   await openContents();
 
   const progressionBeforeSidebarChange = await currentProgression();

@@ -174,6 +174,7 @@ const emptyTranslationStatus: TranslationModelInstallStatus = {
 
 let bookRepository: SqliteBookRepository | undefined;
 const contentStore = new OpfsContentStore();
+const openBookContentCache = new Map<string, ArrayBuffer>();
 
 function repository(): SqliteBookRepository {
   bookRepository ??= new SqliteBookRepository();
@@ -362,6 +363,7 @@ export function App({ platform }: AppProps) {
   const latestReadingProgress = useRef<ReadingProgressRecord | null>(null);
   const isClosingReader = useRef(false);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
+  const [isReaderSettingsOpen, setIsReaderSettingsOpen] = useState(false);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
   const dictionaryProviders = useMemo<readonly DictionaryProvider[]>(() => {
     return dictionaryPreferences.order.flatMap((id) =>
@@ -553,12 +555,14 @@ export function App({ platform }: AppProps) {
 
   const openStoredBook = useCallback(async (entry: LibraryEntry) => {
     try {
-      const data = await contentStore.get(entry.book.contentRef);
+      const cached = openBookContentCache.get(entry.book.contentRef);
+      const data = cached ?? (await contentStore.get(entry.book.contentRef));
 
       if (!data) {
         throw new Error('The local book file is missing.');
       }
 
+      openBookContentCache.set(entry.book.contentRef, data);
       setOpenBook({
         source: {
           data,
@@ -643,6 +647,7 @@ export function App({ platform }: AppProps) {
               };
 
           await contentStore.put(hash, data);
+          openBookContentCache.set(hash, data);
           await repository().saveBook(book);
           existingBooks.set(book.id, book);
           importedSessions.push({
@@ -702,6 +707,7 @@ export function App({ platform }: AppProps) {
 
         try {
           await contentStore.delete(entry.book.contentRef);
+          openBookContentCache.delete(entry.book.contentRef);
           setStatusMessage(t('bookDeleted'));
         } catch (error) {
           setStatusMessage(
@@ -766,6 +772,7 @@ export function App({ platform }: AppProps) {
       )
       .finally(() => {
         latestReadingProgress.current = null;
+        setIsReaderSettingsOpen(false);
         setOpenBook(null);
         isClosingReader.current = false;
         void refreshLibrary();
@@ -779,16 +786,32 @@ export function App({ platform }: AppProps) {
       }
 
       const now = new Date().toISOString();
-      await repository().saveWordCard({
-        id: `card-${crypto.randomUUID()}`,
-        ...draft,
-        sourceBookId: openBook.bookId ?? null,
-        sourceBookTitle: openBook.source.name.replace(/\.(epub|pdf)$/i, ''),
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-        version: 1,
-      });
+      const existingCard = (await repository().listWordCards(draft.normalizedTerm)).find(
+        (card) => card.normalizedTerm === draft.normalizedTerm,
+      );
+
+      if (existingCard) {
+        await repository().saveWordCard({
+          ...existingCard,
+          definitions: [...new Set([...existingCard.definitions, ...draft.definitions])],
+          occurrenceCount: existingCard.occurrenceCount + 1,
+          updatedAt: now,
+          deletedAt: null,
+          version: existingCard.version + 1,
+        });
+      } else {
+        await repository().saveWordCard({
+          id: `card-${crypto.randomUUID()}`,
+          ...draft,
+          sourceBookId: openBook.bookId ?? null,
+          sourceBookTitle: openBook.source.name.replace(/\.(epub|pdf)$/i, ''),
+          occurrenceCount: 1,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+          version: 1,
+        });
+      }
       setWordCards(await repository().listWordCards(cardSearch));
     },
     [cardSearch, openBook],
@@ -1181,34 +1204,79 @@ export function App({ platform }: AppProps) {
     { id: 'settings', label: t('settings') },
   ];
 
+  const settingsPageProps: SettingsPageProps = {
+    locale,
+    storageHealth,
+    isRequestingPersistentStorage,
+    applicationBackupMessage,
+    isApplicationBackupBusy,
+    dictionaryPreferences,
+    installedDictionaries,
+    installingDictionary,
+    userStarDict,
+    translationModels,
+    installingTranslationModel,
+    translationModelProgress,
+    t,
+    onToggleDictionary: toggleDictionary,
+    onMoveDictionary: moveDictionary,
+    onInstallFreeDict: installFreeDict,
+    onRemoveFreeDict: removeFreeDict,
+    onImportStarDict: importStarDict,
+    onRemoveStarDict: removeStarDict,
+    onInstallTranslationModel: installTranslationModel,
+    onCancelTranslationInstall: cancelTranslationInstall,
+    onRemoveTranslationModel: removeTranslationModel,
+    onOpenExternal: (url) => platform.openExternal(url),
+    onProtectLocalStorage: protectLocalStorage,
+    onExportApplicationData: exportApplicationData,
+    onImportApplicationData: importApplicationData,
+  };
+
   if (openBook) {
     return (
-      <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
-        <ReaderPage
-          key={`${openBook.bookId ?? 'sample'}:${openBook.source.format}:${openBook.source.name}`}
-          source={openBook.source}
-          preferenceScopeId={openBook.bookId ?? openBook.source.name}
-          initialLocator={openBook.initialLocator}
-          theme={theme}
-          isFullscreen={isFullscreen}
-          locale={locale}
-          t={t}
-          onClose={closeReader}
-          onThemeChange={setTheme}
-          onToggleFullscreen={toggleFullscreen}
-          onLocationChange={persistLocation}
-          onOpenExternal={(url) => platform.openExternal(url)}
-          onAddWordCard={addWordCard}
-          dictionaryProviders={dictionaryProviders}
-          localTranslationProvider={localTranslationProvider}
-          installedTranslationTargets={(
-            Object.entries(translationModels) as [
-              TranslationTargetLanguage,
-              TranslationModelInstallStatus,
-            ][]
-          ).flatMap(([target, status]) => (status.installed ? [target] : []))}
-        />
-      </Suspense>
+      <div className="reader-session">
+        <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
+          <ReaderPage
+            key={`${openBook.bookId ?? 'sample'}:${openBook.source.format}:${openBook.source.name}`}
+            source={openBook.source}
+            preferenceScopeId={openBook.bookId ?? openBook.source.name}
+            initialLocator={openBook.initialLocator}
+            theme={theme}
+            isFullscreen={isFullscreen}
+            locale={locale}
+            t={t}
+            onClose={closeReader}
+            onOpenSettings={() => setIsReaderSettingsOpen(true)}
+            onThemeChange={setTheme}
+            onToggleFullscreen={toggleFullscreen}
+            onLocationChange={persistLocation}
+            onOpenExternal={(url) => platform.openExternal(url)}
+            onAddWordCard={addWordCard}
+            dictionaryProviders={dictionaryProviders}
+            localTranslationProvider={localTranslationProvider}
+            installedTranslationTargets={(
+              Object.entries(translationModels) as [
+                TranslationTargetLanguage,
+                TranslationModelInstallStatus,
+              ][]
+            ).flatMap(([target, status]) => (status.installed ? [target] : []))}
+          />
+        </Suspense>
+        {isReaderSettingsOpen ? (
+          <div className="reader-settings-overlay" role="dialog" aria-modal="true">
+            <div className="reader-settings-overlay-bar">
+              <strong>{t('settings')}</strong>
+              <button type="button" onClick={() => setIsReaderSettingsOpen(false)}>
+                {t('closeSettings')}
+              </button>
+            </div>
+            <div className="reader-settings-overlay-content">
+              <SettingsPage {...settingsPageProps} />
+            </div>
+          </div>
+        ) : null}
+      </div>
     );
   }
 
@@ -1324,34 +1392,7 @@ export function App({ platform }: AppProps) {
             transferMessage={cardTransferMessage}
           />
         ) : (
-          <SettingsPage
-            locale={locale}
-            storageHealth={storageHealth}
-            isRequestingPersistentStorage={isRequestingPersistentStorage}
-            applicationBackupMessage={applicationBackupMessage}
-            isApplicationBackupBusy={isApplicationBackupBusy}
-            dictionaryPreferences={dictionaryPreferences}
-            installedDictionaries={installedDictionaries}
-            installingDictionary={installingDictionary}
-            userStarDict={userStarDict}
-            translationModels={translationModels}
-            installingTranslationModel={installingTranslationModel}
-            translationModelProgress={translationModelProgress}
-            t={t}
-            onToggleDictionary={toggleDictionary}
-            onMoveDictionary={moveDictionary}
-            onInstallFreeDict={installFreeDict}
-            onRemoveFreeDict={removeFreeDict}
-            onImportStarDict={importStarDict}
-            onRemoveStarDict={removeStarDict}
-            onInstallTranslationModel={installTranslationModel}
-            onCancelTranslationInstall={cancelTranslationInstall}
-            onRemoveTranslationModel={removeTranslationModel}
-            onOpenExternal={(url) => platform.openExternal(url)}
-            onProtectLocalStorage={protectLocalStorage}
-            onExportApplicationData={exportApplicationData}
-            onImportApplicationData={importApplicationData}
-          />
+          <SettingsPage {...settingsPageProps} />
         )}
         <p className="sr-only" aria-live="polite">
           {statusMessage}
@@ -2192,6 +2233,9 @@ function CardsPage({
                     aria-label={`${t('viewCardDetails')} ${card.term}`}
                     onClick={() => setActiveCardId(card.id)}
                   >
+                    <span className="word-card-occurrence">
+                      {t('addedTimes')} ×{card.occurrenceCount}
+                    </span>
                     <div className="word-card-heading">
                       <span className="badge">{card.partOfSpeech}</span>
                       <h2>{card.term}</h2>

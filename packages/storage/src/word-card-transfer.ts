@@ -56,6 +56,12 @@ function parseCard(value: unknown): WordCardRecord {
     throw new Error('A word-card entry contains an invalid field.');
   }
 
+  const occurrenceCount =
+    typeof card.occurrenceCount === 'number' &&
+    Number.isInteger(card.occurrenceCount) &&
+    card.occurrenceCount >= 1
+      ? card.occurrenceCount
+      : 1;
   const term = String(card.term).trim();
   const definition = String(card.definition).trim();
   const definitions = Array.isArray(card.definitions)
@@ -92,6 +98,7 @@ function parseCard(value: unknown): WordCardRecord {
     sourceBookId: null,
     sourceBookTitle,
     sourceSentence,
+    occurrenceCount,
     createdAt,
     updatedAt,
     deletedAt: null,

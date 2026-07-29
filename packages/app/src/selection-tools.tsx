@@ -13,6 +13,8 @@ import type {
   TranslationTargetLanguage,
 } from '@lexianchor/translation';
 
+import { isSingleWord, normalizeSelectionText } from './selection-text';
+
 interface SelectionToolsProps {
   readonly selection: ReaderSelection | null;
   readonly emptyHint: string;
@@ -52,10 +54,6 @@ interface LocalTranslationState {
   readonly error: string;
 }
 
-function isSingleWord(value: string): boolean {
-  return /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’][A-Za-zÀ-ÖØ-öø-ÿ]+)?$/.test(value.trim());
-}
-
 function searchUrl(text: string): string {
   const url = new URL('https://www.google.com/search');
   url.searchParams.set('q', text);
@@ -84,7 +82,7 @@ export function SelectionTools({
   installedTranslationTargets,
   onDismiss,
 }: SelectionToolsProps) {
-  const selectedText = selection?.text.trim() ?? '';
+  const selectedText = normalizeSelectionText(selection?.text ?? '');
   const canUseDictionary = isSingleWord(selectedText);
   const [lookupState, setLookupState] = useState<LookupState>({
     term: '',

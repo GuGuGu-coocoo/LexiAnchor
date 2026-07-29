@@ -95,6 +95,7 @@ async function fixture() {
         sourceBookId: `book-${hash}`,
         sourceBookTitle: 'Anchored Reading',
         sourceSentence: 'An anchor is useful.',
+        occurrenceCount: 1,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,

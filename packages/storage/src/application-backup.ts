@@ -186,6 +186,7 @@ function parseWordCard(value: unknown): WordCardRecord {
   return {
     ...(value as unknown as WordCardRecord),
     definitions: definitions.length > 0 ? definitions : [value.definition],
+    occurrenceCount: isPositiveInteger(value.occurrenceCount) ? value.occurrenceCount : 1,
   };
 }
 

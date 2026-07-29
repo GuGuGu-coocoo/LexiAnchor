@@ -391,6 +391,16 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  const epubScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
+  const pageBeforeKeyboardTurn = await epubScroller.evaluate((element) => element.scrollLeft);
+  await bookFrame.locator('body').press('ArrowRight');
+  await expect
+    .poll(() => epubScroller.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(pageBeforeKeyboardTurn);
+  await bookFrame.locator('body').press('ArrowLeft');
+  await expect
+    .poll(() => epubScroller.evaluate((element) => element.scrollLeft))
+    .toBeLessThanOrEqual(pageBeforeKeyboardTurn + 1);
   const embeddedImage = bookFrame.getByRole('img', {
     name: 'A reading lamp illuminating an open book',
   });
@@ -444,9 +454,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   });
   await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
   await expect(page.locator('.reader-page')).not.toHaveClass(/reader-page--toolbar-hidden/);
-  await page
-    .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
-    .click();
+  await bookFrame.locator('body').press('Escape');
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
   await page
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
@@ -474,7 +482,14 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     })
     .click();
   await expect(secondChapter).toHaveAttribute('aria-current', 'location');
-  await expect(tableOfContents.getByRole('button').first()).toHaveText('Finding an Anchor');
+  await expect(tableOfContents.getByRole('button').first()).toHaveText('A Quiet Beginning');
+  await expect
+    .poll(async () => {
+      const currentBox = await secondChapter.boundingBox();
+      const contentsBox = await tableOfContents.boundingBox();
+      return currentBox && contentsBox ? Math.abs(currentBox.y - contentsBox.y) : Number.MAX_VALUE;
+    })
+    .toBeLessThan(24);
   await firstChapter.click();
   await expect.poll(() => currentEpubHref(page)).toContain('chapter-1.xhtml');
   await expectEpubHeading(page, 'A Quiet Beginning');

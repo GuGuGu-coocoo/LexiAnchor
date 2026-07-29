@@ -238,10 +238,25 @@ export function ReaderAppearancePanel({
               updatePreference('fontFamily', event.target.value as ReaderPreferences['fontFamily'])
             }
           >
+            <option value="system">{t('systemFont')}</option>
             <option value="serif">{t('serifFont')}</option>
             <option value="sans-serif">{t('sansSerifFont')}</option>
+            <option value="custom">{t('customSystemFont')}</option>
           </select>
         </label>
+
+        {preferences.fontFamily === 'custom' ? (
+          <label className="reader-control">
+            <span>{t('customSystemFontName')}</span>
+            <input
+              type="text"
+              maxLength={120}
+              placeholder={t('customSystemFontPlaceholder')}
+              value={preferences.customFontFamily}
+              onChange={(event) => updatePreference('customFontFamily', event.target.value)}
+            />
+          </label>
+        ) : null}
 
         <label className="reader-control">
           <span>
@@ -255,6 +270,23 @@ export function ReaderAppearancePanel({
             step="5"
             value={preferences.fontSizePercent}
             onChange={(event) => updatePreference('fontSizePercent', Number(event.target.value))}
+          />
+        </label>
+
+        <label className="reader-control">
+          <span>
+            {t('selectionFontSize')} <output>{preferences.selectionFontSizePercent}%</output>
+          </span>
+          <input
+            type="range"
+            aria-label={t('selectionFontSize')}
+            min="80"
+            max="160"
+            step="5"
+            value={preferences.selectionFontSizePercent}
+            onChange={(event) =>
+              updatePreference('selectionFontSizePercent', Number(event.target.value))
+            }
           />
         </label>
 

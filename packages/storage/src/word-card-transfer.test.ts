@@ -15,6 +15,7 @@ const card: WordCardRecord = {
   sourceBookId: 'book-local-only',
   sourceBookTitle: 'Anchored Pages',
   sourceSentence: 'A resilient reader returns to the page.',
+  occurrenceCount: 1,
   createdAt: '2026-07-24T00:00:00.000Z',
   updatedAt: '2026-07-24T00:00:00.000Z',
   deletedAt: null,

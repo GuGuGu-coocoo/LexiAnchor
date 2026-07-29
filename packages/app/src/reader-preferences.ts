@@ -14,7 +14,7 @@ const globalKey = 'lexianchor:reader-preferences';
 const presetsKey = 'lexianchor:reader-presets';
 export const defaultReaderPresetId = 'default';
 const focusStrengths: readonly FocusStrength[] = ['light', 'medium', 'strong'];
-const fontFamilies: readonly ReaderFontFamily[] = ['serif', 'sans-serif'];
+const fontFamilies: readonly ReaderFontFamily[] = ['system', 'serif', 'sans-serif', 'custom'];
 const pageSpreads: readonly ReaderPageSpread[] = ['single', 'double'];
 const pageTurnEffects: readonly ReaderPageTurnEffect[] = ['slide', 'stack'];
 const textAlignments: readonly ReaderTextAlignment[] = ['start', 'justify'];
@@ -68,7 +68,13 @@ export function normalizeReaderPreferences(input: Partial<ReaderPreferences>): R
     fontFamily: fontFamilies.includes(input.fontFamily as ReaderFontFamily)
       ? (input.fontFamily as ReaderFontFamily)
       : defaultReaderPreferences.fontFamily,
+    customFontFamily:
+      typeof input.customFontFamily === 'string'
+        ? input.customFontFamily.trim().slice(0, 120)
+        : defaultReaderPreferences.customFontFamily,
     fontWeight: Math.round(clamp(input.fontWeight, 400, 350, 700) / 50) * 50,
+    selectionFontSizePercent:
+      Math.round(clamp(input.selectionFontSizePercent, 100, 80, 160) / 5) * 5,
     contentWidthPercent: Math.round(clamp(input.contentWidthPercent, 90, 55, 100) / 5) * 5,
     textAlignment: textAlignments.includes(input.textAlignment as ReaderTextAlignment)
       ? (input.textAlignment as ReaderTextAlignment)

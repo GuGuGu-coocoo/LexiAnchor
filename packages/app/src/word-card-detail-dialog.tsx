@@ -159,7 +159,12 @@ export function WordCardDetailDialog({
               key={card.id}
             >
               <div className="word-card-detail-heading">
-                <span className="badge">{card.partOfSpeech}</span>
+                <div>
+                  <span className="badge">{card.partOfSpeech}</span>
+                  <span className="word-card-detail-occurrence">
+                    {t('addedTimes')} ×{card.occurrenceCount}
+                  </span>
+                </div>
                 <h3>{card.term}</h3>
               </div>
 

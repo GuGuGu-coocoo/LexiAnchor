@@ -16,6 +16,7 @@ import type {
 
 import { FloatingSelectionTools } from './floating-selection-tools';
 import { ReaderAppearancePanel } from './reader-appearance-panel';
+import { ReaderFooter } from './reader-footer';
 import { SelectionTools, type WordCardDraft } from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import { readerColorsForTheme, type Theme } from './theme';
@@ -35,6 +36,7 @@ interface ReaderPageProps {
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onOpenSettings: () => void;
   readonly onThemeChange: (theme: Theme) => void;
   readonly onToggleFullscreen: () => Promise<void>;
   readonly onLocationChange?: (locator: ReaderLocator, percentage: number) => void;
@@ -45,12 +47,18 @@ interface ReaderPageProps {
   readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
 }
 
-function storageKey(source: ReaderSource): string {
+function storageKey(scopeId: string): string {
+  return `lexianchor:epub-location:${encodeURIComponent(scopeId)}`;
+}
+
+function legacyStorageKey(source: ReaderSource): string {
   return `lexianchor:epub-location:${source.name}`;
 }
 
-function readLocator(source: ReaderSource): ReaderLocator | undefined {
-  const stored = globalThis.localStorage?.getItem(storageKey(source));
+function readLocator(source: ReaderSource, scopeId: string): ReaderLocator | undefined {
+  const stored =
+    globalThis.localStorage?.getItem(storageKey(scopeId)) ??
+    globalThis.localStorage?.getItem(legacyStorageKey(source));
 
   if (!stored) {
     return undefined;
@@ -127,6 +135,7 @@ function EpubReaderPage({
   locale,
   t,
   onClose,
+  onOpenSettings,
   onThemeChange,
   onToggleFullscreen,
   onLocationChange,
@@ -139,6 +148,8 @@ function EpubReaderPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const readerStageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
+  const isFullscreenRef = useRef(isFullscreen);
+  const onToggleFullscreenRef = useRef(onToggleFullscreen);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
     ...readReaderPreferences(preferenceScopeId),
     ...readerColorsForTheme(theme),
@@ -148,6 +159,7 @@ function EpubReaderPage({
   const [tableOfContents, setTableOfContents] = useState<readonly EpubNavigationItem[]>([]);
   const [activeTocHref, setActiveTocHref] = useState('');
   const [isTableOfContentsOpen, setIsTableOfContentsOpen] = useState(false);
+  const [linkOrigin, setLinkOrigin] = useState<ReaderLocator | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -159,6 +171,11 @@ function EpubReaderPage({
     scheduleHide,
     setAutoHide: setAutoHideFullscreenToolbar,
   } = useFullscreenToolbar(isFullscreen);
+
+  useEffect(() => {
+    isFullscreenRef.current = isFullscreen;
+    onToggleFullscreenRef.current = onToggleFullscreen;
+  }, [isFullscreen, onToggleFullscreen]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -178,7 +195,10 @@ function EpubReaderPage({
         setActiveTocHref((current) =>
           current && isCurrentHref(current, nextLocator.href) ? current : '',
         );
-        globalThis.localStorage?.setItem(storageKey(source), JSON.stringify(nextLocator));
+        globalThis.localStorage?.setItem(
+          storageKey(preferenceScopeId),
+          JSON.stringify(nextLocator),
+        );
         onLocationChange?.(
           nextLocator,
           Math.round((nextLocator.totalProgression ?? nextLocator.progression ?? 0) * 100),
@@ -190,8 +210,27 @@ function EpubReaderPage({
         }
       },
       onNavigationCommand: (command) => {
+        if (command === 'escape') {
+          if (isFullscreenRef.current) {
+            void onToggleFullscreenRef.current();
+          }
+          return;
+        }
+
         const activeEngine = engineRef.current;
         void (command === 'next' ? activeEngine?.next() : activeEngine?.previous());
+      },
+      onLinkNavigation: (origin) => {
+        if (isActive) {
+          setLinkOrigin(origin);
+        }
+      },
+      onPaginationReady: () => {
+        void engine.getTableOfContents().then((navigation) => {
+          if (isActive) {
+            setTableOfContents(navigation);
+          }
+        });
       },
       onError: (readerError) => isActive && setError(readerError.message),
     });
@@ -202,7 +241,11 @@ function EpubReaderPage({
     setError('');
 
     void engine
-      .open(container, source, initialLocator ?? readLocator(source))
+      // The synchronous per-book locator is authoritative on this device.
+      // SQLite remains the fallback for restored backups and cleared browser
+      // storage, but may lag behind if the desktop process was closed while
+      // its final asynchronous write was still in flight.
+      .open(container, source, readLocator(source, preferenceScopeId) ?? initialLocator)
       .then(async () => {
         await engine.setPreferences(initialPreferencesRef.current);
         const navigation = await engine.getTableOfContents().catch(() => []);
@@ -219,7 +262,7 @@ function EpubReaderPage({
       engineRef.current = null;
       void engine.close();
     };
-  }, [initialLocator, onLocationChange, source]);
+  }, [initialLocator, onLocationChange, preferenceScopeId, source]);
 
   useEffect(() => {
     void engineRef.current
@@ -299,6 +342,11 @@ function EpubReaderPage({
       className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${
         isFullscreen && !isToolbarVisible ? ' reader-page--toolbar-hidden' : ''
       }`}
+      style={
+        {
+          '--selection-font-scale': preferences.selectionFontSizePercent / 100,
+        } as CSSProperties
+      }
       aria-label={t('readerExperiment')}
     >
       <header
@@ -348,6 +396,7 @@ function EpubReaderPage({
               currentHref={currentNavigationItem?.href}
               emptyLabel={t('noTableOfContents')}
               label={t('tableOfContents')}
+              pageLabel={t('page')}
               onNavigate={(href) => {
                 setSelection(null);
                 setActiveTocHref(href);
@@ -391,6 +440,15 @@ function EpubReaderPage({
                 ? t('autoHideFullscreenToolbar')
                 : t('keepFullscreenToolbarVisible')}
             </span>
+          </button>
+          <button
+            className="reader-icon-button reader-toolbar-settings-button"
+            type="button"
+            aria-label={t('settings')}
+            onClick={onOpenSettings}
+          >
+            <span aria-hidden="true">⚙</span>
+            <span>{t('settings')}</span>
           </button>
           <button
             className="reader-icon-button"
@@ -471,6 +529,31 @@ function EpubReaderPage({
             </div>
           ) : null}
           <div ref={containerRef} className="epub-container" data-testid="epub-container" />
+          {!isLoading ? (
+            <ReaderFooter
+              currentPage={locator?.totalPageNumber ?? locator?.pageNumber}
+              totalPages={locator?.totalPageCount ?? locator?.pageCount}
+              pagesRemaining={locator?.chapterPagesRemaining}
+              backLabel={
+                linkOrigin
+                  ? `${t('backToPage')} ${
+                      linkOrigin.totalPageNumber ?? linkOrigin.pageNumber ?? '—'
+                    }`
+                  : undefined
+              }
+              pagesRemainingLabel={t('pagesLeftInChapter')}
+              ofLabel={t('of')}
+              onBack={
+                linkOrigin
+                  ? () => {
+                      const origin = linkOrigin;
+                      setLinkOrigin(null);
+                      void engineRef.current?.goTo(origin);
+                    }
+                  : undefined
+              }
+            />
+          ) : null}
         </div>
         {selection && !isSidebarOpen ? (
           <FloatingSelectionTools
@@ -495,6 +578,7 @@ interface EpubTableOfContentsProps {
   readonly currentHref: string | undefined;
   readonly emptyLabel: string;
   readonly label: string;
+  readonly pageLabel: string;
   readonly onNavigate: (href: string) => void;
 }
 
@@ -503,24 +587,29 @@ function EpubTableOfContents({
   currentHref,
   emptyLabel,
   label,
+  pageLabel,
   onNavigate,
 }: EpubTableOfContentsProps) {
+  const currentRowRef = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    currentRowRef.current?.scrollIntoView({ block: 'start' });
+  }, [currentHref, items]);
+
   if (items.length === 0) {
     return <p className="reader-toc-empty">{emptyLabel}</p>;
   }
 
   const currentItem = items.find((item) => item.href === currentHref);
-  const orderedItems = currentItem
-    ? [currentItem, ...items.filter((item) => item !== currentItem)]
-    : items;
 
   return (
     <nav className="reader-toc" aria-label={label}>
       <ol>
-        {orderedItems.map((item, index) => (
+        {items.map((item) => (
           <li
             key={`${item.id}:${item.href}`}
-            className={index === 0 && currentItem ? 'reader-toc-current-row' : undefined}
+            ref={item === currentItem ? currentRowRef : undefined}
+            className={item === currentItem ? 'reader-toc-current-row' : undefined}
           >
             <button
               type="button"
@@ -528,7 +617,12 @@ function EpubTableOfContents({
               style={{ '--reader-toc-depth': item.depth } as CSSProperties}
               onClick={() => onNavigate(item.href)}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.pageNumber ? (
+                <span className="reader-toc-page">
+                  {pageLabel} {item.pageNumber}
+                </span>
+              ) : null}
             </button>
           </li>
         ))}

@@ -3,7 +3,7 @@ export type ReaderPageSpread = 'single' | 'double';
 export type ReaderPageTurnEffect = 'slide' | 'stack';
 export type DocumentFormat = 'epub' | 'pdf';
 export type FocusStrength = 'light' | 'medium' | 'strong';
-export type ReaderFontFamily = 'serif' | 'sans-serif';
+export type ReaderFontFamily = 'system' | 'serif' | 'sans-serif' | 'custom';
 export type ReaderTextAlignment = 'start' | 'justify';
 
 export interface ReaderLocator {
@@ -12,6 +12,10 @@ export interface ReaderLocator {
   readonly progression?: number;
   readonly totalProgression?: number;
   readonly pageNumber?: number;
+  readonly pageCount?: number;
+  readonly totalPageNumber?: number;
+  readonly totalPageCount?: number;
+  readonly chapterPagesRemaining?: number;
 }
 
 export interface ReaderPreferences {
@@ -23,7 +27,9 @@ export interface ReaderPreferences {
   readonly wordSpacingEm: number;
   readonly letterSpacingEm: number;
   readonly fontFamily: ReaderFontFamily;
+  readonly customFontFamily: string;
   readonly fontWeight: number;
+  readonly selectionFontSizePercent: number;
   readonly contentWidthPercent: number;
   readonly textAlignment: ReaderTextAlignment;
   readonly foreground: string;
@@ -49,7 +55,9 @@ export interface ReaderCallbacks {
   readonly onLocationChange: (locator: ReaderLocator) => void;
   readonly onSelection: (selection: ReaderSelection | null) => void;
   readonly onError: (error: Error) => void;
-  readonly onNavigationCommand?: (command: 'next' | 'previous') => void;
+  readonly onNavigationCommand?: (command: 'next' | 'previous' | 'escape') => void;
+  readonly onLinkNavigation?: (origin: ReaderLocator) => void;
+  readonly onPaginationReady?: () => void;
 }
 
 export interface ReaderSource {
@@ -456,6 +464,7 @@ export function createHorizontalPageScrollGesture(
 export function createStackedPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
 ): HorizontalPageGestureController {
+  const gestureIdleDelay = 64;
   let origin = 0;
   let target = 0;
   let distance = 0;
@@ -531,7 +540,7 @@ export function createStackedPageScrollGesture(
     if (endTimer !== null) {
       clearTimeout(endTimer);
     }
-    endTimer = setTimeout(finishGesture, 90);
+    endTimer = setTimeout(finishGesture, gestureIdleDelay);
   }
 
   function bufferInput(delta: number, now: number): void {
@@ -612,7 +621,7 @@ export function createStackedPageScrollGesture(
     stopAnimation();
     const ownSequence = sequence;
     const destination = commit ? 1 : 0;
-    const response = 0.34;
+    const response = 0.28;
     const stiffness = ((2 * Math.PI) / response) ** 2;
     const damping = 2 * Math.sqrt(stiffness);
     let springVelocity = direction === 0 ? 0 : (velocity * direction) / activeExtent;
@@ -813,7 +822,7 @@ export function createStackedPageScrollGesture(
       if (endTimer !== null) {
         clearTimeout(endTimer);
       }
-      endTimer = setTimeout(finishGesture, 90);
+      endTimer = setTimeout(finishGesture, gestureIdleDelay);
     },
     dispose() {
       isDisposed = true;
@@ -846,7 +855,9 @@ export const defaultReaderPreferences: ReaderPreferences = {
   wordSpacingEm: 0,
   letterSpacingEm: 0,
   fontFamily: 'serif',
+  customFontFamily: '',
   fontWeight: 400,
+  selectionFontSizePercent: 100,
   contentWidthPercent: 90,
   textAlignment: 'start',
   foreground: '#20211f',

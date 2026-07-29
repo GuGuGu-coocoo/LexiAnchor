@@ -53,6 +53,7 @@ interface WordCardRow {
   readonly source_book_id: string | null;
   readonly source_book_title: string;
   readonly source_sentence: string;
+  readonly occurrence_count: number;
   readonly created_at: string;
   readonly updated_at: string;
   readonly deleted_at: string | null;
@@ -161,6 +162,7 @@ function mapWordCard(row: WordCardRow): WordCardRecord {
     sourceBookId: row.source_book_id,
     sourceBookTitle: row.source_book_title,
     sourceSentence: row.source_sentence,
+    occurrenceCount: row.occurrence_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
@@ -183,8 +185,8 @@ function saveWordCard(db: Database, card: WordCardRecord): void {
       INSERT INTO word_cards (
         id, term, normalized_term, part_of_speech, definition, definitions_json, root_or_etymology,
         dictionary_source, source_book_id, source_book_title, source_sentence,
-        created_at, updated_at, deleted_at, version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        occurrence_count, created_at, updated_at, deleted_at, version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT DO UPDATE SET
         term = excluded.term,
         normalized_term = excluded.normalized_term,
@@ -196,6 +198,7 @@ function saveWordCard(db: Database, card: WordCardRecord): void {
         source_book_id = COALESCE(excluded.source_book_id, word_cards.source_book_id),
         source_book_title = excluded.source_book_title,
         source_sentence = excluded.source_sentence,
+        occurrence_count = MAX(word_cards.occurrence_count, excluded.occurrence_count),
         created_at = MIN(word_cards.created_at, excluded.created_at),
         updated_at = excluded.updated_at,
         deleted_at = NULL,
@@ -213,6 +216,7 @@ function saveWordCard(db: Database, card: WordCardRecord): void {
       card.sourceBookId,
       card.sourceBookTitle,
       card.sourceSentence,
+      card.occurrenceCount,
       card.createdAt,
       card.updatedAt,
       card.deletedAt,
@@ -550,6 +554,7 @@ async function handleRequest(request: DatabaseRequest) {
               root_or_etymology = ?,
               source_book_title = ?,
               source_sentence = ?,
+              occurrence_count = ?,
               updated_at = ?,
               deleted_at = NULL,
               version = version + 1
@@ -564,6 +569,7 @@ async function handleRequest(request: DatabaseRequest) {
           card.rootOrEtymology,
           card.sourceBookTitle,
           card.sourceSentence,
+          card.occurrenceCount,
           card.updatedAt,
           card.id,
         ],

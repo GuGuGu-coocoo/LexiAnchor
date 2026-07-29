@@ -145,6 +145,13 @@ export const migrations: readonly Migration[] = [
       ADD COLUMN definitions_json TEXT NOT NULL DEFAULT '[]';
     `,
   },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE word_cards
+      ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1 CHECK (occurrence_count >= 1);
+    `,
+  },
 ] as const;
 
 export function applyMigrations(db: Pick<Database, 'exec'>, appliedAt = new Date().toISOString()) {
