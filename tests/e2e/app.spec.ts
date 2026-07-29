@@ -1571,17 +1571,19 @@ test('reorders, disables, and uses installed bilingual dictionaries offline', as
     animations: 'disabled',
   });
 
-  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  const readerSettings = page.locator('.reader-settings-overlay');
+  await expect(readerSettings).toBeVisible();
   await freeDictCard.getByRole('checkbox').uncheck();
   await chineseDictionaryCard.getByRole('checkbox').uncheck();
+  await readerSettings
+    .getByRole('button', { name: /Close settings|关闭设置|Fermer les réglages/ })
+    .click();
 
-  await openAndSelectAttentive();
   await expect(page.locator('.dictionary-result').filter({ hasText: 'FreeDict' })).toHaveCount(0);
   await expect(page.locator('.dictionary-result')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.locator('.dictionary-result')).toContainText('Princeton WordNet');
 
-  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await chineseDictionaryCard.getByRole('button', { name: /Remove|移除|Supprimer/ }).click();
