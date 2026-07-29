@@ -1,8 +1,14 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import path from 'node:path';
+
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
+
+const execFileAsync = promisify(execFile);
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -11,6 +17,28 @@ const config: ForgeConfig = {
     executableName: 'LexiAnchor',
   },
   rebuildConfig: {},
+  hooks: {
+    postPackage: async (_forgeConfig, packageResult) => {
+      if (packageResult.platform !== 'darwin') {
+        return;
+      }
+
+      // The Fuses plugin changes Electron after Packager's initial ad-hoc
+      // signature. Re-sign the completed app bundle so macOS does not report
+      // local test builds as damaged.
+      await Promise.all(
+        packageResult.outputPaths.map((outputPath) =>
+          execFileAsync('/usr/bin/codesign', [
+            '--force',
+            '--deep',
+            '--sign',
+            '-',
+            path.join(outputPath, 'LexiAnchor.app'),
+          ]),
+        ),
+      );
+    },
+  },
   makers: [new MakerZIP({}, ['darwin', 'win32'])],
   plugins: [
     new VitePlugin({
