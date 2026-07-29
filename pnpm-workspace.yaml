@@ -17,6 +17,7 @@ allowBuilds:
 # removes the Git-based node-gyp dependency, and is verified by our package job.
 overrides:
   '@electron/rebuild': 4.0.4
+  brace-expansion: 5.0.8
   # EPUB.js allows only the vulnerable 0.7 line. The 0.8 line keeps the DOM
   # parser API and includes fixes for GHSA-wh4c, GHSA-2v35, GHSA-f6ww,
   # GHSA-x6wf, and GHSA-j759.
