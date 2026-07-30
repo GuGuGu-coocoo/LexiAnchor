@@ -688,6 +688,23 @@ export class EpubJsReaderEngine implements ReaderEngine {
         false,
       );
     }
+    if (
+      update === this.preferenceUpdate &&
+      interactionRevision === this.interactionRevision &&
+      rendition === this.rendition
+    ) {
+      // A typography update is itself a complete layout restoration. Leaving
+      // layoutAnchor set caused every later `relocated` event to be discarded,
+      // so the visible pages advanced while the saved checkpoint stayed at
+      // the beginning of the chapter indefinitely.
+      this.layoutRevision += 1;
+      this.layoutAnchor = null;
+      if (this.resizeSettleTimer !== null) {
+        clearTimeout(this.resizeSettleTimer);
+        this.resizeSettleTimer = null;
+      }
+      await rendition.reportLocation();
+    }
     this.preparePageGesture();
   }
 

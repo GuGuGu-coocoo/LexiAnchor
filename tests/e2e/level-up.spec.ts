@@ -239,11 +239,43 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
   }
   await page.getByRole('slider', { name: /Text size|文字大小|Taille du texte/ }).fill('115');
   await expect.poll(currentHref, { timeout: 30_000 }).toContain('c07.xhtml');
-  await expect.poll(async () => (await storedLocator()).cfi).not.toBe(exactPage.cfi);
-  const repaginatedPage = await storedLocator();
+  await expect.poll(async () => (await storedLocator()).cfi).toContain('/6/28!');
 
-  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
-  await savedBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
-  await expect.poll(currentHref, { timeout: 30_000 }).toContain('c07.xhtml');
-  await expect.poll(async () => (await storedLocator()).cfi).toBe(repaginatedPage.cfi);
+  // Reproduce a real desktop restart: jump to Level 8, turn several pages
+  // after a typography reflow, then reload without using the Library button
+  // (and therefore without awaiting the async SQLite write queue).
+  await openContents();
+  await contents.getByRole('button', { name: /^Level 8:/ }).click();
+  await expect.poll(currentHref).toContain('c08.xhtml');
+  const levelEightStart = await storedLocator();
+  expect(levelEightStart.href).toContain('c08.xhtml');
+
+  const nextPage = page.getByRole('button', { name: /^Next$|^下一页$|^Suivant$/ });
+  const pageCheckpoints: string[] = [];
+  for (let index = 0; index < 4; index += 1) {
+    await nextPage.click();
+    await expect
+      .poll(async () => (await storedLocator()).cfi)
+      .not.toBe(pageCheckpoints.at(-1) ?? levelEightStart.cfi);
+    pageCheckpoints.push((await storedLocator()).cfi ?? '');
+  }
+
+  const finalPageBeforeRestart = await storedLocator();
+  expect(finalPageBeforeRestart.cfi).not.toBe(levelEightStart.cfi);
+
+  await page.reload();
+  await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
+  const savedBookAfterRestart = page.locator('article[data-book-id]').first();
+  await expect(savedBookAfterRestart).toBeVisible();
+  await savedBookAfterRestart.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+  await expect.poll(currentHref, { timeout: 30_000 }).toContain('c08.xhtml');
+  await expect.poll(async () => (await storedLocator()).cfi).toBe(finalPageBeforeRestart.cfi);
+  await expect
+    .poll(async () =>
+      Math.abs(
+        ((await storedLocator()).totalProgression ?? 0) -
+          (finalPageBeforeRestart.totalProgression ?? 0),
+      ),
+    )
+    .toBeLessThan(0.001);
 });

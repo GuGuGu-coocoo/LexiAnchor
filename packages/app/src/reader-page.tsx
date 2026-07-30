@@ -1,4 +1,13 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 
 import {
   type ReaderLocator,
@@ -94,26 +103,12 @@ function layoutSignature(preferences: ReaderPreferences): string {
   });
 }
 
-function resumeLocator(
-  stored: ReaderLocator | undefined,
-  preferences: ReaderPreferences,
-): ReaderLocator | undefined {
-  if (
-    !stored ||
-    !stored.layoutSignature ||
-    stored.layoutSignature === layoutSignature(preferences)
-  ) {
-    return stored;
-  }
-
-  if (stored.navigationHref) {
-    return {
-      href: stored.navigationHref,
-      cfi: stored.navigationCfi,
-    };
-  }
-
-  return { href: normalizedHref(stored.href) || stored.href };
+function resumeLocator(stored: ReaderLocator | undefined): ReaderLocator | undefined {
+  // An EPUB CFI describes a content position, not a pixel coordinate. It is
+  // still the best checkpoint after font, spacing, sidebar, or window-size
+  // changes. Falling back to navigationHref discarded the exact page and
+  // repeatedly reopened books at the beginning of their current chapter.
+  return stored;
 }
 
 function normalizedHref(href: string | undefined): string {
@@ -207,6 +202,10 @@ function EpubReaderPage({
   const layoutPersistencePendingRef = useRef(false);
   const currentNavigationItemRef = useRef<FlatNavigationItem | undefined>(undefined);
   const resumeNavigationRef = useRef<{ href: string; cfi?: string } | undefined>(undefined);
+  const activeTocHrefRef = useRef('');
+  const locatorLayoutSignatureRef = useRef(layoutSignature(preferences));
+  const onLocationChangeRef = useRef(onLocationChange);
+  const locatorRef = useRef<ReaderLocator | undefined>(undefined);
   const [locator, setLocator] = useState<ReaderLocator>();
   const [locatorLayoutSignature, setLocatorLayoutSignature] = useState(
     layoutSignature(preferences),
@@ -234,7 +233,33 @@ function EpubReaderPage({
   useEffect(() => {
     isFullscreenRef.current = isFullscreen;
     onToggleFullscreenRef.current = onToggleFullscreen;
-  }, [isFullscreen, onToggleFullscreen]);
+    onLocationChangeRef.current = onLocationChange;
+  }, [isFullscreen, onLocationChange, onToggleFullscreen]);
+
+  const updateActiveTocHref = useCallback((href: string) => {
+    activeTocHrefRef.current = href;
+    setActiveTocHref(href);
+  }, []);
+
+  const savePageCheckpoint = useCallback(
+    (nextLocator: ReaderLocator) => {
+      const explicitTocHref = activeTocHrefRef.current;
+      const checkpoint: ReaderLocator = {
+        ...nextLocator,
+        href: explicitTocHref || nextLocator.href,
+        cfi: explicitTocHref ? undefined : nextLocator.cfi,
+        layoutSignature: locatorLayoutSignatureRef.current,
+        navigationHref: resumeNavigationRef.current?.href,
+        navigationCfi: resumeNavigationRef.current?.cfi,
+      };
+      globalThis.localStorage?.setItem(storageKey(preferenceScopeId), JSON.stringify(checkpoint));
+      onLocationChangeRef.current?.(
+        checkpoint,
+        Math.round((nextLocator.totalProgression ?? nextLocator.progression ?? 0) * 100),
+      );
+    },
+    [preferenceScopeId],
+  );
 
   useEffect(() => {
     const wasFullscreen = wasFullscreenRef.current;
@@ -264,10 +289,18 @@ function EpubReaderPage({
           return;
         }
 
+        if (
+          activeTocHrefRef.current &&
+          !isCurrentHref(activeTocHrefRef.current, nextLocator.href)
+        ) {
+          updateActiveTocHref('');
+        }
+        // Persist in the engine callback, before React schedules a render.
+        // Closing the desktop window immediately after a page settles can no
+        // longer lose that page.
+        locatorRef.current = nextLocator;
+        savePageCheckpoint(nextLocator);
         setLocator(nextLocator);
-        setActiveTocHref((current) =>
-          current && isCurrentHref(current, nextLocator.href) ? current : '',
-        );
       },
       onSelection: (nextSelection) => {
         if (isActive) {
@@ -288,12 +321,12 @@ function EpubReaderPage({
         }
 
         const activeEngine = engineRef.current;
-        setActiveTocHref('');
+        updateActiveTocHref('');
         void (command === 'next' ? activeEngine?.next() : activeEngine?.previous());
       },
       onPageInteraction: () => {
         if (isActive) {
-          setActiveTocHref('');
+          updateActiveTocHref('');
         }
       },
       onLinkNavigation: (origin) => {
@@ -316,8 +349,9 @@ function EpubReaderPage({
     container.replaceChildren();
     setTableOfContents([]);
     setIsPaginationReady(false);
+    locatorRef.current = undefined;
     setLocator(undefined);
-    setActiveTocHref('');
+    updateActiveTocHref('');
     setIsLoading(true);
     setError('');
     const storedLocator = readLocator(source, preferenceScopeId) ?? initialLocator;
@@ -327,9 +361,11 @@ function EpubReaderPage({
       storedLocator.navigationHref === storedLocator.href
         ? storedLocator.navigationHref
         : undefined;
-    const openingLocator = resumeLocator(storedLocator, initialPreferencesRef.current);
-    setLocatorLayoutSignature(layoutSignature(initialPreferencesRef.current));
-    setActiveTocHref(explicitStoredNavigationHref ?? '');
+    const openingLocator = resumeLocator(storedLocator);
+    const openingLayoutSignature = layoutSignature(initialPreferencesRef.current);
+    locatorLayoutSignatureRef.current = openingLayoutSignature;
+    setLocatorLayoutSignature(openingLayoutSignature);
+    updateActiveTocHref(explicitStoredNavigationHref ?? '');
     resumeNavigationRef.current = storedLocator?.navigationHref
       ? {
           href: storedLocator.navigationHref,
@@ -346,13 +382,17 @@ function EpubReaderPage({
       .then(async () => {
         await engine.setPreferences(initialPreferencesRef.current);
         // Applying typography repaginates the freshly opened section. Re-apply
-        // an explicit TOC destination after that first layout pass so the
-        // publisher anchor cannot be replaced by an intermediate page CFI.
-        if (explicitStoredNavigationHref) {
-          await engine.goTo({
-            href: explicitStoredNavigationHref,
-            cfi: storedLocator?.navigationCfi,
-          });
+        // the saved destination after that first layout pass. Otherwise the
+        // intermediate CFI reported under EPUB.js' default typography becomes
+        // the new checkpoint and can move many pages within a long chapter.
+        const postLayoutTarget = explicitStoredNavigationHref
+          ? {
+              href: explicitStoredNavigationHref,
+              cfi: storedLocator?.navigationCfi,
+            }
+          : openingLocator;
+        if (postLayoutTarget) {
+          await engine.goTo(postLayoutTarget);
         }
         const navigation = await engine.getTableOfContents().catch(() => []);
 
@@ -370,7 +410,7 @@ function EpubReaderPage({
       engineReadyRef.current = false;
       void engine.close();
     };
-  }, [initialLocator, preferenceScopeId, source]);
+  }, [initialLocator, preferenceScopeId, savePageCheckpoint, source, updateActiveTocHref]);
 
   useEffect(() => {
     if (!engineReadyRef.current) {
@@ -380,15 +420,19 @@ function EpubReaderPage({
     const nextLayoutSignature = layoutSignature(preferences);
     const isLayoutChange = nextLayoutSignature !== appliedLayoutSignatureRef.current;
     const navigationItem = currentNavigationItemRef.current ?? resumeNavigationRef.current;
+    const explicitTocHref = activeTocHrefRef.current;
+    const exactLayoutAnchor = explicitTocHref
+      ? {
+          href: explicitTocHref,
+          cfi: navigationItem?.cfi,
+        }
+      : locatorRef.current;
     const engine = engineRef.current;
     const revision = ++layoutPreferenceRevisionRef.current;
     if (isLayoutChange) {
       layoutPersistencePendingRef.current = true;
-      if (navigationItem) {
-        engine?.preserveLocationForLayoutChange({
-          href: navigationItem.href,
-          cfi: navigationItem.cfi,
-        });
+      if (exactLayoutAnchor) {
+        engine?.preserveLocationForLayoutChange(exactLayoutAnchor);
       }
       appliedLayoutSignatureRef.current = nextLayoutSignature;
     }
@@ -403,19 +447,7 @@ function EpubReaderPage({
         ) {
           return;
         }
-        // A page CFI belongs to the layout that created it. Once typography
-        // or viewport layout changes, commit the smallest TOC anchor as the
-        // new resume point instead of relabelling the old page CFI.
-        if (navigationItem) {
-          resumeNavigationRef.current = {
-            href: navigationItem.href,
-            cfi: navigationItem.cfi,
-          };
-          setLocator({
-            href: navigationItem.href,
-            cfi: navigationItem.cfi,
-          });
-        }
+        locatorLayoutSignatureRef.current = nextLayoutSignature;
         setLocatorLayoutSignature(nextLayoutSignature);
         layoutPersistencePendingRef.current = false;
       })
@@ -448,11 +480,11 @@ function EpubReaderPage({
 
       if (event.key === 'ArrowRight' || event.key === 'PageDown') {
         event.preventDefault();
-        setActiveTocHref('');
+        updateActiveTocHref('');
         void engineRef.current?.next();
       } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
         event.preventDefault();
-        setActiveTocHref('');
+        updateActiveTocHref('');
         void engineRef.current?.previous();
       } else if (!event.repeat && event.key.toLocaleLowerCase('en-US') === 'f') {
         event.preventDefault();
@@ -462,7 +494,7 @@ function EpubReaderPage({
 
     globalThis.addEventListener('keydown', navigateWithKeyboard);
     return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
-  }, []);
+  }, [updateActiveTocHref]);
 
   const progress = Math.round((locator?.totalProgression ?? 0) * 100);
   const flatTableOfContents = useMemo(
@@ -552,14 +584,13 @@ function EpubReaderPage({
 
   function prepareForLayoutChange() {
     const navigationItem = currentNavigationItemRef.current ?? resumeNavigationRef.current;
-    engineRef.current?.preserveLocationForLayoutChange(
-      navigationItem
-        ? {
-            href: navigationItem.href,
-            cfi: navigationItem.cfi,
-          }
-        : locator,
-    );
+    const exactLayoutAnchor = activeTocHref
+      ? {
+          href: activeTocHref,
+          cfi: navigationItem?.cfi,
+        }
+      : locator;
+    engineRef.current?.preserveLocationForLayoutChange(exactLayoutAnchor);
   }
 
   function toggleSidebar() {
@@ -634,7 +665,7 @@ function EpubReaderPage({
               pageLabel={t('page')}
               onNavigate={(item) => {
                 setSelection(null);
-                setActiveTocHref(item.href);
+                updateActiveTocHref(item.href);
                 resumeNavigationRef.current = {
                   href: item.href,
                   cfi: item.cfi,
@@ -705,7 +736,7 @@ function EpubReaderPage({
             type="button"
             aria-label={t('previousPage')}
             onClick={() => {
-              setActiveTocHref('');
+              updateActiveTocHref('');
               void engineRef.current?.previous();
             }}
           >
@@ -717,7 +748,7 @@ function EpubReaderPage({
             type="button"
             aria-label={t('nextPage')}
             onClick={() => {
-              setActiveTocHref('');
+              updateActiveTocHref('');
               void engineRef.current?.next();
             }}
           >
