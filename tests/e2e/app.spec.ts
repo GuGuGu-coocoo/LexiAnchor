@@ -591,18 +591,29 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .locator('.dictionary-senses > li')
     .count();
   expect(sidebarSenseCount).toBeGreaterThan(1);
+  const sidebarInspector = page.locator('aside.reader-settings .selection-inspector');
+  const sidebarInspectorWidth = await sidebarInspector.evaluate(
+    (inspector) => inspector.getBoundingClientRect().width,
+  );
+  const selectionWordFontSize = await page
+    .locator('aside.reader-settings .selection-word')
+    .evaluate((word) => Number.parseFloat(getComputedStyle(word).fontSize));
   await expect
     .poll(() =>
       page.evaluate(() => {
         const dictionary = document.querySelector('aside.reader-settings .dictionary-result');
+        const addCard = document.querySelector('aside.reader-settings .add-card-action');
         const sentenceTranslation = document.querySelector(
           'aside.reader-settings .local-translation-panel',
         );
         return Boolean(
           dictionary &&
+          addCard &&
           sentenceTranslation &&
           dictionary.compareDocumentPosition(sentenceTranslation) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
+            Node.DOCUMENT_POSITION_FOLLOWING &&
+          dictionary.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          addCard.compareDocumentPosition(sentenceTranslation) & Node.DOCUMENT_POSITION_FOLLOWING,
         );
       }),
     )
@@ -662,6 +673,36 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   await page
     .getByRole('slider', {
+      name: /Selection tools size|划词浮窗字体大小|Taille des outils de sélection/,
+    })
+    .fill('160');
+  await expect
+    .poll(() => sidebarInspector.evaluate((inspector) => inspector.getBoundingClientRect().width))
+    .toBeCloseTo(sidebarInspectorWidth, 0);
+  await expect
+    .poll(() =>
+      page
+        .locator('aside.reader-settings .selection-word')
+        .evaluate((word) => Number.parseFloat(getComputedStyle(word).fontSize)),
+    )
+    .toBeGreaterThan(selectionWordFontSize * 1.5);
+  expect(
+    await page
+      .locator('aside.reader-settings .local-translation-heading select')
+      .evaluate((select) => {
+        const selectBox = select.getBoundingClientRect();
+        const panelBox = select.closest('.local-translation-panel')?.getBoundingClientRect();
+        return Boolean(
+          panelBox &&
+          selectBox.left >= panelBox.left - 1 &&
+          selectBox.right <= panelBox.right + 1 &&
+          select.scrollWidth <= select.clientWidth + 1,
+        );
+      }),
+  ).toBe(true);
+
+  await page
+    .getByRole('slider', {
       name: /Selection popover width|划词浮窗宽度|Largeur de la fenêtre de sélection/,
     })
     .fill('520');
@@ -690,14 +731,18 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .poll(() =>
       page.evaluate(() => {
         const dictionary = document.querySelector('.selection-popover-shell .dictionary-result');
+        const addCard = document.querySelector('.selection-popover-shell .add-card-action');
         const sentenceTranslation = document.querySelector(
           '.selection-popover-shell .local-translation-panel',
         );
         return Boolean(
           dictionary &&
+          addCard &&
           sentenceTranslation &&
           dictionary.compareDocumentPosition(sentenceTranslation) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
+            Node.DOCUMENT_POSITION_FOLLOWING &&
+          dictionary.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          addCard.compareDocumentPosition(sentenceTranslation) & Node.DOCUMENT_POSITION_FOLLOWING,
         );
       }),
     )

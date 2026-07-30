@@ -434,8 +434,6 @@ export function SelectionTools({
         </article>
       ))}
 
-      {translationPanel}
-
       {cardResult ? (
         <button
           className="add-card-action"
@@ -455,6 +453,8 @@ export function SelectionTools({
           {t('cardSaveFailed')}
         </p>
       ) : null}
+
+      {translationPanel}
 
       {compact ? null : (
         <div className="selection-actions">

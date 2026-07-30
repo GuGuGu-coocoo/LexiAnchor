@@ -1,4 +1,32 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function visibleHeadingText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const scroller = document
+      .querySelector('[data-testid="epub-container"]')
+      ?.querySelector<HTMLElement>('.epub-container');
+    if (!scroller) {
+      return '';
+    }
+
+    const viewport = scroller.getBoundingClientRect();
+    for (const frame of Array.from(scroller.querySelectorAll('iframe'))) {
+      const frameBox = frame.getBoundingClientRect();
+      for (const heading of Array.from(
+        frame.contentDocument?.querySelectorAll<HTMLElement>('h1, h2, h3, h4') ?? [],
+      )) {
+        const box = heading.getBoundingClientRect();
+        const left = frameBox.left + box.left;
+        const right = frameBox.left + box.right;
+        if (right > viewport.left && left < viewport.right) {
+          return heading.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+        }
+      }
+    }
+
+    return '';
+  });
+}
 
 test('keeps consecutive pages in Level Up instead of returning to the opening page', async ({
   page,
@@ -54,6 +82,7 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
             cfi?: string;
             navigationHref?: string;
             layoutSignature?: string;
+            totalProgression?: number;
           })
         : {};
     });
@@ -68,11 +97,47 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
   const contents = page.getByRole('navigation', { name: /Contents|目录|Sommaire/ });
   await contents.getByRole('button', { name: /^Level 5:/ }).click();
   await expect.poll(currentHref).toContain('c05.xhtml');
+  await openContents();
+  await contents.getByRole('button', { name: 'Finally, We Talk About Gameplay' }).click();
+  await expect.poll(() => visibleHeadingText(page)).toContain('Finally, We Talk About Gameplay');
+  await page.waitForTimeout(1_500);
+  await expect.poll(() => visibleHeadingText(page)).toContain('Finally, We Talk About Gameplay');
+  await openContents();
+  await contents.getByRole('button', { name: 'Who Do You Want to Be Today?' }).click();
+  await expect.poll(() => visibleHeadingText(page)).toContain('Who Do You Want to Be Today?');
+  await page.waitForTimeout(1_500);
+  await expect.poll(() => visibleHeadingText(page)).toContain('Who Do You Want to Be Today?');
 
   await openContents();
   await contents.getByRole('button', { name: /^Level 7:/ }).click();
   await expect.poll(currentHref).toContain('c07.xhtml');
   await page.waitForTimeout(1_500);
+  await expect.poll(currentHref).toContain('c07.xhtml');
+
+  await openContents();
+  await contents.getByRole('button', { name: 'Dance, Monkey, Dance' }).click();
+  await expect.poll(() => visibleHeadingText(page)).toContain('Dance, Monkey, Dance');
+  await expect
+    .poll(async () => (await storedLocator()).navigationHref)
+    .toContain('c07.xhtml#head-2-87');
+  await page.waitForTimeout(1_500);
+  await expect.poll(() => visibleHeadingText(page)).toContain('Dance, Monkey, Dance');
+  const childLocator = await storedLocator();
+  expect(childLocator.href).toContain('c07.xhtml#head-2-87');
+  expect(childLocator.cfi).toBeUndefined();
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  const savedBookAfterChildJump = page.locator('article[data-book-id]').first();
+  await expect(savedBookAfterChildJump).toBeVisible();
+  await savedBookAfterChildJump.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+  await expect
+    .poll(() => visibleHeadingText(page), { timeout: 30_000 })
+    .toContain('Dance, Monkey, Dance');
+  await expect
+    .poll(async () => (await storedLocator()).navigationHref)
+    .toContain('c07.xhtml#head-2-87');
+
+  await openContents();
+  await contents.getByRole('button', { name: /^Level 7:/ }).click();
   await expect.poll(currentHref).toContain('c07.xhtml');
 
   await openContents();

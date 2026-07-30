@@ -213,6 +213,19 @@ function refersToSameDocument(left: string, right: string): boolean {
   );
 }
 
+function displayTarget(locator: ReaderLocator | null | undefined): string | undefined {
+  if (!locator) {
+    return undefined;
+  }
+
+  // EPUB TOC fragments are the publisher's authoritative destinations. A CFI
+  // derived from an unloaded or unusual XHTML document can degrade to the
+  // chapter start, which made every child item appear to open its parent.
+  // Keep exact page CFIs for ordinary reading positions, but always honor an
+  // explicit `chapter.xhtml#subheading` target.
+  return locator.href.includes('#') ? locator.href : (locator.cfi ?? locator.href);
+}
+
 function selectionFrom(contents: Contents, cfiRange: string): ReaderSelection | null {
   const liveSelection = contents.window.getSelection();
   const range =
@@ -372,7 +385,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
           }
 
           const anchor = this.requestedLocator ?? this.layoutAnchor ?? this.currentLocator;
-          const anchorTarget = anchor?.cfi ?? anchor?.href;
+          const anchorTarget = displayTarget(anchor);
           const revision = ++this.layoutRevision;
           this.layoutAnchor = anchor ?? null;
           rendition.resize(width, height, anchorTarget);
@@ -470,7 +483,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
         manager.settings.offset = 0;
         manager.settings.offsetDelta = 0;
       }
-      const initialTarget = initialLocator?.cfi ?? initialLocator?.href;
+      const initialTarget = displayTarget(initialLocator);
       this.requestedLocator = initialLocator ?? null;
       await this.queueDisplayAtStableLocation(
         openedRendition,
@@ -570,7 +583,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       if (rendition) {
         await this.queueDisplayAtStableLocation(
           rendition,
-          locator.cfi ?? locator.href,
+          displayTarget(locator),
           () =>
             navigationRevision === this.navigationRevision &&
             this.rendition === rendition &&
@@ -624,7 +637,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
     this.pageGesture?.invalidate?.();
     const anchor = this.requestedLocator ?? this.layoutAnchor ?? this.currentLocator;
-    const anchorTarget = anchor?.cfi ?? anchor?.href;
+    const anchorTarget = displayTarget(anchor);
     const update = ++this.preferenceUpdate;
     const interactionRevision = this.interactionRevision;
     this.preferences = preferences;
@@ -805,24 +818,25 @@ export class EpubJsReaderEngine implements ReaderEngine {
     const element = fragment
       ? section.document?.getElementById(fragment)
       : section.document?.body?.firstElementChild;
-    const cfi = element
-      ? section.cfiFromElement(element)
-      : `epubcfi(${section.cfiBase}!/4/2/2/1:0)`;
+    const cfi = element ? section.cfiFromElement(element) : undefined;
 
     if (!fragment) {
       section.unload();
     }
 
-    const rawLocation = book.locations.locationFromCfi(cfi) as unknown;
+    const rawLocation = cfi ? (book.locations.locationFromCfi(cfi) as unknown) : -1;
     const location = typeof rawLocation === 'number' ? rawLocation : -1;
-    const totalProgression = book.locations.percentageFromCfi(cfi);
+    const totalProgression = cfi ? book.locations.percentageFromCfi(cfi) : undefined;
     return {
       // Passing a synthetic start CFI to rendition.display() can land near the
       // end of a long chapter in EPUB.js. A plain href is exact for top-level
       // chapters; reserve element CFIs for fragment-level TOC entries.
       cfi: fragment ? cfi : undefined,
       pageNumber: location >= 0 ? location + 1 : undefined,
-      totalProgression: Number.isFinite(totalProgression) ? totalProgression : undefined,
+      totalProgression:
+        totalProgression !== undefined && Number.isFinite(totalProgression)
+          ? totalProgression
+          : undefined,
     };
   }
 }

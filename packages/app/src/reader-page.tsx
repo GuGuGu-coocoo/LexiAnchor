@@ -321,7 +321,15 @@ function EpubReaderPage({
     setIsLoading(true);
     setError('');
     const storedLocator = readLocator(source, preferenceScopeId) ?? initialLocator;
+    const explicitStoredNavigationHref =
+      storedLocator &&
+      storedLocator.cfi === undefined &&
+      storedLocator.navigationHref === storedLocator.href
+        ? storedLocator.navigationHref
+        : undefined;
+    const openingLocator = resumeLocator(storedLocator, initialPreferencesRef.current);
     setLocatorLayoutSignature(layoutSignature(initialPreferencesRef.current));
+    setActiveTocHref(explicitStoredNavigationHref ?? '');
     resumeNavigationRef.current = storedLocator?.navigationHref
       ? {
           href: storedLocator.navigationHref,
@@ -334,9 +342,18 @@ function EpubReaderPage({
       // SQLite remains the fallback for restored backups and cleared browser
       // storage, but may lag behind if the desktop process was closed while
       // its final asynchronous write was still in flight.
-      .open(container, source, resumeLocator(storedLocator, initialPreferencesRef.current))
+      .open(container, source, openingLocator)
       .then(async () => {
         await engine.setPreferences(initialPreferencesRef.current);
+        // Applying typography repaginates the freshly opened section. Re-apply
+        // an explicit TOC destination after that first layout pass so the
+        // publisher anchor cannot be replaced by an intermediate page CFI.
+        if (explicitStoredNavigationHref) {
+          await engine.goTo({
+            href: explicitStoredNavigationHref,
+            cfi: storedLocator?.navigationCfi,
+          });
+        }
         const navigation = await engine.getTableOfContents().catch(() => []);
 
         if (isActive) {
@@ -503,6 +520,14 @@ function EpubReaderPage({
 
     const persistedLocator: ReaderLocator = {
       ...locator,
+      // While an explicit TOC destination is active, persist the publisher's
+      // href rather than EPUB.js' asynchronously reported page CFI. Some long
+      // reflowable chapters report a nearby page after the anchor is already
+      // visible; restoring that CFI later can move several pages away from the
+      // selected subsection. The first real page interaction clears
+      // activeTocHref and resumes exact page-CFI persistence.
+      href: activeTocHref || locator.href,
+      cfi: activeTocHref ? undefined : locator.cfi,
       layoutSignature: locatorLayoutSignature,
       navigationHref: resumeNavigationRef.current?.href,
       navigationCfi: resumeNavigationRef.current?.cfi,
