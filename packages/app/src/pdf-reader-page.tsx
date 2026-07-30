@@ -21,7 +21,11 @@ import {
 import { FloatingSelectionTools } from './floating-selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import { ReaderFooter } from './reader-footer';
-import { SelectionTools, type WordCardDraft } from './selection-tools';
+import {
+  SelectionTools,
+  type OnlineTranslationProvider,
+  type WordCardDraft,
+} from './selection-tools';
 import type { Theme } from './theme';
 import { useHorizontalPageSwipe } from './use-horizontal-page-swipe';
 import { useFullscreenToolbar } from './use-fullscreen-toolbar';
@@ -44,6 +48,7 @@ interface PdfReaderPageProps {
   readonly dictionaryProviders: readonly DictionaryProvider[];
   readonly localTranslationProvider: BergamotTranslationProvider;
   readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
+  readonly onlineTranslationProvider: OnlineTranslationProvider;
 }
 
 interface StoredPdfView {
@@ -113,6 +118,7 @@ export function PdfReaderPage({
   dictionaryProviders,
   localTranslationProvider,
   installedTranslationTargets,
+  onlineTranslationProvider,
 }: PdfReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const readerStageRef = useRef<HTMLDivElement>(null);
@@ -128,10 +134,16 @@ export function PdfReaderPage({
   const [scale, setScale] = useState(initialView.scale);
   const [flow, setFlow] = useState<ReaderFlow>(initialView.flow);
   const [linkOriginPage, setLinkOriginPage] = useState<number | null>(null);
-  const [selectionFontSizePercent, setSelectionFontSizePercent] = useState(
-    () => readReaderPreferences(preferenceScopeId).selectionFontSizePercent,
-  );
+  const [selectionPreferences, setSelectionPreferences] = useState(() => {
+    const preferences = readReaderPreferences(preferenceScopeId);
+    return {
+      fontSizePercent: preferences.selectionFontSizePercent,
+      popoverWidthPx: preferences.selectionPopoverWidthPx,
+      popoverHeightPx: preferences.selectionPopoverHeightPx,
+    };
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
+  const isSidebarVisible = isSidebarOpen && !isFullscreen;
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -154,9 +166,11 @@ export function PdfReaderPage({
   useEffect(() => {
     persistReaderPreferences(preferenceScopeId, {
       ...readReaderPreferences(preferenceScopeId),
-      selectionFontSizePercent,
+      selectionFontSizePercent: selectionPreferences.fontSizePercent,
+      selectionPopoverWidthPx: selectionPreferences.popoverWidthPx,
+      selectionPopoverHeightPx: selectionPreferences.popoverHeightPx,
     });
-  }, [preferenceScopeId, selectionFontSizePercent]);
+  }, [preferenceScopeId, selectionPreferences]);
 
   useEffect(() => {
     let isActive = true;
@@ -402,6 +416,11 @@ export function PdfReaderPage({
           : event.key === 'ArrowLeft' || event.key === 'PageUp'
             ? -1
             : 0;
+      if (!event.repeat && event.key.toLocaleLowerCase('en-US') === 'f') {
+        event.preventDefault();
+        void onToggleFullscreen();
+        return;
+      }
       if (direction === 0) {
         return;
       }
@@ -416,7 +435,7 @@ export function PdfReaderPage({
 
     globalThis.addEventListener('keydown', navigateWithKeyboard);
     return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
-  }, [pageCount]);
+  }, [isFullscreen, onToggleFullscreen, pageCount]);
 
   useHorizontalPageSwipe(readerStageRef, containerRef, {
     enabled: flow === 'paginated' && pageCount > 0,
@@ -431,10 +450,6 @@ export function PdfReaderPage({
   }
 
   function toggleFullscreenFromReader() {
-    if (!isFullscreen) {
-      setIsSidebarOpen(false);
-    }
-
     void onToggleFullscreen();
   }
 
@@ -445,7 +460,7 @@ export function PdfReaderPage({
       }`}
       style={
         {
-          '--selection-font-scale': selectionFontSizePercent / 100,
+          '--selection-font-scale': selectionPreferences.fontSizePercent / 100,
         } as CSSProperties
       }
       aria-label={t('pdfReader')}
@@ -474,12 +489,12 @@ export function PdfReaderPage({
           <button
             className="reader-icon-button"
             type="button"
-            aria-label={isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}
-            aria-expanded={isSidebarOpen}
+            aria-label={isSidebarVisible ? t('hideReaderSidebar') : t('showReaderSidebar')}
+            aria-expanded={isSidebarVisible}
             onClick={() => setIsSidebarOpen((current) => !current)}
           >
             <span aria-hidden="true">◧</span>
-            <span>{isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
+            <span>{isSidebarVisible ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
           </button>
           <button
             className="reader-icon-button reader-toolbar-visibility-button"
@@ -541,12 +556,12 @@ export function PdfReaderPage({
       </header>
 
       <div
-        className={`reader-workspace${isSidebarOpen ? '' : ' reader-workspace--sidebar-hidden'}`}
+        className={`reader-workspace${isSidebarVisible ? '' : ' reader-workspace--sidebar-hidden'}`}
       >
         <aside
           className="reader-settings"
           aria-label={t('readingSettings')}
-          hidden={!isSidebarOpen}
+          hidden={!isSidebarVisible}
         >
           <SelectionTools
             key={selection?.text ?? 'empty'}
@@ -559,6 +574,7 @@ export function PdfReaderPage({
             providers={dictionaryProviders}
             localTranslationProvider={localTranslationProvider}
             installedTranslationTargets={installedTranslationTargets}
+            onlineTranslationProvider={onlineTranslationProvider}
           />
 
           <label className="reader-toggle reader-fullscreen-toolbar-setting">
@@ -590,7 +606,7 @@ export function PdfReaderPage({
 
           <label className="reader-control">
             <span>
-              {t('selectionFontSize')} <output>{selectionFontSizePercent}%</output>
+              {t('selectionFontSize')} <output>{selectionPreferences.fontSizePercent}%</output>
             </span>
             <input
               type="range"
@@ -598,8 +614,54 @@ export function PdfReaderPage({
               min="80"
               max="160"
               step="5"
-              value={selectionFontSizePercent}
-              onChange={(event) => setSelectionFontSizePercent(Number(event.target.value))}
+              value={selectionPreferences.fontSizePercent}
+              onChange={(event) =>
+                setSelectionPreferences((current) => ({
+                  ...current,
+                  fontSizePercent: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+
+          <label className="reader-control">
+            <span>
+              {t('selectionPopoverWidth')} <output>{selectionPreferences.popoverWidthPx} px</output>
+            </span>
+            <input
+              type="range"
+              aria-label={t('selectionPopoverWidth')}
+              min="300"
+              max="620"
+              step="10"
+              value={selectionPreferences.popoverWidthPx}
+              onChange={(event) =>
+                setSelectionPreferences((current) => ({
+                  ...current,
+                  popoverWidthPx: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+
+          <label className="reader-control">
+            <span>
+              {t('selectionPopoverHeight')}{' '}
+              <output>{selectionPreferences.popoverHeightPx} px</output>
+            </span>
+            <input
+              type="range"
+              aria-label={t('selectionPopoverHeight')}
+              min="260"
+              max="720"
+              step="10"
+              value={selectionPreferences.popoverHeightPx}
+              onChange={(event) =>
+                setSelectionPreferences((current) => ({
+                  ...current,
+                  popoverHeightPx: Number(event.target.value),
+                }))
+              }
             />
           </label>
 
@@ -690,9 +752,11 @@ export function PdfReaderPage({
             />
           ) : null}
         </div>
-        {selection && !isSidebarOpen ? (
+        {selection && !isSidebarVisible ? (
           <FloatingSelectionTools
             selection={selection}
+            popoverWidth={selectionPreferences.popoverWidthPx}
+            popoverHeight={selectionPreferences.popoverHeightPx}
             locale={locale}
             t={t}
             onDismiss={() => setSelection(null)}
@@ -701,6 +765,7 @@ export function PdfReaderPage({
             providers={dictionaryProviders}
             localTranslationProvider={localTranslationProvider}
             installedTranslationTargets={installedTranslationTargets}
+            onlineTranslationProvider={onlineTranslationProvider}
           />
         ) : null}
       </div>

@@ -473,9 +473,13 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expect(page.locator('.reader-page')).not.toHaveClass(/reader-page--toolbar-hidden/);
   await bookFrame.locator('body').press('Escape');
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
-  await page
-    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
-    .click();
+  await expect(readerSidebar).toBeVisible();
+  await bookFrame.locator('body').press('f');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  await expect(page.locator('aside.reader-settings')).toBeHidden();
+  await bookFrame.locator('body').press('f');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
+  await expect(readerSidebar).toBeVisible();
   await appearance.selectOption('light');
 
   await page
@@ -517,6 +521,38 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .click();
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
   await expect(secondChapter).not.toHaveAttribute('aria-current', 'location');
+  const thirdSubsection = tableOfContents.getByRole('button', { name: 'The Bookmark' });
+  await expect
+    .poll(async () => {
+      const pageNumbers = await tableOfContents.locator('.reader-toc-page').allTextContents();
+      return new Set(pageNumbers).size;
+    })
+    .toBeGreaterThanOrEqual(3);
+  // A later TOC request must always win, even if the previous display promise
+  // is still filling EPUB.js' continuous strip.
+  await secondChapter.click();
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  await thirdSubsection.click();
+  await expectEpubHeading(page, 'Page Turn 3 — The Bookmark');
+  await page.waitForTimeout(750);
+  await expectEpubHeading(page, 'Page Turn 3 — The Bookmark');
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  await expect(thirdSubsection).toHaveAttribute('aria-current', 'location');
+  await firstChapter.click();
+  await expectEpubHeading(page, 'A Quiet Beginning');
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
   await page.locator('.reader-title-group').hover();
   await page.screenshot({ path: 'test-results/epub-table-of-contents.png', fullPage: true });
   await page
@@ -565,6 +601,25 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .toBe(true);
   await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
   await expect(
+    page.getByRole('button', {
+      name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
+    }),
+  ).toBeVisible();
+  await page.locator('.reader-toolbar-settings-button').click();
+  await readerSettingsOverlay
+    .getByRole('combobox', {
+      name: /Default online service|默认在线翻译服务|Service en ligne par défaut/,
+    })
+    .selectOption('bing');
+  await readerSettingsOverlay
+    .getByRole('button', { name: /Close settings|关闭设置|Fermer les réglages/ })
+    .click();
+  await expect(
+    page.getByRole('button', {
+      name: /Open Microsoft Bing Translator|打开 Microsoft Bing Translator|Ouvrir Microsoft Bing Translator/,
+    }),
+  ).toBeVisible();
+  await expect(
     page.getByRole('combobox', { name: /Translation target|翻译目标语言|Langue cible/ }),
   ).toHaveValue(/zh|fr/);
   await expect(
@@ -587,8 +642,21 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     )
     .toBe(true);
 
+  await page
+    .getByRole('slider', {
+      name: /Selection popover width|划词浮窗宽度|Largeur de la fenêtre de sélection/,
+    })
+    .fill('520');
+  await page
+    .getByRole('slider', {
+      name: /Selection popover height|划词浮窗高度|Hauteur de la fenêtre de sélection/,
+    })
+    .fill('520');
   await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
   await expect(page.locator('.selection-popover-shell')).toBeVisible();
+  await expect
+    .poll(async () => page.locator('.selection-popover-shell').boundingBox())
+    .toMatchObject({ width: 520 });
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
   await expect(page.locator('.selection-popover-shell .dictionary-result').first()).toBeVisible();
   await expect(
@@ -634,9 +702,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page
     .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
     .click();
-  await page
-    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
-    .click();
+  await expect(readerSidebar).toBeVisible();
   await expect
     .poll(() =>
       page
@@ -944,7 +1010,11 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
 
   await page.locator('.pdf-annotation-link[data-internal-page="3"]').click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
-  await page.locator('.pdf-reader-stage').hover();
+  await expect(page.locator('.reader-footer-page-current')).toBeVisible();
+  await expect(page.locator('.reader-footer-page-details')).toBeHidden();
+  await page.locator('.reader-footer').hover();
+  await expect(page.locator('.reader-footer-page-current')).toBeHidden();
+  await expect(page.locator('.reader-footer-page-details')).toBeVisible();
   const backToLinkedPage = page.locator('.reader-footer-leading button');
   await expect(backToLinkedPage).toBeVisible();
   await backToLinkedPage.click();
@@ -962,6 +1032,11 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
   await expect(pdfSidebar).toBeVisible();
+  await page.keyboard.press('f');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  await expect(pdfSidebar).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
 
   await textLayer
     .locator('span', { hasText: 'resilient' })
@@ -992,7 +1067,9 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   );
   await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Online translation|在线翻译|Traduction/ }),
+    page.getByRole('button', {
+      name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
+    }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: /Search on Web|网页搜索|Rechercher/ }),
@@ -1010,12 +1087,12 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   await expect(
     page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }),
   ).toBeVisible();
-  await page
-    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
-    .click();
+  await expect(pdfSidebar).toBeVisible();
 
   await page
-    .getByRole('button', { name: /Online translation|在线翻译|Traduction en ligne/ })
+    .getByRole('button', {
+      name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
+    })
     .click();
   await expect(page.getByRole('alert')).toContainText('resilient');
   await page.getByRole('button', { name: /Cancel|取消|Annuler/ }).click();

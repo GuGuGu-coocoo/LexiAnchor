@@ -44,21 +44,35 @@ export interface EpubNavigationItem {
   readonly id: string;
   readonly href: string;
   readonly label: string;
+  readonly totalProgression?: number;
   readonly pageNumber?: number;
   readonly subitems: readonly EpubNavigationItem[];
 }
 
-function navigationItems(
+interface EpubNavigationPosition {
+  readonly totalProgression?: number;
+  readonly pageNumber?: number;
+}
+
+async function navigationItems(
   items: readonly NavItem[],
-  pageNumberForHref: (href: string) => number | undefined,
-): EpubNavigationItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    href: item.href,
-    label: item.label.trim() || item.href,
-    pageNumber: pageNumberForHref(item.href),
-    subitems: navigationItems(item.subitems ?? [], pageNumberForHref),
-  }));
+  positionForHref: (href: string) => Promise<EpubNavigationPosition>,
+): Promise<EpubNavigationItem[]> {
+  return Promise.all(
+    items.map(async (item) => {
+      const [position, subitems] = await Promise.all([
+        positionForHref(item.href),
+        navigationItems(item.subitems ?? [], positionForHref),
+      ]);
+      return {
+        id: item.id,
+        href: item.href,
+        label: item.label.trim() || item.href,
+        ...position,
+        subitems,
+      };
+    }),
+  );
 }
 
 function handleNavigationKey(
@@ -94,6 +108,9 @@ function handleNavigationKey(
   } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
     event.preventDefault();
     onCommand?.('previous');
+  } else if (!event.repeat && event.key.toLocaleLowerCase('en-US') === 'f') {
+    event.preventDefault();
+    onCommand?.('fullscreen');
   }
 }
 
@@ -180,6 +197,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private layoutAnchor: ReaderLocator | null = null;
   private layoutRevision = 0;
   private observedSize = '';
+  private navigationRevision = 0;
+  private displayQueue: Promise<void> = Promise.resolve();
+  private navigationPositionCache = new Map<string, Promise<EpubNavigationPosition>>();
 
   constructor(private readonly callbacks: ReaderCallbacks) {}
 
@@ -351,7 +371,12 @@ export class EpubJsReaderEngine implements ReaderEngine {
       await openedBook.ready;
       const initialTarget = initialLocator?.cfi ?? initialLocator?.href;
       this.requestedLocator = initialLocator ?? null;
-      await this.displayAtStableLocation(openedRendition, initialTarget);
+      await this.queueDisplayAtStableLocation(
+        openedRendition,
+        initialTarget,
+        () => this.book === openedBook && this.rendition === openedRendition,
+        true,
+      );
       this.requestedLocator = null;
       await openedRendition.reportLocation();
 
@@ -404,12 +429,16 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.preferenceUpdate = 0;
     this.interactionRevision = 0;
     this.observedSize = '';
+    this.navigationRevision += 1;
+    this.displayQueue = Promise.resolve();
+    this.navigationPositionCache.clear();
     return Promise.resolve();
   }
 
   async next(): Promise<void> {
     this.cancelLayoutRestoration();
     this.interactionRevision += 1;
+    this.navigationRevision += 1;
     this.callbacks.onSelection(null);
     await this.rendition?.next();
   }
@@ -417,6 +446,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   async previous(): Promise<void> {
     this.cancelLayoutRestoration();
     this.interactionRevision += 1;
+    this.navigationRevision += 1;
     this.callbacks.onSelection(null);
     await this.rendition?.prev();
   }
@@ -424,14 +454,29 @@ export class EpubJsReaderEngine implements ReaderEngine {
   async goTo(locator: ReaderLocator): Promise<void> {
     this.cancelLayoutRestoration();
     this.interactionRevision += 1;
+    const navigationRevision = ++this.navigationRevision;
     this.requestedLocator = locator;
     this.callbacks.onSelection(null);
     try {
       const rendition = this.rendition;
       if (rendition) {
-        await this.displayAtStableLocation(rendition, locator.cfi ?? locator.href);
+        await this.queueDisplayAtStableLocation(
+          rendition,
+          locator.cfi ?? locator.href,
+          () =>
+            navigationRevision === this.navigationRevision &&
+            this.rendition === rendition &&
+            this.requestedLocator === locator,
+          false,
+        );
       }
-      await rendition?.reportLocation();
+      if (
+        navigationRevision === this.navigationRevision &&
+        this.rendition === rendition &&
+        this.requestedLocator === locator
+      ) {
+        await rendition?.reportLocation();
+      }
     } catch (error) {
       if (this.requestedLocator === locator) {
         this.requestedLocator = null;
@@ -457,7 +502,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     }
 
     const navigation = await book.loaded.navigation;
-    return navigationItems(navigation.toc, (href) => this.pageNumberForHref(href));
+    return navigationItems(navigation.toc, (href) => this.navigationPositionForHref(href));
   }
 
   async setPreferences(preferences: ReaderPreferences): Promise<void> {
@@ -509,7 +554,15 @@ export class EpubJsReaderEngine implements ReaderEngine {
       interactionRevision === this.interactionRevision &&
       anchorTarget
     ) {
-      await this.displayAtStableLocation(rendition, anchorTarget);
+      await this.queueDisplayAtStableLocation(
+        rendition,
+        anchorTarget,
+        () =>
+          update === this.preferenceUpdate &&
+          interactionRevision === this.interactionRevision &&
+          rendition === this.rendition,
+        false,
+      );
     }
   }
 
@@ -541,7 +594,12 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
     try {
       if (anchor) {
-        await this.displayAtStableLocation(rendition, anchor);
+        await this.queueDisplayAtStableLocation(
+          rendition,
+          anchor,
+          () => revision === this.layoutRevision && rendition === this.rendition,
+          false,
+        );
       }
     } catch (error) {
       if (revision === this.layoutRevision) {
@@ -557,45 +615,83 @@ export class EpubJsReaderEngine implements ReaderEngine {
     await rendition.reportLocation();
   }
 
-  private async displayAtStableLocation(
+  private queueDisplayAtStableLocation(
     rendition: ContinuousRendition,
     target: string | undefined,
+    isCurrent: () => boolean,
+    stabilizeContinuousStrip: boolean,
   ): Promise<void> {
-    await rendition.display(target);
+    const task = this.displayQueue
+      .catch(() => undefined)
+      .then(async () => {
+        if (!isCurrent()) {
+          return;
+        }
 
-    if (!target) {
-      return;
-    }
+        await rendition.display(target);
 
-    // The continuous manager fills the strip with adjacent spine items after
-    // its first display. Prepending those items changes the strip's pixel
-    // origin in large books. Re-apply the same target after the fill so the
-    // visible page stays on the chapter the reader explicitly chose.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    await rendition.display(target);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        if (!target || !stabilizeContinuousStrip || !isCurrent()) {
+          return;
+        }
+
+        // On initial open, the continuous manager fills its strip after the
+        // first display. Re-apply the saved target once while the loading state
+        // is still hidden. Explicit TOC jumps never take this second trip.
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        if (!isCurrent()) {
+          return;
+        }
+        await rendition.display(target);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      });
+    this.displayQueue = task.catch(() => undefined);
+    return task;
   }
 
-  private pageNumberForHref(href: string): number | undefined {
+  private navigationPositionForHref(href: string): Promise<EpubNavigationPosition> {
     const book = this.book;
-    if (!book || book.locations.length() === 0) {
-      return undefined;
+    if (!book) {
+      return Promise.resolve({});
     }
 
-    try {
-      const section = book.spine.get(href.split('#')[0] ?? href);
-      if (!section?.cfiBase) {
-        return undefined;
+    const cacheKey = `${book.locations.length()}:${href}`;
+    const cached = this.navigationPositionCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const pending = this.resolveNavigationPosition(book, href).catch(() => ({}));
+    this.navigationPositionCache.set(cacheKey, pending);
+    return pending;
+  }
+
+  private async resolveNavigationPosition(
+    book: Book,
+    href: string,
+  ): Promise<EpubNavigationPosition> {
+    const [documentHref = href, encodedFragment] = href.split('#', 2);
+    const section = book.spine.get(documentHref);
+    if (!section?.cfiBase) {
+      return {};
+    }
+
+    let cfi = `epubcfi(${section.cfiBase}!/4/2)`;
+    if (encodedFragment) {
+      await (section.load(book.load.bind(book)) as unknown as Promise<Element>);
+      const fragment = decodeURIComponent(encodedFragment);
+      const element = section.document?.getElementById(fragment);
+      if (element) {
+        cfi = section.cfiFromElement(element);
       }
-
-      const rawLocation = book.locations.locationFromCfi(
-        `epubcfi(${section.cfiBase}!/4/2)`,
-      ) as unknown;
-      const location = typeof rawLocation === 'number' ? rawLocation : -1;
-      return location >= 0 ? location + 1 : undefined;
-    } catch {
-      return undefined;
     }
+
+    const rawLocation = book.locations.locationFromCfi(cfi) as unknown;
+    const location = typeof rawLocation === 'number' ? rawLocation : -1;
+    const totalProgression = book.locations.percentageFromCfi(cfi);
+    return {
+      pageNumber: location >= 0 ? location + 1 : undefined,
+      totalProgression: Number.isFinite(totalProgression) ? totalProgression : undefined,
+    };
   }
 }
 

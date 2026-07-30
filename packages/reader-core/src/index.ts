@@ -30,6 +30,8 @@ export interface ReaderPreferences {
   readonly customFontFamily: string;
   readonly fontWeight: number;
   readonly selectionFontSizePercent: number;
+  readonly selectionPopoverWidthPx: number;
+  readonly selectionPopoverHeightPx: number;
   readonly contentWidthPercent: number;
   readonly textAlignment: ReaderTextAlignment;
   readonly foreground: string;
@@ -55,7 +57,7 @@ export interface ReaderCallbacks {
   readonly onLocationChange: (locator: ReaderLocator) => void;
   readonly onSelection: (selection: ReaderSelection | null) => void;
   readonly onError: (error: Error) => void;
-  readonly onNavigationCommand?: (command: 'next' | 'previous' | 'escape') => void;
+  readonly onNavigationCommand?: (command: 'next' | 'previous' | 'escape' | 'fullscreen') => void;
   readonly onLinkNavigation?: (origin: ReaderLocator) => void;
   readonly onPaginationReady?: () => void;
 }
@@ -464,7 +466,11 @@ export function createHorizontalPageScrollGesture(
 export function createStackedPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
 ): HorizontalPageGestureController {
-  const gestureIdleDelay = 64;
+  // A macOS trackpad can leave ~80 ms gaps inside one slow physical swipe.
+  // Treating those gaps as gesture-end makes the sheet settle underneath the
+  // fingers and feels like a lock. Keep the stream alive long enough to remain
+  // 1:1 while still committing promptly after a deliberate flick.
+  const gestureIdleDelay = 110;
   let origin = 0;
   let target = 0;
   let distance = 0;
@@ -858,6 +864,8 @@ export const defaultReaderPreferences: ReaderPreferences = {
   customFontFamily: '',
   fontWeight: 400,
   selectionFontSizePercent: 100,
+  selectionPopoverWidthPx: 360,
+  selectionPopoverHeightPx: 430,
   contentWidthPercent: 90,
   textAlignment: 'start',
   foreground: '#20211f',

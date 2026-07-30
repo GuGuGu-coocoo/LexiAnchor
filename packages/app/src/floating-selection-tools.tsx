@@ -8,10 +8,16 @@ import type {
   TranslationTargetLanguage,
 } from '@lexianchor/translation';
 
-import { SelectionTools, type WordCardDraft } from './selection-tools';
+import {
+  SelectionTools,
+  type OnlineTranslationProvider,
+  type WordCardDraft,
+} from './selection-tools';
 
 interface FloatingSelectionToolsProps {
   readonly selection: ReaderSelection;
+  readonly popoverWidth: number;
+  readonly popoverHeight: number;
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onDismiss: () => void;
@@ -20,9 +26,14 @@ interface FloatingSelectionToolsProps {
   readonly providers: readonly DictionaryProvider[];
   readonly localTranslationProvider: BergamotTranslationProvider;
   readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
+  readonly onlineTranslationProvider: OnlineTranslationProvider;
 }
 
-function floatingStyle(selection: ReaderSelection): CSSProperties {
+function floatingStyle(
+  selection: ReaderSelection,
+  preferredWidth: number,
+  preferredHeight: number,
+): CSSProperties {
   const anchor = selection.anchorRect;
 
   if (!anchor) {
@@ -31,18 +42,22 @@ function floatingStyle(selection: ReaderSelection): CSSProperties {
 
   const viewportWidth = globalThis.innerWidth || 1024;
   const viewportHeight = globalThis.innerHeight || 768;
-  const popoverWidth = Math.min(360, viewportWidth - 24);
+  const popoverWidth = Math.min(preferredWidth, viewportWidth - 24);
   const halfWidth = popoverWidth / 2;
   const left = Math.min(
     viewportWidth - 12 - halfWidth,
     Math.max(12 + halfWidth, (anchor.left + anchor.right) / 2),
   );
   const safeTop = Math.min(76, viewportHeight / 4);
-  const maximumPopoverHeight = Math.min(430, Math.max(1, viewportHeight - safeTop - 12));
+  const maximumPopoverHeight = Math.min(
+    preferredHeight,
+    Math.max(1, viewportHeight - safeTop - 12),
+  );
   const placeBelow = anchor.bottom + maximumPopoverHeight + 12 <= viewportHeight;
 
   return {
     '--selection-popover-max-height': `${maximumPopoverHeight}px`,
+    '--selection-popover-width': `${popoverWidth}px`,
     left,
     top: placeBelow
       ? anchor.bottom + 12
@@ -53,6 +68,8 @@ function floatingStyle(selection: ReaderSelection): CSSProperties {
 
 export function FloatingSelectionTools({
   selection,
+  popoverWidth,
+  popoverHeight,
   locale,
   t,
   onDismiss,
@@ -61,11 +78,12 @@ export function FloatingSelectionTools({
   providers,
   localTranslationProvider,
   installedTranslationTargets,
+  onlineTranslationProvider,
 }: FloatingSelectionToolsProps) {
   return (
     <div
       className="selection-popover-shell"
-      style={floatingStyle(selection)}
+      style={floatingStyle(selection, popoverWidth, popoverHeight)}
       onWheelCapture={(event) => event.stopPropagation()}
     >
       <SelectionTools
@@ -81,6 +99,7 @@ export function FloatingSelectionTools({
         providers={providers}
         localTranslationProvider={localTranslationProvider}
         installedTranslationTargets={installedTranslationTargets}
+        onlineTranslationProvider={onlineTranslationProvider}
       />
     </div>
   );

@@ -17,7 +17,11 @@ import type {
 import { FloatingSelectionTools } from './floating-selection-tools';
 import { ReaderAppearancePanel } from './reader-appearance-panel';
 import { ReaderFooter } from './reader-footer';
-import { SelectionTools, type WordCardDraft } from './selection-tools';
+import {
+  SelectionTools,
+  type OnlineTranslationProvider,
+  type WordCardDraft,
+} from './selection-tools';
 import { persistReaderPreferences, readReaderPreferences } from './reader-preferences';
 import { readerColorsForTheme, type Theme } from './theme';
 import { useFullscreenToolbar } from './use-fullscreen-toolbar';
@@ -45,6 +49,7 @@ interface ReaderPageProps {
   readonly dictionaryProviders: readonly DictionaryProvider[];
   readonly localTranslationProvider: BergamotTranslationProvider;
   readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
+  readonly onlineTranslationProvider: OnlineTranslationProvider;
 }
 
 function storageKey(scopeId: string): string {
@@ -144,6 +149,7 @@ function EpubReaderPage({
   dictionaryProviders,
   localTranslationProvider,
   installedTranslationTargets,
+  onlineTranslationProvider,
 }: ReaderPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const readerStageRef = useRef<HTMLDivElement>(null);
@@ -161,6 +167,7 @@ function EpubReaderPage({
   const [isTableOfContentsOpen, setIsTableOfContentsOpen] = useState(false);
   const [linkOrigin, setLinkOrigin] = useState<ReaderLocator | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
+  const isSidebarVisible = isSidebarOpen && !isFullscreen;
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -214,6 +221,11 @@ function EpubReaderPage({
           if (isFullscreenRef.current) {
             void onToggleFullscreenRef.current();
           }
+          return;
+        }
+
+        if (command === 'fullscreen') {
+          void onToggleFullscreenRef.current();
           return;
         }
 
@@ -297,6 +309,9 @@ function EpubReaderPage({
       } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
         event.preventDefault();
         void engineRef.current?.previous();
+      } else if (!event.repeat && event.key.toLocaleLowerCase('en-US') === 'f') {
+        event.preventDefault();
+        void onToggleFullscreenRef.current();
       }
     }
 
@@ -310,6 +325,20 @@ function EpubReaderPage({
     [tableOfContents],
   );
   const currentNavigationItem = useMemo(() => {
+    const currentProgression = locator?.totalProgression;
+    if (currentProgression !== undefined) {
+      const positionedItems = flatTableOfContents
+        .filter(
+          (item) =>
+            item.totalProgression !== undefined &&
+            item.totalProgression <= currentProgression + 0.000_5,
+        )
+        .sort((left, right) => (right.totalProgression ?? 0) - (left.totalProgression ?? 0));
+      if (positionedItems[0]) {
+        return positionedItems[0];
+      }
+    }
+
     const preferred = flatTableOfContents.find((item) => item.href === activeTocHref);
     if (preferred) {
       return preferred;
@@ -317,7 +346,7 @@ function EpubReaderPage({
 
     const exact = flatTableOfContents.find((item) => item.href === locator?.href);
     return exact ?? flatTableOfContents.find((item) => isCurrentHref(item.href, locator?.href));
-  }, [activeTocHref, flatTableOfContents, locator?.href]);
+  }, [activeTocHref, flatTableOfContents, locator?.href, locator?.totalProgression]);
 
   function prepareForLayoutChange() {
     engineRef.current?.preserveLocationForLayoutChange(locator);
@@ -330,10 +359,6 @@ function EpubReaderPage({
 
   function toggleFullscreenFromReader() {
     prepareForLayoutChange();
-    if (!isFullscreen) {
-      setIsSidebarOpen(false);
-    }
-
     void onToggleFullscreen();
   }
 
@@ -416,12 +441,12 @@ function EpubReaderPage({
           <button
             className="reader-icon-button"
             type="button"
-            aria-label={isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}
-            aria-expanded={isSidebarOpen}
+            aria-label={isSidebarVisible ? t('hideReaderSidebar') : t('showReaderSidebar')}
+            aria-expanded={isSidebarVisible}
             onClick={toggleSidebar}
           >
             <span aria-hidden="true">◧</span>
-            <span>{isSidebarOpen ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
+            <span>{isSidebarVisible ? t('hideReaderSidebar') : t('showReaderSidebar')}</span>
           </button>
           <button
             className="reader-icon-button reader-toolbar-visibility-button"
@@ -481,12 +506,12 @@ function EpubReaderPage({
       </header>
 
       <div
-        className={`reader-workspace${isSidebarOpen ? '' : ' reader-workspace--sidebar-hidden'}`}
+        className={`reader-workspace${isSidebarVisible ? '' : ' reader-workspace--sidebar-hidden'}`}
       >
         <aside
           className="reader-settings"
           aria-label={t('readingSettings')}
-          hidden={!isSidebarOpen}
+          hidden={!isSidebarVisible}
         >
           <SelectionTools
             key={selection?.text ?? 'empty'}
@@ -499,6 +524,7 @@ function EpubReaderPage({
             providers={dictionaryProviders}
             localTranslationProvider={localTranslationProvider}
             installedTranslationTargets={installedTranslationTargets}
+            onlineTranslationProvider={onlineTranslationProvider}
           />
           <label className="reader-toggle reader-fullscreen-toolbar-setting">
             <span>
@@ -528,7 +554,12 @@ function EpubReaderPage({
               <span>{error}</span>
             </div>
           ) : null}
-          <div ref={containerRef} className="epub-container" data-testid="epub-container" />
+          <div
+            ref={containerRef}
+            className={`epub-container${isLoading ? ' epub-container--loading' : ''}`}
+            data-testid="epub-container"
+            aria-busy={isLoading}
+          />
           {!isLoading ? (
             <ReaderFooter
               currentPage={locator?.totalPageNumber ?? locator?.pageNumber}
@@ -555,9 +586,11 @@ function EpubReaderPage({
             />
           ) : null}
         </div>
-        {selection && !isSidebarOpen ? (
+        {selection && !isSidebarVisible ? (
           <FloatingSelectionTools
             selection={selection}
+            popoverWidth={preferences.selectionPopoverWidthPx}
+            popoverHeight={preferences.selectionPopoverHeightPx}
             locale={locale}
             t={t}
             onDismiss={() => setSelection(null)}
@@ -566,6 +599,7 @@ function EpubReaderPage({
             providers={dictionaryProviders}
             localTranslationProvider={localTranslationProvider}
             installedTranslationTargets={installedTranslationTargets}
+            onlineTranslationProvider={onlineTranslationProvider}
           />
         ) : null}
       </div>

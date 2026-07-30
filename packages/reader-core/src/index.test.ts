@@ -59,10 +59,10 @@ describe('continuous page gesture', () => {
     } as unknown as WheelEvent;
 
     gesture.handleWheel(wheel);
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(120);
     scroller.scrollLeft = 1_000;
     gesture.handleWheel(wheel);
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(120);
 
     let time = performance.now();
     for (let index = 0; index < 240 && frames.size > 0; index += 1) {
@@ -153,7 +153,7 @@ describe('stacked page gesture', () => {
     });
     expect(sheetAnimation.currentTime).toBe(500);
 
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(120);
     let time = performance.now();
     for (let index = 0; index < 240 && frames.size > 0; index += 1) {
       const [id, callback] = frames.entries().next().value as [number, FrameRequestCallback];
@@ -235,7 +235,7 @@ describe('stacked page gesture', () => {
 
     gesture.handleWheel(wheel);
     await Promise.resolve();
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(120);
     expect(frames.size).toBeGreaterThan(0);
 
     gesture.handleWheel(wheel);
@@ -313,7 +313,7 @@ describe('stacked page gesture', () => {
       vi.advanceTimersByTime(12);
     }
     await Promise.resolve();
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(120);
     gesture.handleWheel(wheel);
 
     const firstPaint = frames.entries().next().value as [number, FrameRequestCallback];

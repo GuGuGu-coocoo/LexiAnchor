@@ -292,6 +292,40 @@ export function ReaderAppearancePanel({
 
         <label className="reader-control">
           <span>
+            {t('selectionPopoverWidth')} <output>{preferences.selectionPopoverWidthPx} px</output>
+          </span>
+          <input
+            type="range"
+            aria-label={t('selectionPopoverWidth')}
+            min="300"
+            max="620"
+            step="10"
+            value={preferences.selectionPopoverWidthPx}
+            onChange={(event) =>
+              updatePreference('selectionPopoverWidthPx', Number(event.target.value))
+            }
+          />
+        </label>
+
+        <label className="reader-control">
+          <span>
+            {t('selectionPopoverHeight')} <output>{preferences.selectionPopoverHeightPx} px</output>
+          </span>
+          <input
+            type="range"
+            aria-label={t('selectionPopoverHeight')}
+            min="260"
+            max="720"
+            step="10"
+            value={preferences.selectionPopoverHeightPx}
+            onChange={(event) =>
+              updatePreference('selectionPopoverHeightPx', Number(event.target.value))
+            }
+          />
+        </label>
+
+        <label className="reader-control">
+          <span>
             {t('fontWeight')} <output>{preferences.fontWeight}</output>
           </span>
           <input
