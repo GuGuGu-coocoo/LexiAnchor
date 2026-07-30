@@ -26,8 +26,11 @@ interface SelectionToolsProps {
   readonly providers: readonly DictionaryProvider[];
   readonly localTranslationProvider: BergamotTranslationProvider;
   readonly installedTranslationTargets: readonly TranslationTargetLanguage[];
+  readonly onlineTranslationProvider: OnlineTranslationProvider;
   readonly onDismiss?: () => void;
 }
+
+export type OnlineTranslationProvider = 'google' | 'bing' | 'baidu';
 
 export interface WordCardDraft {
   readonly term: string;
@@ -60,7 +63,32 @@ function searchUrl(text: string): string {
   return url.href;
 }
 
-function translationUrl(text: string, targetLanguage: TranslationTargetLanguage): string {
+function translationProviderName(provider: OnlineTranslationProvider): string {
+  return provider === 'google'
+    ? 'Google Translate'
+    : provider === 'bing'
+      ? 'Microsoft Bing Translator'
+      : 'Baidu Translate';
+}
+
+function translationUrl(
+  provider: OnlineTranslationProvider,
+  text: string,
+  targetLanguage: TranslationTargetLanguage,
+): string {
+  if (provider === 'bing') {
+    const url = new URL('https://www.bing.com/translator');
+    url.searchParams.set('from', 'auto');
+    url.searchParams.set('to', targetLanguage === 'zh' ? 'zh-Hans' : 'fr');
+    url.searchParams.set('text', text);
+    return url.href;
+  }
+
+  if (provider === 'baidu') {
+    const target = targetLanguage === 'zh' ? 'zh' : 'fra';
+    return `https://fanyi.baidu.com/#auto/${target}/${encodeURIComponent(text)}`;
+  }
+
   const url = new URL('https://translate.google.com/');
   url.searchParams.set('sl', 'auto');
   url.searchParams.set('tl', targetLanguage === 'zh' ? 'zh-CN' : 'fr');
@@ -80,10 +108,13 @@ export function SelectionTools({
   providers,
   localTranslationProvider,
   installedTranslationTargets,
+  onlineTranslationProvider,
   onDismiss,
 }: SelectionToolsProps) {
   const selectedText = normalizeSelectionText(selection?.text ?? '');
   const canUseDictionary = isSingleWord(selectedText);
+  const sentenceText = normalizeSelectionText(selection?.sentence ?? '');
+  const translationText = canUseDictionary && sentenceText ? sentenceText : selectedText;
   const [lookupState, setLookupState] = useState<LookupState>({
     term: '',
     results: [],
@@ -111,7 +142,8 @@ export function SelectionTools({
   const isLoading = Boolean(selectedText && canUseDictionary) && lookupState.term !== selectedText;
   const cardState = cardSaveState?.term === selectedText ? cardSaveState.status : ('idle' as const);
   const activeTranslation =
-    localTranslation.text === selectedText && localTranslation.targetLanguage === translationTarget
+    localTranslation.text === translationText &&
+    localTranslation.targetLanguage === translationTarget
       ? localTranslation
       : null;
   const localModelInstalled = installedTranslationTargets.includes(translationTarget);
@@ -155,23 +187,30 @@ export function SelectionTools({
       translationAbort.current?.abort();
       translationAbort.current = null;
     };
-  }, [selectedText, translationTarget]);
+  }, [translationTarget, translationText]);
 
   async function openTranslation() {
-    const consentKey = 'lexianchor:external-consent:google-translate';
+    const consentKey = `lexianchor:external-consent:${onlineTranslationProvider}-translate`;
 
     if (globalThis.localStorage?.getItem(consentKey) !== 'granted') {
       setShowTranslationConsent(true);
       return;
     }
 
-    await onOpenExternal(translationUrl(selectedText, translationTarget));
+    await onOpenExternal(
+      translationUrl(onlineTranslationProvider, translationText, translationTarget),
+    );
   }
 
   async function confirmTranslation() {
-    globalThis.localStorage?.setItem('lexianchor:external-consent:google-translate', 'granted');
+    globalThis.localStorage?.setItem(
+      `lexianchor:external-consent:${onlineTranslationProvider}-translate`,
+      'granted',
+    );
     setShowTranslationConsent(false);
-    await onOpenExternal(translationUrl(selectedText, translationTarget));
+    await onOpenExternal(
+      translationUrl(onlineTranslationProvider, translationText, translationTarget),
+    );
   }
 
   async function translateLocally() {
@@ -179,7 +218,7 @@ export function SelectionTools({
     translationAbort.current?.abort();
     translationAbort.current = controller;
     setLocalTranslation({
-      text: selectedText,
+      text: translationText,
       targetLanguage: translationTarget,
       status: 'translating',
       result: null,
@@ -188,12 +227,12 @@ export function SelectionTools({
 
     try {
       const result = await localTranslationProvider.translate(
-        selectedText,
+        translationText,
         translationTarget,
         controller.signal,
       );
       setLocalTranslation({
-        text: selectedText,
+        text: translationText,
         targetLanguage: translationTarget,
         status: 'translated',
         result,
@@ -202,7 +241,7 @@ export function SelectionTools({
     } catch (error) {
       if (!controller.signal.aborted) {
         setLocalTranslation({
-          text: selectedText,
+          text: translationText,
           targetLanguage: translationTarget,
           status: 'error',
           result: null,
@@ -273,23 +312,34 @@ export function SelectionTools({
           </select>
         </label>
       </div>
+      <p className="local-translation-source">{translationText}</p>
 
-      {localModelInstalled ? (
+      <div className="translation-actions">
+        {localModelInstalled ? (
+          <button
+            className="dictionary-action local-translation-action"
+            type="button"
+            disabled={translationText.length > 2_000 || activeTranslation?.status === 'translating'}
+            onClick={() => void translateLocally()}
+          >
+            {activeTranslation?.status === 'translating'
+              ? t('translatingLocally')
+              : t('translateLocally')}
+          </button>
+        ) : null}
         <button
-          className="dictionary-action local-translation-action"
+          className="dictionary-action online-translation-action"
           type="button"
-          disabled={selectedText.length > 2_000 || activeTranslation?.status === 'translating'}
-          onClick={() => void translateLocally()}
+          onClick={() => void openTranslation()}
         >
-          {activeTranslation?.status === 'translating'
-            ? t('translatingLocally')
-            : t('translateLocally')}
+          {t('translateOnlineWith')} {translationProviderName(onlineTranslationProvider)}
         </button>
-      ) : (
+      </div>
+      {!localModelInstalled ? (
         <p className="dictionary-status">{t('localModelNotInstalled')}</p>
-      )}
+      ) : null}
 
-      {selectedText.length > 2_000 ? (
+      {translationText.length > 2_000 ? (
         <p className="dictionary-error">{t('translationSelectionTooLong')}</p>
       ) : null}
       {activeTranslation?.result ? (
@@ -411,13 +461,6 @@ export function SelectionTools({
           <button
             className="dictionary-action"
             type="button"
-            onClick={() => void openTranslation()}
-          >
-            {t('onlineTranslation')}
-          </button>
-          <button
-            className="dictionary-action"
-            type="button"
             onClick={() => void onOpenExternal(searchUrl(selectedText))}
           >
             {t('searchOnWeb')}
@@ -428,7 +471,11 @@ export function SelectionTools({
       {showTranslationConsent ? (
         <div className="external-consent" role="alert">
           <p>
-            {t('externalTranslationNotice')} “{selectedText}”
+            {t('externalTranslationNotice').replace(
+              '{provider}',
+              translationProviderName(onlineTranslationProvider),
+            )}{' '}
+            “{translationText}”
           </p>
           <div>
             <button type="button" onClick={() => setShowTranslationConsent(false)}>

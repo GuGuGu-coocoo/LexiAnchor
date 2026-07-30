@@ -86,6 +86,7 @@ function isAllowedSettingKey(key: string): boolean {
       'lexianchor:dictionary-preferences',
       'lexianchor:library-sort',
       'lexianchor:translation-target',
+      'lexianchor:online-translation-provider',
       'lexianchor:reader-preferences',
       'lexianchor:reader-presets',
     ].includes(key) || key.startsWith('lexianchor:reader-preferences:')

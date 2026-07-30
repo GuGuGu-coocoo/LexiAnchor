@@ -44,7 +44,7 @@ import {
 } from '@lexianchor/translation';
 import '@lexianchor/ui/styles.css';
 
-import type { WordCardDraft } from './selection-tools';
+import type { OnlineTranslationProvider, WordCardDraft } from './selection-tools';
 import {
   formatStorageBytes,
   readStorageHealth,
@@ -222,6 +222,11 @@ function readStoredTheme(): Theme {
   return themes.find((theme) => theme === stored) ?? 'system';
 }
 
+function readOnlineTranslationProvider(): OnlineTranslationProvider {
+  const stored = globalThis.localStorage?.getItem('lexianchor:online-translation-provider');
+  return stored === 'bing' || stored === 'baidu' ? stored : 'google';
+}
+
 function exportableSettings(): Readonly<Record<string, string>> {
   const settings: Record<string, string> = {};
   const storage = globalThis.localStorage;
@@ -231,6 +236,7 @@ function exportableSettings(): Readonly<Record<string, string>> {
     'lexianchor:dictionary-preferences',
     'lexianchor:library-sort',
     'lexianchor:translation-target',
+    'lexianchor:online-translation-provider',
     'lexianchor:reader-preferences',
     'lexianchor:reader-presets',
   ]);
@@ -343,6 +349,9 @@ export function App({ platform }: AppProps) {
   const [lastDeletedCard, setLastDeletedCard] = useState<WordCardRecord | null>(null);
   const [cardTransferMessage, setCardTransferMessage] = useState('');
   const [dictionaryPreferences, setDictionaryPreferences] = useState(readDictionaryPreferences);
+  const [onlineTranslationProvider, setOnlineTranslationProvider] = useState(
+    readOnlineTranslationProvider,
+  );
   const [installedDictionaries, setInstalledDictionaries] = useState<DictionaryInstallState>({
     'freedict-eng-fra-0.1.6': false,
     'freedict-eng-zho-2025.11.23': false,
@@ -361,6 +370,7 @@ export function App({ platform }: AppProps) {
     useState<TranslationModelProgress | null>(null);
   const translationInstallAbort = useRef<AbortController | null>(null);
   const latestReadingProgress = useRef<ReadingProgressRecord | null>(null);
+  const readingProgressWriteQueue = useRef<Promise<void>>(Promise.resolve());
   const isClosingReader = useRef(false);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const [isReaderSettingsOpen, setIsReaderSettingsOpen] = useState(false);
@@ -391,6 +401,13 @@ export function App({ platform }: AppProps) {
       JSON.stringify(dictionaryPreferences),
     );
   }, [dictionaryPreferences]);
+
+  useEffect(() => {
+    globalThis.localStorage?.setItem(
+      'lexianchor:online-translation-provider',
+      onlineTranslationProvider,
+    );
+  }, [onlineTranslationProvider]);
 
   useEffect(() => {
     void platform.getAppVersion().then(setAppVersion);
@@ -748,11 +765,13 @@ export function App({ platform }: AppProps) {
         return;
       }
 
-      void repository()
-        .saveProgress(progress)
-        .catch((error: unknown) =>
-          setStatusMessage(error instanceof Error ? error.message : String(error)),
-        );
+      const write = readingProgressWriteQueue.current
+        .catch(() => undefined)
+        .then(() => repository().saveProgress(progress));
+      readingProgressWriteQueue.current = write;
+      void write.catch((error: unknown) =>
+        setStatusMessage(error instanceof Error ? error.message : String(error)),
+      );
     },
     [openBook?.bookId],
   );
@@ -767,13 +786,16 @@ export function App({ platform }: AppProps) {
       void platform.setFullscreen(false).then(setIsFullscreen);
     }
     const finalProgress = latestReadingProgress.current;
-    const flush = finalProgress ? repository().saveProgress(finalProgress) : Promise.resolve();
+    const flush = readingProgressWriteQueue.current
+      .catch(() => undefined)
+      .then(() => (finalProgress ? repository().saveProgress(finalProgress) : undefined));
 
     void flush
       .catch((error: unknown) =>
         setStatusMessage(error instanceof Error ? error.message : String(error)),
       )
       .finally(() => {
+        readingProgressWriteQueue.current = Promise.resolve();
         latestReadingProgress.current = null;
         setIsReaderSettingsOpen(false);
         setOpenBook(null);
@@ -1179,6 +1201,7 @@ export function App({ platform }: AppProps) {
       setLocale(readStoredLocale());
       setTheme(readStoredTheme());
       setDictionaryPreferences(readDictionaryPreferences());
+      setOnlineTranslationProvider(readOnlineTranslationProvider());
       await refreshLibrary();
       setWordCards(await repository().listWordCards());
       setApplicationBackupMessage(
@@ -1214,6 +1237,7 @@ export function App({ platform }: AppProps) {
     applicationBackupMessage,
     isApplicationBackupBusy,
     dictionaryPreferences,
+    onlineTranslationProvider,
     installedDictionaries,
     installingDictionary,
     userStarDict,
@@ -1222,6 +1246,7 @@ export function App({ platform }: AppProps) {
     translationModelProgress,
     t,
     onToggleDictionary: toggleDictionary,
+    onOnlineTranslationProviderChange: setOnlineTranslationProvider,
     onMoveDictionary: moveDictionary,
     onInstallFreeDict: installFreeDict,
     onRemoveFreeDict: removeFreeDict,
@@ -1264,6 +1289,7 @@ export function App({ platform }: AppProps) {
                 TranslationModelInstallStatus,
               ][]
             ).flatMap(([target, status]) => (status.installed ? [target] : []))}
+            onlineTranslationProvider={onlineTranslationProvider}
           />
         </Suspense>
         {isReaderSettingsOpen ? (
@@ -2430,6 +2456,7 @@ interface SettingsPageProps {
   readonly applicationBackupMessage: string;
   readonly isApplicationBackupBusy: boolean;
   readonly dictionaryPreferences: DictionaryPreferences;
+  readonly onlineTranslationProvider: OnlineTranslationProvider;
   readonly installedDictionaries: DictionaryInstallState;
   readonly installingDictionary: DownloadableDictionaryId | null;
   readonly userStarDict: StarDictInstallStatus | null;
@@ -2438,6 +2465,7 @@ interface SettingsPageProps {
   readonly translationModelProgress: TranslationModelProgress | null;
   readonly t: (key: MessageKey) => string;
   readonly onToggleDictionary: (id: DictionaryId, enabled: boolean) => void;
+  readonly onOnlineTranslationProviderChange: (provider: OnlineTranslationProvider) => void;
   readonly onMoveDictionary: (id: DictionaryId, direction: -1 | 1) => void;
   readonly onInstallFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
   readonly onRemoveFreeDict: (id: DownloadableDictionaryId) => Promise<void>;
@@ -2459,6 +2487,7 @@ function SettingsPage({
   applicationBackupMessage,
   isApplicationBackupBusy,
   dictionaryPreferences,
+  onlineTranslationProvider,
   installedDictionaries,
   installingDictionary,
   userStarDict,
@@ -2467,6 +2496,7 @@ function SettingsPage({
   translationModelProgress,
   t,
   onToggleDictionary,
+  onOnlineTranslationProviderChange,
   onMoveDictionary,
   onInstallFreeDict,
   onRemoveFreeDict,
@@ -2778,6 +2808,28 @@ function SettingsPage({
           );
         })}
       </div>
+
+      <header className="settings-section-heading">
+        <h2>{t('onlineTranslation')}</h2>
+        <p>{t('onlineTranslationProviderDescription')}</p>
+      </header>
+
+      <article className="dictionary-settings-card online-translation-settings">
+        <label className="reader-control">
+          <span>{t('onlineTranslationProvider')}</span>
+          <select
+            value={onlineTranslationProvider}
+            onChange={(event) =>
+              onOnlineTranslationProviderChange(event.target.value as OnlineTranslationProvider)
+            }
+          >
+            <option value="google">Google Translate</option>
+            <option value="bing">Microsoft Bing Translator</option>
+            <option value="baidu">Baidu Translate</option>
+          </select>
+        </label>
+        <p className="dictionary-download-note">{t('onlineTranslationPrivacyNote')}</p>
+      </article>
 
       <header className="settings-section-heading">
         <h2>{t('localTranslationModels')}</h2>

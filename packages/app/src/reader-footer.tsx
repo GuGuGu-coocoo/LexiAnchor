@@ -30,7 +30,10 @@ export function ReaderFooter({
         ) : null}
       </div>
       <output className="reader-footer-page">
-        {currentPage ?? '—'} {ofLabel} {totalPages ?? '—'}
+        <span className="reader-footer-page-current">{currentPage ?? '—'}</span>
+        <span className="reader-footer-page-details">
+          {currentPage ?? '—'} {ofLabel} {totalPages ?? '—'}
+        </span>
       </output>
       <span className="reader-footer-trailing">
         {pagesRemaining === undefined ? '' : `${pagesRemaining} ${pagesRemainingLabel}`}

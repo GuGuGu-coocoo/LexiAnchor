@@ -39,6 +39,20 @@ describe('reader preferences', () => {
       pageSpread: 'single',
       pageTurnEffect: 'slide',
       fontSizePercent: 125,
+      selectionPopoverWidthPx: 360,
+      selectionPopoverHeightPx: 430,
+    });
+  });
+
+  it('clamps selection popover dimensions to a usable desktop range', () => {
+    expect(
+      normalizeReaderPreferences({
+        selectionPopoverWidthPx: 900,
+        selectionPopoverHeightPx: 120,
+      }),
+    ).toMatchObject({
+      selectionPopoverWidthPx: 620,
+      selectionPopoverHeightPx: 260,
     });
   });
 

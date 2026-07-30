@@ -75,6 +75,24 @@ export function normalizeReaderPreferences(input: Partial<ReaderPreferences>): R
     fontWeight: Math.round(clamp(input.fontWeight, 400, 350, 700) / 50) * 50,
     selectionFontSizePercent:
       Math.round(clamp(input.selectionFontSizePercent, 100, 80, 160) / 5) * 5,
+    selectionPopoverWidthPx:
+      Math.round(
+        clamp(
+          input.selectionPopoverWidthPx,
+          defaultReaderPreferences.selectionPopoverWidthPx,
+          300,
+          620,
+        ) / 10,
+      ) * 10,
+    selectionPopoverHeightPx:
+      Math.round(
+        clamp(
+          input.selectionPopoverHeightPx,
+          defaultReaderPreferences.selectionPopoverHeightPx,
+          260,
+          720,
+        ) / 10,
+      ) * 10,
     contentWidthPercent: Math.round(clamp(input.contentWidthPercent, 90, 55, 100) / 5) * 5,
     textAlignment: textAlignments.includes(input.textAlignment as ReaderTextAlignment)
       ? (input.textAlignment as ReaderTextAlignment)

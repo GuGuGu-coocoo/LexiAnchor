@@ -65,6 +65,33 @@ async function expectEpubHeading(page: Page, name: string) {
     .toBe(true);
 }
 
+async function epubElementIntersectsViewport(page: Page, selector: string): Promise<boolean> {
+  return page.evaluate((targetSelector) => {
+    const scroller = document
+      .querySelector('[data-testid="epub-container"]')
+      ?.querySelector<HTMLElement>('.epub-container');
+    if (!scroller) {
+      return false;
+    }
+
+    const viewport = scroller.getBoundingClientRect();
+    for (const frame of Array.from(scroller.querySelectorAll('iframe'))) {
+      const element = frame.contentDocument?.querySelector<HTMLElement>(targetSelector);
+      if (!element) {
+        continue;
+      }
+
+      const frameBox = frame.getBoundingClientRect();
+      const elementBox = element.getBoundingClientRect();
+      const left = frameBox.left + elementBox.left;
+      const right = frameBox.left + elementBox.right;
+      return right > viewport.left && left < viewport.right;
+    }
+
+    return false;
+  }, selector);
+}
+
 async function currentEpubHref(page: Page): Promise<string> {
   return page.evaluate(() => {
     const key = Object.keys(localStorage).find((candidate) =>
@@ -471,11 +498,23 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   });
   await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
   await expect(page.locator('.reader-page')).not.toHaveClass(/reader-page--toolbar-hidden/);
-  await bookFrame.locator('body').press('Escape');
-  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
   await page
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
+  await expect(readerSidebar).toBeVisible();
+  await page
+    .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
+    .click();
+  await expect(readerSidebar).toBeHidden();
+  await bookFrame.locator('body').press('Escape');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
+  await expect(readerSidebar).toBeVisible();
+  await bookFrame.locator('body').press('f');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  await expect(page.locator('aside.reader-settings')).toBeHidden();
+  await bookFrame.locator('body').press('f');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
+  await expect(readerSidebar).toBeVisible();
   await appearance.selectOption('light');
 
   await page
@@ -517,6 +556,59 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .click();
   await expect(firstChapter).toHaveAttribute('aria-current', 'location');
   await expect(secondChapter).not.toHaveAttribute('aria-current', 'location');
+  const thirdSubsection = tableOfContents.getByRole('button', { name: 'The Bookmark' });
+  await expect
+    .poll(async () => {
+      const pageNumbers = await tableOfContents.locator('.reader-toc-page').allTextContents();
+      return new Set(pageNumbers).size;
+    })
+    .toBeGreaterThanOrEqual(3);
+  // A later TOC request must always win, even if the previous display promise
+  // is still filling EPUB.js' continuous strip.
+  await secondChapter.click();
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  await thirdSubsection.click();
+  await expectEpubHeading(page, 'Page Turn 3 — The Bookmark');
+  await page.waitForTimeout(750);
+  await expectEpubHeading(page, 'Page Turn 3 — The Bookmark');
+  // Trigger the internal link in place rather than letting Playwright scroll
+  // it into view. This proves Back restores the clicked node's exact CFI,
+  // even when EPUB.js' current page-start locator is several columns earlier.
+  await page.evaluate(() => {
+    const frames = document.querySelectorAll<HTMLIFrameElement>('.epub-container iframe');
+    for (const frame of frames) {
+      const link = frame.contentDocument?.querySelector<HTMLElement>('#cross-chapter-link');
+      if (link) {
+        link.click();
+        return;
+      }
+    }
+    throw new Error('Cross-chapter EPUB link was not rendered');
+  });
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-2.xhtml');
+  await expectEpubHeading(page, 'Finding an Anchor');
+  const epubBackToLinkedPage = page.locator('.reader-footer-leading button');
+  await expect(epubBackToLinkedPage).toBeVisible();
+  await epubBackToLinkedPage.click();
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-1.xhtml');
+  await expect.poll(() => epubElementIntersectsViewport(page, '#cross-chapter-link')).toBe(true);
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
+  await expect(thirdSubsection).toHaveAttribute('aria-current', 'location');
+  await firstChapter.click();
+  await expectEpubHeading(page, 'A Quiet Beginning');
+  await page
+    .getByRole('button', {
+      name: /Open table of contents|打开目录|Ouvrir le sommaire/,
+    })
+    .click();
   await page.locator('.reader-title-group').hover();
   await page.screenshot({ path: 'test-results/epub-table-of-contents.png', fullPage: true });
   await page
@@ -547,23 +639,63 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .locator('.dictionary-senses > li')
     .count();
   expect(sidebarSenseCount).toBeGreaterThan(1);
+  const sidebarInspector = page.locator('aside.reader-settings .selection-inspector');
+  const sidebarInspectorWidth = await sidebarInspector.evaluate(
+    (inspector) => inspector.getBoundingClientRect().width,
+  );
+  const selectionWordFontSize = await page
+    .locator('aside.reader-settings .selection-word')
+    .evaluate((word) => Number.parseFloat(getComputedStyle(word).fontSize));
   await expect
     .poll(() =>
       page.evaluate(() => {
         const dictionary = document.querySelector('aside.reader-settings .dictionary-result');
+        const addCard = document.querySelector('aside.reader-settings .add-card-action');
         const sentenceTranslation = document.querySelector(
           'aside.reader-settings .local-translation-panel',
         );
         return Boolean(
           dictionary &&
+          addCard &&
           sentenceTranslation &&
           dictionary.compareDocumentPosition(sentenceTranslation) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
+            Node.DOCUMENT_POSITION_FOLLOWING &&
+          dictionary.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          addCard.compareDocumentPosition(sentenceTranslation) & Node.DOCUMENT_POSITION_FOLLOWING,
         );
       }),
     )
     .toBe(true);
-  await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
+  await expect(
+    page.getByText(/Sentence translation|整句翻译|Traduction de la phrase/),
+  ).toBeVisible();
+  await expect(page.locator('aside.reader-settings .local-translation-source')).toContainText(
+    'Select the word attentive, or select this entire sentence',
+  );
+  expect(
+    await page
+      .locator('aside.reader-settings .selection-inspector')
+      .evaluate((inspector) => inspector.scrollWidth <= inspector.clientWidth + 1),
+  ).toBe(true);
+  await expect(
+    page.getByRole('button', {
+      name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
+    }),
+  ).toBeVisible();
+  await page.locator('.reader-toolbar-settings-button').click();
+  await readerSettingsOverlay
+    .getByRole('combobox', {
+      name: /Default online service|默认在线翻译服务|Service en ligne par défaut/,
+    })
+    .selectOption('bing');
+  await readerSettingsOverlay
+    .getByRole('button', { name: /Close settings|关闭设置|Fermer les réglages/ })
+    .click();
+  await expect(
+    page.getByRole('button', {
+      name: /Open Microsoft Bing Translator|打开 Microsoft Bing Translator|Ouvrir Microsoft Bing Translator/,
+    }),
+  ).toBeVisible();
   await expect(
     page.getByRole('combobox', { name: /Translation target|翻译目标语言|Langue cible/ }),
   ).toHaveValue(/zh|fr/);
@@ -587,9 +719,55 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     )
     .toBe(true);
 
+  await page
+    .getByRole('slider', {
+      name: /Selection tools size|划词浮窗字体大小|Taille des outils de sélection/,
+    })
+    .fill('160');
+  await expect
+    .poll(() => sidebarInspector.evaluate((inspector) => inspector.getBoundingClientRect().width))
+    .toBeCloseTo(sidebarInspectorWidth, 0);
+  await expect
+    .poll(() =>
+      page
+        .locator('aside.reader-settings .selection-word')
+        .evaluate((word) => Number.parseFloat(getComputedStyle(word).fontSize)),
+    )
+    .toBeGreaterThan(selectionWordFontSize * 1.5);
+  expect(
+    await page
+      .locator('aside.reader-settings .local-translation-heading select')
+      .evaluate((select) => {
+        const selectBox = select.getBoundingClientRect();
+        const panelBox = select.closest('.local-translation-panel')?.getBoundingClientRect();
+        return Boolean(
+          panelBox &&
+          selectBox.left >= panelBox.left - 1 &&
+          selectBox.right <= panelBox.right + 1 &&
+          select.scrollWidth <= select.clientWidth + 1,
+        );
+      }),
+  ).toBe(true);
+
+  await page
+    .getByRole('slider', {
+      name: /Selection popover width|划词浮窗宽度|Largeur de la fenêtre de sélection/,
+    })
+    .fill('520');
+  await page
+    .getByRole('slider', {
+      name: /Selection popover height|划词浮窗高度|Hauteur de la fenêtre de sélection/,
+    })
+    .fill('520');
   await page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }).click();
   await expect(page.locator('.selection-popover-shell')).toBeVisible();
+  await expect
+    .poll(async () => page.locator('.selection-popover-shell').boundingBox())
+    .toMatchObject({ width: 520 });
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
+  await expect(page.locator('.selection-popover-shell .local-translation-source')).toContainText(
+    'Select the word attentive, or select this entire sentence',
+  );
   await expect(page.locator('.selection-popover-shell .dictionary-result').first()).toBeVisible();
   await expect(
     page
@@ -601,14 +779,18 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .poll(() =>
       page.evaluate(() => {
         const dictionary = document.querySelector('.selection-popover-shell .dictionary-result');
+        const addCard = document.querySelector('.selection-popover-shell .add-card-action');
         const sentenceTranslation = document.querySelector(
           '.selection-popover-shell .local-translation-panel',
         );
         return Boolean(
           dictionary &&
+          addCard &&
           sentenceTranslation &&
           dictionary.compareDocumentPosition(sentenceTranslation) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
+            Node.DOCUMENT_POSITION_FOLLOWING &&
+          dictionary.compareDocumentPosition(addCard) & Node.DOCUMENT_POSITION_FOLLOWING &&
+          addCard.compareDocumentPosition(sentenceTranslation) & Node.DOCUMENT_POSITION_FOLLOWING,
         );
       }),
     )
@@ -634,9 +816,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await page
     .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
     .click();
-  await page
-    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
-    .click();
+  await expect(readerSidebar).toBeVisible();
   await expect
     .poll(() =>
       page
@@ -742,12 +922,19 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await pageTurnEffect.selectOption('stack');
   await page.waitForTimeout(250);
   const stackedScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
+  await stackedScroller.evaluate((scroller) => {
+    if (scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft < scroller.clientWidth) {
+      scroller.scrollLeft = 0;
+    }
+  });
   const stackedStart = await stackedScroller.evaluate((scroller) => scroller.scrollLeft);
   const stackedPageBody = page
     .locator('.epub-container iframe')
     .last()
     .contentFrame()
     .locator('body');
+  await stackedPageBody.hover();
+  await page.waitForTimeout(30);
   for (let index = 0; index < 6; index += 1) {
     await stackedPageBody.dispatchEvent('wheel', {
       bubbles: true,
@@ -758,7 +945,9 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     });
     await page.waitForTimeout(16);
   }
-  await expect(stackedScroller).toHaveClass(/epub-page-stack-transition/);
+  expect(await stackedScroller.evaluate((scroller) => scroller.scrollLeft)).toBeGreaterThan(
+    stackedStart + 100,
+  );
   await page.waitForTimeout(30);
   await page.screenshot({ path: 'test-results/epub-stacked-page-turn.png', fullPage: true });
   await expect
@@ -944,7 +1133,11 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
 
   await page.locator('.pdf-annotation-link[data-internal-page="3"]').click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
-  await page.locator('.pdf-reader-stage').hover();
+  await expect(page.locator('.reader-footer-page-current')).toBeVisible();
+  await expect(page.locator('.reader-footer-page-details')).toBeHidden();
+  await page.locator('.reader-footer').hover();
+  await expect(page.locator('.reader-footer-page-current')).toBeHidden();
+  await expect(page.locator('.reader-footer-page-details')).toBeVisible();
   const backToLinkedPage = page.locator('.reader-footer-leading button');
   await expect(backToLinkedPage).toBeVisible();
   await backToLinkedPage.click();
@@ -962,6 +1155,16 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
   await expect(pdfSidebar).toBeVisible();
+  await page.keyboard.press('f');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  await expect(pdfSidebar).toBeHidden();
+  await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await expect(pdfSidebar).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
 
   await textLayer
     .locator('span', { hasText: 'resilient' })
@@ -992,7 +1195,9 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   );
   await expect(page.getByText(/recovering readily from adversity/i)).toBeVisible();
   await expect(
-    page.getByRole('button', { name: /Online translation|在线翻译|Traduction/ }),
+    page.getByRole('button', {
+      name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
+    }),
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: /Search on Web|网页搜索|Rechercher/ }),
@@ -1010,12 +1215,12 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   await expect(
     page.getByRole('button', { name: /^Full screen$|^全屏$|^Plein écran$/ }),
   ).toBeVisible();
-  await page
-    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
-    .click();
+  await expect(pdfSidebar).toBeVisible();
 
   await page
-    .getByRole('button', { name: /Online translation|在线翻译|Traduction en ligne/ })
+    .getByRole('button', {
+      name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
+    })
     .click();
   await expect(page.getByRole('alert')).toContainText('resilient');
   await page.getByRole('button', { name: /Cancel|取消|Annuler/ }).click();

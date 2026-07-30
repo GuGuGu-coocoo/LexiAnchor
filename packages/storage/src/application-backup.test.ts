@@ -114,7 +114,10 @@ describe('application backup', () => {
     await sourceContent.store.put(hash, bookData);
     const backup = await createApplicationBackup(sourceRepository.repository, sourceContent.store, {
       includeBookFiles: true,
-      settings: { 'lexianchor:theme': 'eye-care' },
+      settings: {
+        'lexianchor:theme': 'eye-care',
+        'lexianchor:online-translation-provider': 'bing',
+      },
       exportedAt: '2026-07-26T01:00:00.000Z',
     });
     const targetRepository = repositories({ books: [], progress: [], wordCards: [] });
@@ -125,7 +128,10 @@ describe('application backup', () => {
       targetContent.store,
     );
 
-    expect(restored.settings).toEqual({ 'lexianchor:theme': 'eye-care' });
+    expect(restored.settings).toEqual({
+      'lexianchor:theme': 'eye-care',
+      'lexianchor:online-translation-provider': 'bing',
+    });
     expect(restored.counts).toEqual({ books: 1, progress: 1, wordCards: 1 });
     expect(targetRepository.snapshot()).toEqual(snapshot);
     expect(new Uint8Array(targetContent.values.get(hash) ?? new ArrayBuffer(0))).toEqual(
