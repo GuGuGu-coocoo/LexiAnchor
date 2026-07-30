@@ -297,6 +297,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private navigationRevision = 0;
   private displayQueue: Promise<void> = Promise.resolve();
   private navigationPositionCache = new Map<string, Promise<EpubNavigationPosition>>();
+  private pendingLinkOrigin: ReaderLocator | null = null;
 
   constructor(private readonly callbacks: ReaderCallbacks) {}
 
@@ -412,9 +413,51 @@ export class EpubJsReaderEngine implements ReaderEngine {
         contents.document.addEventListener('wheel', this.handleWheelNavigation, {
           passive: false,
         });
+        contents.document.addEventListener(
+          'click',
+          (event) => {
+            this.pendingLinkOrigin = null;
+            const target = event.target as Element | null;
+            const link = target?.closest('a[href]');
+            const href = link?.getAttribute('href') ?? '';
+
+            if (
+              !link ||
+              !href ||
+              href.startsWith('mailto:') ||
+              href.startsWith('http://') ||
+              href.startsWith('https://')
+            ) {
+              return;
+            }
+
+            const sectionHref =
+              this.book?.spine.get(contents.sectionIndex)?.href ?? this.currentLocator?.href;
+            if (!sectionHref) {
+              return;
+            }
+
+            try {
+              // currentLocator is the beginning of EPUB.js' reported page and
+              // can be stale by several columns in a long continuous section.
+              // The clicked link itself is an exact, layout-independent return
+              // point and is captured before EPUB.js handles the navigation.
+              this.pendingLinkOrigin = {
+                ...(this.currentLocator ?? {}),
+                href: sectionHref,
+                cfi: contents.cfiFromNode(link, 'lexianchor-focus'),
+              };
+            } catch {
+              this.pendingLinkOrigin = this.currentLocator;
+            }
+          },
+          true,
+        );
         contents.on('linkClicked', () => {
-          if (this.currentLocator) {
-            this.callbacks.onLinkNavigation?.(this.currentLocator);
+          const origin = this.pendingLinkOrigin ?? this.currentLocator;
+          this.pendingLinkOrigin = null;
+          if (origin) {
+            this.callbacks.onLinkNavigation?.(origin);
           }
         });
       });
@@ -546,6 +589,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.navigationRevision += 1;
     this.displayQueue = Promise.resolve();
     this.navigationPositionCache.clear();
+    this.pendingLinkOrigin = null;
     return Promise.resolve();
   }
 
@@ -588,7 +632,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
             navigationRevision === this.navigationRevision &&
             this.rendition === rendition &&
             this.requestedLocator === locator,
-          false,
+          true,
         );
       }
       if (
@@ -789,9 +833,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
           return;
         }
 
-        // On initial open, the continuous manager fills its strip after the
-        // first display. Re-apply the saved target once while the loading state
-        // is still hidden. Explicit TOC jumps never take this second trip.
+        // The continuous manager can fill or resize its strip after the first
+        // display. Re-apply the target once after those first paints so saved
+        // positions, TOC jumps, and Back links all land on the intended CFI.
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         if (!isCurrent()) {
           return;

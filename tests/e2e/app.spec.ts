@@ -65,6 +65,33 @@ async function expectEpubHeading(page: Page, name: string) {
     .toBe(true);
 }
 
+async function epubElementIntersectsViewport(page: Page, selector: string): Promise<boolean> {
+  return page.evaluate((targetSelector) => {
+    const scroller = document
+      .querySelector('[data-testid="epub-container"]')
+      ?.querySelector<HTMLElement>('.epub-container');
+    if (!scroller) {
+      return false;
+    }
+
+    const viewport = scroller.getBoundingClientRect();
+    for (const frame of Array.from(scroller.querySelectorAll('iframe'))) {
+      const element = frame.contentDocument?.querySelector<HTMLElement>(targetSelector);
+      if (!element) {
+        continue;
+      }
+
+      const frameBox = frame.getBoundingClientRect();
+      const elementBox = element.getBoundingClientRect();
+      const left = frameBox.left + elementBox.left;
+      const right = frameBox.left + elementBox.right;
+      return right > viewport.left && left < viewport.right;
+    }
+
+    return false;
+  }, selector);
+}
+
 async function currentEpubHref(page: Page): Promise<string> {
   return page.evaluate(() => {
     const key = Object.keys(localStorage).find((candidate) =>
@@ -548,6 +575,27 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expectEpubHeading(page, 'Page Turn 3 — The Bookmark');
   await page.waitForTimeout(750);
   await expectEpubHeading(page, 'Page Turn 3 — The Bookmark');
+  // Trigger the internal link in place rather than letting Playwright scroll
+  // it into view. This proves Back restores the clicked node's exact CFI,
+  // even when EPUB.js' current page-start locator is several columns earlier.
+  await page.evaluate(() => {
+    const frames = document.querySelectorAll<HTMLIFrameElement>('.epub-container iframe');
+    for (const frame of frames) {
+      const link = frame.contentDocument?.querySelector<HTMLElement>('#cross-chapter-link');
+      if (link) {
+        link.click();
+        return;
+      }
+    }
+    throw new Error('Cross-chapter EPUB link was not rendered');
+  });
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-2.xhtml');
+  await expectEpubHeading(page, 'Finding an Anchor');
+  const epubBackToLinkedPage = page.locator('.reader-footer-leading button');
+  await expect(epubBackToLinkedPage).toBeVisible();
+  await epubBackToLinkedPage.click();
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-1.xhtml');
+  await expect.poll(() => epubElementIntersectsViewport(page, '#cross-chapter-link')).toBe(true);
   await page
     .getByRole('button', {
       name: /Open table of contents|打开目录|Ouvrir le sommaire/,
