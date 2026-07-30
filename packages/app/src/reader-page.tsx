@@ -76,6 +76,46 @@ function readLocator(source: ReaderSource, scopeId: string): ReaderLocator | und
   }
 }
 
+function layoutSignature(preferences: ReaderPreferences): string {
+  return JSON.stringify({
+    flow: preferences.flow,
+    pageSpread: preferences.pageSpread,
+    fontSizePercent: preferences.fontSizePercent,
+    lineHeight: preferences.lineHeight,
+    wordSpacingEm: preferences.wordSpacingEm,
+    letterSpacingEm: preferences.letterSpacingEm,
+    fontFamily: preferences.fontFamily,
+    customFontFamily: preferences.customFontFamily,
+    fontWeight: preferences.fontWeight,
+    contentWidthPercent: preferences.contentWidthPercent,
+    textAlignment: preferences.textAlignment,
+    focusMode: preferences.focusMode,
+    focusStrength: preferences.focusStrength,
+  });
+}
+
+function resumeLocator(
+  stored: ReaderLocator | undefined,
+  preferences: ReaderPreferences,
+): ReaderLocator | undefined {
+  if (
+    !stored ||
+    !stored.layoutSignature ||
+    stored.layoutSignature === layoutSignature(preferences)
+  ) {
+    return stored;
+  }
+
+  if (stored.navigationHref) {
+    return {
+      href: stored.navigationHref,
+      cfi: stored.navigationCfi,
+    };
+  }
+
+  return { href: normalizedHref(stored.href) || stored.href };
+}
+
 function normalizedHref(href: string | undefined): string {
   return (href ?? '').split('#')[0]?.replace(/^\.?\//, '') ?? '';
 }
@@ -154,6 +194,7 @@ function EpubReaderPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const readerStageRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<EpubJsReaderEngine | null>(null);
+  const engineReadyRef = useRef(false);
   const isFullscreenRef = useRef(isFullscreen);
   const onToggleFullscreenRef = useRef(onToggleFullscreen);
   const [preferences, setPreferences] = useState<ReaderPreferences>(() => ({
@@ -161,13 +202,24 @@ function EpubReaderPage({
     ...readerColorsForTheme(theme),
   }));
   const initialPreferencesRef = useRef(preferences);
+  const appliedLayoutSignatureRef = useRef(layoutSignature(preferences));
+  const layoutPreferenceRevisionRef = useRef(0);
+  const layoutPersistencePendingRef = useRef(false);
+  const currentNavigationItemRef = useRef<FlatNavigationItem | undefined>(undefined);
+  const resumeNavigationRef = useRef<{ href: string; cfi?: string } | undefined>(undefined);
   const [locator, setLocator] = useState<ReaderLocator>();
+  const [locatorLayoutSignature, setLocatorLayoutSignature] = useState(
+    layoutSignature(preferences),
+  );
   const [tableOfContents, setTableOfContents] = useState<readonly EpubNavigationItem[]>([]);
+  const [isPaginationReady, setIsPaginationReady] = useState(false);
   const [activeTocHref, setActiveTocHref] = useState('');
   const [isTableOfContentsOpen, setIsTableOfContentsOpen] = useState(false);
   const [linkOrigin, setLinkOrigin] = useState<ReaderLocator | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
-  const isSidebarVisible = isSidebarOpen && !isFullscreen;
+  const wasFullscreenRef = useRef(isFullscreen);
+  const sidebarBeforeFullscreenRef = useRef(isSidebarOpen);
+  const isSidebarVisible = isSidebarOpen;
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -183,6 +235,20 @@ function EpubReaderPage({
     isFullscreenRef.current = isFullscreen;
     onToggleFullscreenRef.current = onToggleFullscreen;
   }, [isFullscreen, onToggleFullscreen]);
+
+  useEffect(() => {
+    const wasFullscreen = wasFullscreenRef.current;
+    wasFullscreenRef.current = isFullscreen;
+
+    if (!wasFullscreen && isFullscreen) {
+      setIsSidebarOpen((current) => {
+        sidebarBeforeFullscreenRef.current = current;
+        return false;
+      });
+    } else if (wasFullscreen && !isFullscreen) {
+      setIsSidebarOpen(sidebarBeforeFullscreenRef.current);
+    }
+  }, [isFullscreen]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -201,14 +267,6 @@ function EpubReaderPage({
         setLocator(nextLocator);
         setActiveTocHref((current) =>
           current && isCurrentHref(current, nextLocator.href) ? current : '',
-        );
-        globalThis.localStorage?.setItem(
-          storageKey(preferenceScopeId),
-          JSON.stringify(nextLocator),
-        );
-        onLocationChange?.(
-          nextLocator,
-          Math.round((nextLocator.totalProgression ?? nextLocator.progression ?? 0) * 100),
         );
       },
       onSelection: (nextSelection) => {
@@ -230,7 +288,13 @@ function EpubReaderPage({
         }
 
         const activeEngine = engineRef.current;
+        setActiveTocHref('');
         void (command === 'next' ? activeEngine?.next() : activeEngine?.previous());
+      },
+      onPageInteraction: () => {
+        if (isActive) {
+          setActiveTocHref('');
+        }
       },
       onLinkNavigation: (origin) => {
         if (isActive) {
@@ -241,29 +305,43 @@ function EpubReaderPage({
         void engine.getTableOfContents().then((navigation) => {
           if (isActive) {
             setTableOfContents(navigation);
+            setIsPaginationReady(true);
           }
         });
       },
       onError: (readerError) => isActive && setError(readerError.message),
     });
     engineRef.current = engine;
+    engineReadyRef.current = false;
     container.replaceChildren();
     setTableOfContents([]);
+    setIsPaginationReady(false);
+    setLocator(undefined);
+    setActiveTocHref('');
     setIsLoading(true);
     setError('');
+    const storedLocator = readLocator(source, preferenceScopeId) ?? initialLocator;
+    setLocatorLayoutSignature(layoutSignature(initialPreferencesRef.current));
+    resumeNavigationRef.current = storedLocator?.navigationHref
+      ? {
+          href: storedLocator.navigationHref,
+          cfi: storedLocator.navigationCfi,
+        }
+      : undefined;
 
     void engine
       // The synchronous per-book locator is authoritative on this device.
       // SQLite remains the fallback for restored backups and cleared browser
       // storage, but may lag behind if the desktop process was closed while
       // its final asynchronous write was still in flight.
-      .open(container, source, readLocator(source, preferenceScopeId) ?? initialLocator)
+      .open(container, source, resumeLocator(storedLocator, initialPreferencesRef.current))
       .then(async () => {
         await engine.setPreferences(initialPreferencesRef.current);
         const navigation = await engine.getTableOfContents().catch(() => []);
 
         if (isActive) {
           setTableOfContents(navigation);
+          engineReadyRef.current = true;
         }
       })
       .then(() => isActive && setIsLoading(false))
@@ -272,18 +350,66 @@ function EpubReaderPage({
     return () => {
       isActive = false;
       engineRef.current = null;
+      engineReadyRef.current = false;
       void engine.close();
     };
-  }, [initialLocator, onLocationChange, preferenceScopeId, source]);
+  }, [initialLocator, preferenceScopeId, source]);
 
   useEffect(() => {
-    void engineRef.current
+    if (!engineReadyRef.current) {
+      return;
+    }
+
+    const nextLayoutSignature = layoutSignature(preferences);
+    const isLayoutChange = nextLayoutSignature !== appliedLayoutSignatureRef.current;
+    const navigationItem = currentNavigationItemRef.current ?? resumeNavigationRef.current;
+    const engine = engineRef.current;
+    const revision = ++layoutPreferenceRevisionRef.current;
+    if (isLayoutChange) {
+      layoutPersistencePendingRef.current = true;
+      if (navigationItem) {
+        engine?.preserveLocationForLayoutChange({
+          href: navigationItem.href,
+          cfi: navigationItem.cfi,
+        });
+      }
+      appliedLayoutSignatureRef.current = nextLayoutSignature;
+    }
+
+    void engine
       ?.setPreferences(preferences)
-      .catch((preferenceError: unknown) =>
+      .then(() => {
+        if (
+          !isLayoutChange ||
+          revision !== layoutPreferenceRevisionRef.current ||
+          engine !== engineRef.current
+        ) {
+          return;
+        }
+        // A page CFI belongs to the layout that created it. Once typography
+        // or viewport layout changes, commit the smallest TOC anchor as the
+        // new resume point instead of relabelling the old page CFI.
+        if (navigationItem) {
+          resumeNavigationRef.current = {
+            href: navigationItem.href,
+            cfi: navigationItem.cfi,
+          };
+          setLocator({
+            href: navigationItem.href,
+            cfi: navigationItem.cfi,
+          });
+        }
+        setLocatorLayoutSignature(nextLayoutSignature);
+        layoutPersistencePendingRef.current = false;
+      })
+      .catch((preferenceError: unknown) => {
+        if (revision === layoutPreferenceRevisionRef.current) {
+          layoutPersistencePendingRef.current = false;
+        }
         setError(
           preferenceError instanceof Error ? preferenceError.message : String(preferenceError),
-        ),
-      );
+        );
+      });
   }, [preferences]);
 
   useEffect(() => {
@@ -305,9 +431,11 @@ function EpubReaderPage({
 
       if (event.key === 'ArrowRight' || event.key === 'PageDown') {
         event.preventDefault();
+        setActiveTocHref('');
         void engineRef.current?.next();
       } else if (event.key === 'ArrowLeft' || event.key === 'PageUp') {
         event.preventDefault();
+        setActiveTocHref('');
         void engineRef.current?.previous();
       } else if (!event.repeat && event.key.toLocaleLowerCase('en-US') === 'f') {
         event.preventDefault();
@@ -325,12 +453,22 @@ function EpubReaderPage({
     [tableOfContents],
   );
   const currentNavigationItem = useMemo(() => {
+    const preferred = flatTableOfContents.find((item) => item.href === activeTocHref);
+    if (preferred && isCurrentHref(preferred.href, locator?.href)) {
+      return preferred;
+    }
+
+    const exact = flatTableOfContents.find((item) => item.href === locator?.href);
+    const sameDocumentItems = flatTableOfContents.filter((item) =>
+      isCurrentHref(item.href, locator?.href),
+    );
     const currentProgression = locator?.totalProgression;
     if (currentProgression !== undefined) {
-      const positionedItems = flatTableOfContents
+      const positionedItems = sameDocumentItems
         .filter(
           (item) =>
             item.totalProgression !== undefined &&
+            item.totalProgression > 0 &&
             item.totalProgression <= currentProgression + 0.000_5,
         )
         .sort((left, right) => (right.totalProgression ?? 0) - (left.totalProgression ?? 0));
@@ -339,17 +477,64 @@ function EpubReaderPage({
       }
     }
 
-    const preferred = flatTableOfContents.find((item) => item.href === activeTocHref);
-    if (preferred) {
-      return preferred;
-    }
-
-    const exact = flatTableOfContents.find((item) => item.href === locator?.href);
-    return exact ?? flatTableOfContents.find((item) => isCurrentHref(item.href, locator?.href));
+    return exact ?? sameDocumentItems[0];
   }, [activeTocHref, flatTableOfContents, locator?.href, locator?.totalProgression]);
 
+  useEffect(() => {
+    currentNavigationItemRef.current = currentNavigationItem;
+  }, [currentNavigationItem]);
+
+  useEffect(() => {
+    if (!locator || layoutPersistencePendingRef.current) {
+      return;
+    }
+
+    if (
+      currentNavigationItem &&
+      (isPaginationReady ||
+        activeTocHref === currentNavigationItem.href ||
+        !resumeNavigationRef.current)
+    ) {
+      resumeNavigationRef.current = {
+        href: currentNavigationItem.href,
+        cfi: currentNavigationItem.cfi,
+      };
+    }
+
+    const persistedLocator: ReaderLocator = {
+      ...locator,
+      layoutSignature: locatorLayoutSignature,
+      navigationHref: resumeNavigationRef.current?.href,
+      navigationCfi: resumeNavigationRef.current?.cfi,
+    };
+    globalThis.localStorage?.setItem(
+      storageKey(preferenceScopeId),
+      JSON.stringify(persistedLocator),
+    );
+    onLocationChange?.(
+      persistedLocator,
+      Math.round((locator.totalProgression ?? locator.progression ?? 0) * 100),
+    );
+  }, [
+    activeTocHref,
+    currentNavigationItem,
+    isPaginationReady,
+    locator,
+    locatorLayoutSignature,
+    onLocationChange,
+    preferenceScopeId,
+  ]);
+
   function prepareForLayoutChange() {
-    engineRef.current?.preserveLocationForLayoutChange(locator);
+    const navigationItem = currentNavigationItemRef.current ?? resumeNavigationRef.current;
+    engineRef.current?.preserveLocationForLayoutChange(
+      navigationItem
+        ? {
+            href: navigationItem.href,
+            cfi: navigationItem.cfi,
+          }
+        : locator,
+    );
   }
 
   function toggleSidebar() {
@@ -422,17 +607,23 @@ function EpubReaderPage({
               emptyLabel={t('noTableOfContents')}
               label={t('tableOfContents')}
               pageLabel={t('page')}
-              onNavigate={(href) => {
+              onNavigate={(item) => {
                 setSelection(null);
-                setActiveTocHref(href);
+                setActiveTocHref(item.href);
+                resumeNavigationRef.current = {
+                  href: item.href,
+                  cfi: item.cfi,
+                };
                 setIsTableOfContentsOpen(false);
-                void engineRef.current?.goTo({ href }).catch((navigationError: unknown) => {
-                  setError(
-                    navigationError instanceof Error
-                      ? navigationError.message
-                      : String(navigationError),
-                  );
-                });
+                void engineRef.current
+                  ?.goTo({ href: item.href, cfi: item.cfi })
+                  .catch((navigationError: unknown) => {
+                    setError(
+                      navigationError instanceof Error
+                        ? navigationError.message
+                        : String(navigationError),
+                    );
+                  });
               }}
             />
           ) : null}
@@ -488,7 +679,10 @@ function EpubReaderPage({
             className="reader-icon-button"
             type="button"
             aria-label={t('previousPage')}
-            onClick={() => void engineRef.current?.previous()}
+            onClick={() => {
+              setActiveTocHref('');
+              void engineRef.current?.previous();
+            }}
           >
             <span aria-hidden="true">←</span>
             <span>{t('previousPage')}</span>
@@ -497,7 +691,10 @@ function EpubReaderPage({
             className="reader-icon-button"
             type="button"
             aria-label={t('nextPage')}
-            onClick={() => void engineRef.current?.next()}
+            onClick={() => {
+              setActiveTocHref('');
+              void engineRef.current?.next();
+            }}
           >
             <span>{t('nextPage')}</span>
             <span aria-hidden="true">→</span>
@@ -613,7 +810,7 @@ interface EpubTableOfContentsProps {
   readonly emptyLabel: string;
   readonly label: string;
   readonly pageLabel: string;
-  readonly onNavigate: (href: string) => void;
+  readonly onNavigate: (item: FlatNavigationItem) => void;
 }
 
 function EpubTableOfContents({
@@ -660,7 +857,7 @@ function EpubTableOfContents({
               type="button"
               aria-current={item === currentItem ? 'location' : undefined}
               style={{ '--reader-toc-depth': item.depth } as CSSProperties}
-              onClick={() => onNavigate(item.href)}
+              onClick={() => onNavigate(item)}
             >
               <span>{item.label}</span>
               {item.pageNumber ? (

@@ -1,4 +1,8 @@
 import ePub, { type Book, type Contents, type NavItem, type Rendition } from 'epubjs';
+// @ts-expect-error EPUB.js does not publish declarations for its pinned manager internals.
+import ContinuousViewManager from 'epubjs/src/managers/continuous/index.js';
+// @ts-expect-error EPUB.js does not publish declarations for its pinned manager internals.
+import DefaultViewManager from 'epubjs/src/managers/default/index.js';
 
 import type {
   ReaderCallbacks,
@@ -33,6 +37,12 @@ interface ContinuousManagerRuntime {
   readonly layout?: {
     readonly delta?: number;
   };
+  display?: (section: unknown, target: unknown) => Promise<void>;
+  resumeContinuousChecks?: (direction: -1 | 1) => void;
+  readonly settings?: {
+    offset?: number;
+    offsetDelta?: number;
+  };
 }
 
 type ContinuousRendition = Omit<Rendition, 'resize'> & {
@@ -43,6 +53,7 @@ type ContinuousRendition = Omit<Rendition, 'resize'> & {
 export interface EpubNavigationItem {
   readonly id: string;
   readonly href: string;
+  readonly cfi?: string;
   readonly label: string;
   readonly totalProgression?: number;
   readonly pageNumber?: number;
@@ -50,9 +61,82 @@ export interface EpubNavigationItem {
 }
 
 interface EpubNavigationPosition {
+  readonly cfi?: string;
   readonly totalProgression?: number;
   readonly pageNumber?: number;
 }
+
+/**
+ * EPUB.js' continuous manager calls fill() before long reflowable sections
+ * have their final widths. It can prepend the previous chapter and leave that
+ * chapter visible after display(target) resolves. The default display routine
+ * anchors the requested section first; ContinuousViewManager still adds the
+ * adjacent section later as the reader approaches a chapter boundary.
+ */
+/* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access */
+class AnchoredContinuousViewManager extends ContinuousViewManager {
+  private checksSuspended = true;
+  private resumeDirection: -1 | 1 = 1;
+
+  constructor(options: unknown) {
+    super(options);
+    const settings = (
+      this as unknown as {
+        settings: { offset: number; offsetDelta: number };
+      }
+    ).settings;
+    settings.offset = 0;
+    settings.offsetDelta = 0;
+  }
+
+  display(section: unknown, target?: string | number): Promise<void> {
+    // Width-change scroll events can arrive long after a large iframe reports
+    // itself displayed. Keep fill checks suspended until the reader actually
+    // navigates instead of relying on a machine-dependent timeout.
+    this.checksSuspended = true;
+    return DefaultViewManager.prototype.display.call(this, section, target);
+  }
+
+  resumeContinuousChecks(direction: -1 | 1): void {
+    this.resumeDirection = direction;
+    this.checksSuspended = false;
+  }
+
+  check(offsetLeft?: number, offsetTop?: number): Promise<unknown> {
+    const runtime = this as unknown as {
+      container?: HTMLElement;
+      scrollLeft: number;
+      scrollTop: number;
+      settings: { fullsize?: boolean };
+    };
+    if (!runtime.settings.fullsize && runtime.container) {
+      // The recursive continuous check can run before its asynchronous scroll
+      // event updates EPUB.js' cached coordinates. Always make the next
+      // boundary decision from the live scroller position.
+      runtime.scrollLeft = runtime.container.scrollLeft;
+      runtime.scrollTop = runtime.container.scrollTop;
+    }
+
+    if (this.checksSuspended) {
+      return Promise.resolve(false);
+    }
+
+    // A forward gesture starts at scrollLeft=0. Ignore any already-queued
+    // layout check until the gesture has actually moved the strip; otherwise
+    // that stale check prepends the previous chapter before the fingers move.
+    if (
+      this.resumeDirection > 0 &&
+      runtime.container &&
+      runtime.container.scrollLeft < runtime.container.clientWidth * 1.5 &&
+      runtime.container.scrollTop < 1
+    ) {
+      return Promise.resolve(false);
+    }
+
+    return super.check(offsetLeft, offsetTop);
+  }
+}
+/* eslint-enable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access */
 
 async function navigationItems(
   items: readonly NavItem[],
@@ -215,13 +299,17 @@ export class EpubJsReaderEngine implements ReaderEngine {
       this.rendition = this.book.renderTo(container, {
         width: '100%',
         height: '100%',
-        manager: 'continuous',
+        manager: AnchoredContinuousViewManager,
         flow: 'paginated',
         spread: 'none',
         snap: false,
         ignoreClass: 'lexianchor-focus',
         allowScriptedContent: false,
       });
+      if (this.rendition.manager?.settings) {
+        this.rendition.manager.settings.offset = 0;
+        this.rendition.manager.settings.offsetDelta = 0;
+      }
 
       const gestureOptions = {
         getScroller: () => this.rendition?.manager?.container ?? null,
@@ -230,6 +318,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
           this.rendition?.manager?.container?.clientWidth ??
           1,
         isEnabled: () => this.preferences?.flow === 'paginated',
+        // Chromium's prepared ViewTransition overlay captures pointer hit
+        // testing while it waits. Start the capture from the first wheel
+        // sample instead; its buffered delta is applied as soon as the next
+        // paint is ready and the rest of the gesture remains one-to-one.
+        shouldPrearm: () => false,
         onSettled: () => {
           this.callbacks.onSelection(null);
           void this.rendition?.reportLocation();
@@ -250,6 +343,8 @@ export class EpubJsReaderEngine implements ReaderEngine {
           slidingGesture.handleWheel(event);
           stackedGesture.handleWheel(event);
         },
+        prepare: () => stackedGesture.prepare?.(),
+        invalidate: () => stackedGesture.invalidate?.(),
         dispose: () => {
           slidingGesture.dispose();
           stackedGesture.dispose();
@@ -369,6 +464,12 @@ export class EpubJsReaderEngine implements ReaderEngine {
       const openedBook = this.book;
       const openedRendition = this.rendition;
       await openedBook.ready;
+      await openedRendition.started;
+      const manager = openedRendition.manager;
+      if (manager?.settings) {
+        manager.settings.offset = 0;
+        manager.settings.offsetDelta = 0;
+      }
       const initialTarget = initialLocator?.cfi ?? initialLocator?.href;
       this.requestedLocator = initialLocator ?? null;
       await this.queueDisplayAtStableLocation(
@@ -436,22 +537,29 @@ export class EpubJsReaderEngine implements ReaderEngine {
   }
 
   async next(): Promise<void> {
+    this.pageGesture?.invalidate?.();
     this.cancelLayoutRestoration();
     this.interactionRevision += 1;
     this.navigationRevision += 1;
     this.callbacks.onSelection(null);
+    this.rendition?.manager?.resumeContinuousChecks?.(1);
     await this.rendition?.next();
+    this.preparePageGesture();
   }
 
   async previous(): Promise<void> {
+    this.pageGesture?.invalidate?.();
     this.cancelLayoutRestoration();
     this.interactionRevision += 1;
     this.navigationRevision += 1;
     this.callbacks.onSelection(null);
+    this.rendition?.manager?.resumeContinuousChecks?.(-1);
     await this.rendition?.prev();
+    this.preparePageGesture();
   }
 
   async goTo(locator: ReaderLocator): Promise<void> {
+    this.pageGesture?.invalidate?.();
     this.cancelLayoutRestoration();
     this.interactionRevision += 1;
     const navigationRevision = ++this.navigationRevision;
@@ -486,10 +594,12 @@ export class EpubJsReaderEngine implements ReaderEngine {
       if (this.requestedLocator === locator) {
         this.requestedLocator = null;
       }
+      this.preparePageGesture();
     }
   }
 
   preserveLocationForLayoutChange(locator?: ReaderLocator): void {
+    this.pageGesture?.invalidate?.();
     this.interactionRevision += 1;
     this.layoutAnchor = locator ?? this.currentLocator;
   }
@@ -512,6 +622,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       return;
     }
 
+    this.pageGesture?.invalidate?.();
     const anchor = this.requestedLocator ?? this.layoutAnchor ?? this.currentLocator;
     const anchorTarget = anchor?.cfi ?? anchor?.href;
     const update = ++this.preferenceUpdate;
@@ -564,6 +675,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
         false,
       );
     }
+    this.preparePageGesture();
   }
 
   private readonly handleWheelNavigation = (event: WheelEvent): void => {
@@ -572,6 +684,8 @@ export class EpubJsReaderEngine implements ReaderEngine {
       Math.abs(event.deltaX) > Math.abs(event.deltaY) * 1.15
     ) {
       this.interactionRevision += 1;
+      this.rendition?.manager?.resumeContinuousChecks?.(event.deltaX > 0 ? 1 : -1);
+      this.callbacks.onPageInteraction?.();
     }
     this.pageGesture?.handleWheel(event);
   };
@@ -613,6 +727,13 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
     this.layoutAnchor = null;
     await rendition.reportLocation();
+    this.preparePageGesture();
+  }
+
+  private preparePageGesture(): void {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.pageGesture?.prepare?.());
+    });
   }
 
   private queueDisplayAtStableLocation(
@@ -629,6 +750,10 @@ export class EpubJsReaderEngine implements ReaderEngine {
         }
 
         await rendition.display(target);
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        if (!isCurrent()) {
+          return;
+        }
 
         if (!target || !stabilizeContinuousStrip || !isCurrent()) {
           return;
@@ -675,20 +800,27 @@ export class EpubJsReaderEngine implements ReaderEngine {
       return {};
     }
 
-    let cfi = `epubcfi(${section.cfiBase}!/4/2)`;
-    if (encodedFragment) {
-      await (section.load(book.load.bind(book)) as unknown as Promise<Element>);
-      const fragment = decodeURIComponent(encodedFragment);
-      const element = section.document?.getElementById(fragment);
-      if (element) {
-        cfi = section.cfiFromElement(element);
-      }
+    await (section.load(book.load.bind(book)) as unknown as Promise<Element>);
+    const fragment = encodedFragment ? decodeURIComponent(encodedFragment) : '';
+    const element = fragment
+      ? section.document?.getElementById(fragment)
+      : section.document?.body?.firstElementChild;
+    const cfi = element
+      ? section.cfiFromElement(element)
+      : `epubcfi(${section.cfiBase}!/4/2/2/1:0)`;
+
+    if (!fragment) {
+      section.unload();
     }
 
     const rawLocation = book.locations.locationFromCfi(cfi) as unknown;
     const location = typeof rawLocation === 'number' ? rawLocation : -1;
     const totalProgression = book.locations.percentageFromCfi(cfi);
     return {
+      // Passing a synthetic start CFI to rendition.display() can land near the
+      // end of a long chapter in EPUB.js. A plain href is exact for top-level
+      // chapters; reserve element CFIs for fragment-level TOC entries.
+      cfi: fragment ? cfi : undefined,
       pageNumber: location >= 0 ? location + 1 : undefined,
       totalProgression: Number.isFinite(totalProgression) ? totalProgression : undefined,
     };

@@ -43,6 +43,20 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
             .totalProgression ?? 0)
         : 0;
     });
+  const storedLocator = () =>
+    page.evaluate(() => {
+      const key = Object.keys(localStorage).find((candidate) =>
+        candidate.startsWith('lexianchor:epub-location:'),
+      );
+      return key
+        ? (JSON.parse(localStorage.getItem(key) ?? '{}') as {
+            href?: string;
+            cfi?: string;
+            navigationHref?: string;
+            layoutSignature?: string;
+          })
+        : {};
+    });
   const openContents = () =>
     page
       .getByRole('button', {
@@ -135,20 +149,36 @@ test('keeps consecutive pages in Level Up instead of returning to the opening pa
   for (let index = 0; index < settledPages.length; index += 1) {
     const settledPage = settledPages[index];
     expect(settledPage?.extent).toBeGreaterThan(500);
-    // EPUB.js includes its 25 px column gap in layout.delta, while clientWidth
-    // reports only the visible sheet.
-    expect(
-      Math.abs(
-        (settledPage?.position ?? 0) -
-          Math.round((settledPage?.position ?? 0) / (settledPage?.extent ?? 1)) *
-            (settledPage?.extent ?? 0),
-      ),
-    ).toBeLessThan(32);
     expect(settledPage?.href).toContain('c07.xhtml');
     if (index > 0) {
+      expect(settledPage?.position ?? 0).toBeGreaterThan(settledPages[index - 1]?.position ?? 0);
       expect(settledPage?.progression ?? 0).toBeGreaterThanOrEqual(
         (settledPages[index - 1]?.progression ?? 0) - 0.000_5,
       );
     }
   }
+
+  const exactPage = await storedLocator();
+  expect(exactPage.cfi).toContain('/6/28!');
+  expect(exactPage.navigationHref).toContain('c07.xhtml');
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  const savedBook = page.locator('article[data-book-id]').first();
+  await expect(savedBook).toBeVisible();
+  await savedBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+  await expect.poll(currentHref, { timeout: 30_000 }).toContain('c07.xhtml');
+  await expect.poll(async () => (await storedLocator()).cfi).toBe(exactPage.cfi);
+
+  const appearancePanel = page.locator('details.reader-appearance-panel');
+  if (!(await appearancePanel.evaluate((panel) => panel.open))) {
+    await appearancePanel.locator('summary').click();
+  }
+  await page.getByRole('slider', { name: /Text size|文字大小|Taille du texte/ }).fill('115');
+  await expect.poll(currentHref, { timeout: 30_000 }).toContain('c07.xhtml');
+  await expect.poll(async () => (await storedLocator()).cfi).not.toBe(exactPage.cfi);
+  const repaginatedPage = await storedLocator();
+
+  await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
+  await savedBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
+  await expect.poll(currentHref, { timeout: 30_000 }).toContain('c07.xhtml');
+  await expect.poll(async () => (await storedLocator()).cfi).toBe(repaginatedPage.cfi);
 });

@@ -9,6 +9,9 @@ export type ReaderTextAlignment = 'start' | 'justify';
 export interface ReaderLocator {
   readonly href: string;
   readonly cfi?: string;
+  readonly layoutSignature?: string;
+  readonly navigationHref?: string;
+  readonly navigationCfi?: string;
   readonly progression?: number;
   readonly totalProgression?: number;
   readonly pageNumber?: number;
@@ -58,6 +61,7 @@ export interface ReaderCallbacks {
   readonly onSelection: (selection: ReaderSelection | null) => void;
   readonly onError: (error: Error) => void;
   readonly onNavigationCommand?: (command: 'next' | 'previous' | 'escape' | 'fullscreen') => void;
+  readonly onPageInteraction?: () => void;
   readonly onLinkNavigation?: (origin: ReaderLocator) => void;
   readonly onPaginationReady?: () => void;
 }
@@ -88,6 +92,8 @@ export interface HorizontalPageGestureOptions {
 
 export interface HorizontalPageGestureController {
   handleWheel(event: WheelEvent): void;
+  prepare?(): void;
+  invalidate?(): void;
   dispose(): void;
 }
 
@@ -95,6 +101,7 @@ export interface HorizontalPageScrollGestureOptions {
   readonly getScroller: () => HTMLElement | null;
   readonly getPageExtent?: () => number;
   readonly isEnabled?: () => boolean;
+  readonly shouldPrearm?: () => boolean;
   readonly onSettled?: (direction: -1 | 0 | 1) => void;
 }
 
@@ -470,7 +477,7 @@ export function createStackedPageScrollGesture(
   // Treating those gaps as gesture-end makes the sheet settle underneath the
   // fingers and feels like a lock. Keep the stream alive long enough to remain
   // 1:1 while still committing promptly after a deliberate flick.
-  const gestureIdleDelay = 110;
+  const gestureIdleDelay = 170;
   let origin = 0;
   let target = 0;
   let distance = 0;
@@ -517,8 +524,96 @@ export function createStackedPageScrollGesture(
     }
   }
 
+  function createSheetAnimation(document: Document): void {
+    sheetAnimation = document.documentElement.animate(
+      direction > 0
+        ? [
+            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+            { opacity: 1, transform: `translate3d(${-activeExtent}px, 0, 0)` },
+          ]
+        : [
+            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+            { opacity: 1, transform: `translate3d(${activeExtent}px, 0, 0)` },
+          ],
+      {
+        duration: 1_000,
+        easing: 'linear',
+        fill: 'both',
+        pseudoElement: '::view-transition-old(lexianchor-page)',
+      },
+    );
+    sheetAnimation.pause();
+  }
+
+  function prepareTransition(): void {
+    if (
+      isDisposed ||
+      transition ||
+      closingTransition ||
+      isTracking ||
+      isSettling ||
+      options.isEnabled?.() === false ||
+      options.shouldPrearm?.() === false
+    ) {
+      return;
+    }
+
+    const scroller = options.getScroller();
+    const document = scroller?.ownerDocument;
+    if (
+      !scroller ||
+      !document ||
+      typeof document.startViewTransition !== 'function' ||
+      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return;
+    }
+
+    previousTransitionName = scroller.style.viewTransitionName;
+    scroller.style.viewTransitionName = 'lexianchor-page';
+    document.documentElement.classList?.add('epub-page-stack-prepared');
+    const ownSequence = ++sequence;
+    const preparedTransition = document.startViewTransition(() => undefined);
+    transition = preparedTransition;
+
+    void preparedTransition.ready.then(
+      () => {
+        if (ownSequence !== sequence || transition !== preparedTransition) {
+          return;
+        }
+        isReady = true;
+        beginBufferedGesture();
+      },
+      () => {
+        if (transition === preparedTransition) {
+          transition = null;
+          isReady = false;
+          scroller.style.viewTransitionName = previousTransitionName;
+          document.documentElement.classList?.remove('epub-page-stack-prepared');
+        }
+      },
+    );
+    void preparedTransition.finished.then(
+      () => {
+        if (transition !== preparedTransition || isTracking || isSettling || sheetAnimation) {
+          return;
+        }
+        transition = null;
+        isReady = false;
+        scroller.style.viewTransitionName = previousTransitionName;
+        document.documentElement.classList?.remove('epub-page-stack-prepared');
+      },
+      () => undefined,
+    );
+  }
+
   function beginBufferedGesture(): void {
-    if (isDisposed || closingTransition || Math.abs(bufferedDistance) < 2) {
+    if (
+      isDisposed ||
+      closingTransition ||
+      (transition && !isReady) ||
+      Math.abs(bufferedDistance) < 2
+    ) {
       return;
     }
 
@@ -557,7 +652,7 @@ export function createStackedPageScrollGesture(
     bufferedVelocity = bufferedVelocity * 0.42 + instantaneousVelocity * 0.58;
   }
 
-  function cleanup(committedDirection: -1 | 0 | 1): void {
+  function cleanup(committedDirection: -1 | 0 | 1, notify = true, prepareNext = true): void {
     const scroller = options.getScroller();
     const endingTransition = transition;
     stopAnimation();
@@ -568,6 +663,8 @@ export function createStackedPageScrollGesture(
     if (scroller) {
       scroller.style.viewTransitionName = previousTransitionName;
       scroller.classList.remove('epub-page-stack-transition');
+      scroller.ownerDocument.documentElement.classList?.remove('epub-page-stack-prepared');
+      scroller.ownerDocument.documentElement.classList?.remove('epub-page-stack-active');
     }
 
     isTracking = false;
@@ -581,7 +678,9 @@ export function createStackedPageScrollGesture(
     lastInputAt = 0;
     progress = 0;
     activeExtent = 1;
-    options.onSettled?.(committedDirection);
+    if (notify) {
+      options.onSettled?.(committedDirection);
+    }
 
     if (endingTransition) {
       endingTransition.skipTransition();
@@ -602,12 +701,20 @@ export function createStackedPageScrollGesture(
           return;
         }
         closingTransition = null;
-        beginBufferedGesture();
+        if (Math.abs(bufferedDistance) >= 2) {
+          beginBufferedGesture();
+        } else if (prepareNext && options.shouldPrearm?.() !== false) {
+          prepareTransition();
+        }
       });
       return;
     }
 
-    beginBufferedGesture();
+    if (Math.abs(bufferedDistance) >= 2) {
+      beginBufferedGesture();
+    } else if (prepareNext && options.shouldPrearm?.() !== false) {
+      prepareTransition();
+    }
   }
 
   function settle(commit: boolean): void {
@@ -672,8 +779,8 @@ export function createStackedPageScrollGesture(
       distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
     const commit =
       direction > 0
-        ? projected > extent * 0.04 || velocity > 140
-        : projected < -extent * 0.04 || velocity < -140;
+        ? projected > extent * 0.025 || velocity > 120
+        : projected < -extent * 0.025 || velocity < -120;
     settle(commit);
   }
 
@@ -696,9 +803,20 @@ export function createStackedPageScrollGesture(
 
     direction = nextDirection;
     activeExtent = Math.abs(target - origin);
+    scroller.classList.add('epub-page-stack-transition');
+    document.documentElement.classList?.remove('epub-page-stack-prepared');
+    document.documentElement.classList?.add('epub-page-stack-active');
+
+    if (transition && isReady) {
+      scroller.scrollLeft = target;
+      sequence += 1;
+      createSheetAnimation(document);
+      render(Math.min(1, Math.abs(distance) / activeExtent));
+      return true;
+    }
+
     previousTransitionName = scroller.style.viewTransitionName;
     scroller.style.viewTransitionName = 'lexianchor-page';
-    scroller.classList.add('epub-page-stack-transition');
     const ownSequence = ++sequence;
     transition = document.startViewTransition(() => {
       scroller.scrollLeft = target;
@@ -710,32 +828,15 @@ export function createStackedPageScrollGesture(
           return;
         }
 
-        sheetAnimation = document.documentElement.animate(
-          direction > 0
-            ? [
-                { transform: 'translate3d(0, 0, 0)' },
-                { transform: `translate3d(${-activeExtent}px, 0, 0)` },
-              ]
-            : [
-                { transform: 'translate3d(0, 0, 0)' },
-                { transform: `translate3d(${activeExtent}px, 0, 0)` },
-              ],
-          {
-            duration: 1_000,
-            easing: 'linear',
-            fill: 'both',
-            pseudoElement: '::view-transition-old(lexianchor-page)',
-          },
-        );
-        sheetAnimation.pause();
+        createSheetAnimation(document);
         isReady = true;
         render(Math.min(1, Math.abs(distance) / activeExtent));
 
         if (shouldFinishWhenReady) {
           settle(
             direction > 0
-              ? distance > activeExtent * 0.04 || velocity > 140
-              : distance < -activeExtent * 0.04 || velocity < -140,
+              ? distance > activeExtent * 0.025 || velocity > 120
+              : distance < -activeExtent * 0.025 || velocity < -120,
           );
         }
       },
@@ -750,6 +851,12 @@ export function createStackedPageScrollGesture(
   }
 
   return {
+    prepare: prepareTransition,
+    invalidate() {
+      if (transition) {
+        cleanup(0, false, false);
+      }
+    },
     handleWheel(event: WheelEvent) {
       if (
         options.isEnabled?.() === false ||
@@ -778,19 +885,33 @@ export function createStackedPageScrollGesture(
       const delta = event.deltaX * scale;
 
       if (isSettling) {
-        render(settlingCommit ? 1 : 0);
-        if (!settlingCommit) {
-          scroller.scrollLeft = origin;
+        if (settlingCommit && delta * direction > 0) {
+          render(1);
+          cleanup(direction);
+          bufferInput(delta, now);
+          beginBufferedGesture();
+          return;
         }
-        const committedDirection = settlingCommit ? direction : 0;
-        cleanup(committedDirection);
-        bufferInput(delta, now);
-        beginBufferedGesture();
-        return;
+
+        stopAnimation();
+        isSettling = false;
+        settlingCommit = false;
+        isTracking = true;
+        distance = progress * activeExtent * direction;
+        lastInputAt = now;
       }
 
       if (closingTransition) {
         bufferInput(delta, now);
+        return;
+      }
+
+      if (transition && !isReady && direction === 0) {
+        bufferInput(delta, now);
+        if (endTimer !== null) {
+          clearTimeout(endTimer);
+        }
+        endTimer = setTimeout(finishGesture, gestureIdleDelay);
         return;
       }
 
@@ -839,11 +960,11 @@ export function createStackedPageScrollGesture(
         endTimer = null;
       }
       const scroller = options.getScroller();
-      if (scroller && transition) {
+      if (scroller && transition && (isTracking || isSettling || direction !== 0)) {
         scroller.scrollLeft = origin;
       }
       if (transition) {
-        cleanup(0);
+        cleanup(0, false, false);
       }
       bufferedDistance = 0;
       bufferedVelocity = 0;

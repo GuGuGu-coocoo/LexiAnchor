@@ -113,6 +113,8 @@ export function SelectionTools({
 }: SelectionToolsProps) {
   const selectedText = normalizeSelectionText(selection?.text ?? '');
   const canUseDictionary = isSingleWord(selectedText);
+  const sentenceText = normalizeSelectionText(selection?.sentence ?? '');
+  const translationText = canUseDictionary && sentenceText ? sentenceText : selectedText;
   const [lookupState, setLookupState] = useState<LookupState>({
     term: '',
     results: [],
@@ -140,7 +142,8 @@ export function SelectionTools({
   const isLoading = Boolean(selectedText && canUseDictionary) && lookupState.term !== selectedText;
   const cardState = cardSaveState?.term === selectedText ? cardSaveState.status : ('idle' as const);
   const activeTranslation =
-    localTranslation.text === selectedText && localTranslation.targetLanguage === translationTarget
+    localTranslation.text === translationText &&
+    localTranslation.targetLanguage === translationTarget
       ? localTranslation
       : null;
   const localModelInstalled = installedTranslationTargets.includes(translationTarget);
@@ -184,7 +187,7 @@ export function SelectionTools({
       translationAbort.current?.abort();
       translationAbort.current = null;
     };
-  }, [selectedText, translationTarget]);
+  }, [translationTarget, translationText]);
 
   async function openTranslation() {
     const consentKey = `lexianchor:external-consent:${onlineTranslationProvider}-translate`;
@@ -195,7 +198,7 @@ export function SelectionTools({
     }
 
     await onOpenExternal(
-      translationUrl(onlineTranslationProvider, selectedText, translationTarget),
+      translationUrl(onlineTranslationProvider, translationText, translationTarget),
     );
   }
 
@@ -206,7 +209,7 @@ export function SelectionTools({
     );
     setShowTranslationConsent(false);
     await onOpenExternal(
-      translationUrl(onlineTranslationProvider, selectedText, translationTarget),
+      translationUrl(onlineTranslationProvider, translationText, translationTarget),
     );
   }
 
@@ -215,7 +218,7 @@ export function SelectionTools({
     translationAbort.current?.abort();
     translationAbort.current = controller;
     setLocalTranslation({
-      text: selectedText,
+      text: translationText,
       targetLanguage: translationTarget,
       status: 'translating',
       result: null,
@@ -224,12 +227,12 @@ export function SelectionTools({
 
     try {
       const result = await localTranslationProvider.translate(
-        selectedText,
+        translationText,
         translationTarget,
         controller.signal,
       );
       setLocalTranslation({
-        text: selectedText,
+        text: translationText,
         targetLanguage: translationTarget,
         status: 'translated',
         result,
@@ -238,7 +241,7 @@ export function SelectionTools({
     } catch (error) {
       if (!controller.signal.aborted) {
         setLocalTranslation({
-          text: selectedText,
+          text: translationText,
           targetLanguage: translationTarget,
           status: 'error',
           result: null,
@@ -309,13 +312,14 @@ export function SelectionTools({
           </select>
         </label>
       </div>
+      <p className="local-translation-source">{translationText}</p>
 
       <div className="translation-actions">
         {localModelInstalled ? (
           <button
             className="dictionary-action local-translation-action"
             type="button"
-            disabled={selectedText.length > 2_000 || activeTranslation?.status === 'translating'}
+            disabled={translationText.length > 2_000 || activeTranslation?.status === 'translating'}
             onClick={() => void translateLocally()}
           >
             {activeTranslation?.status === 'translating'
@@ -335,7 +339,7 @@ export function SelectionTools({
         <p className="dictionary-status">{t('localModelNotInstalled')}</p>
       ) : null}
 
-      {selectedText.length > 2_000 ? (
+      {translationText.length > 2_000 ? (
         <p className="dictionary-error">{t('translationSelectionTooLong')}</p>
       ) : null}
       {activeTranslation?.result ? (
@@ -430,6 +434,8 @@ export function SelectionTools({
         </article>
       ))}
 
+      {translationPanel}
+
       {cardResult ? (
         <button
           className="add-card-action"
@@ -450,8 +456,6 @@ export function SelectionTools({
         </p>
       ) : null}
 
-      {translationPanel}
-
       {compact ? null : (
         <div className="selection-actions">
           <button
@@ -471,7 +475,7 @@ export function SelectionTools({
               '{provider}',
               translationProviderName(onlineTranslationProvider),
             )}{' '}
-            “{selectedText}”
+            “{translationText}”
           </p>
           <div>
             <button type="button" onClick={() => setShowTranslationConsent(false)}>

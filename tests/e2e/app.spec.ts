@@ -471,6 +471,14 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   });
   await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
   await expect(page.locator('.reader-page')).not.toHaveClass(/reader-page--toolbar-hidden/);
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await expect(readerSidebar).toBeVisible();
+  await page
+    .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
+    .click();
+  await expect(readerSidebar).toBeHidden();
   await bookFrame.locator('body').press('Escape');
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
   await expect(readerSidebar).toBeVisible();
@@ -599,7 +607,17 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
       }),
     )
     .toBe(true);
-  await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
+  await expect(
+    page.getByText(/Sentence translation|整句翻译|Traduction de la phrase/),
+  ).toBeVisible();
+  await expect(page.locator('aside.reader-settings .local-translation-source')).toContainText(
+    'Select the word attentive, or select this entire sentence',
+  );
+  expect(
+    await page
+      .locator('aside.reader-settings .selection-inspector')
+      .evaluate((inspector) => inspector.scrollWidth <= inspector.clientWidth + 1),
+  ).toBe(true);
   await expect(
     page.getByRole('button', {
       name: /Open Google Translate|打开 Google Translate|Ouvrir Google Translate/,
@@ -658,6 +676,9 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .poll(async () => page.locator('.selection-popover-shell').boundingBox())
     .toMatchObject({ width: 520 });
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
+  await expect(page.locator('.selection-popover-shell .local-translation-source')).toContainText(
+    'Select the word attentive, or select this entire sentence',
+  );
   await expect(page.locator('.selection-popover-shell .dictionary-result').first()).toBeVisible();
   await expect(
     page
@@ -808,12 +829,19 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await pageTurnEffect.selectOption('stack');
   await page.waitForTimeout(250);
   const stackedScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
+  await stackedScroller.evaluate((scroller) => {
+    if (scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft < scroller.clientWidth) {
+      scroller.scrollLeft = 0;
+    }
+  });
   const stackedStart = await stackedScroller.evaluate((scroller) => scroller.scrollLeft);
   const stackedPageBody = page
     .locator('.epub-container iframe')
     .last()
     .contentFrame()
     .locator('body');
+  await stackedPageBody.hover();
+  await page.waitForTimeout(30);
   for (let index = 0; index < 6; index += 1) {
     await stackedPageBody.dispatchEvent('wheel', {
       bubbles: true,
@@ -824,7 +852,9 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     });
     await page.waitForTimeout(16);
   }
-  await expect(stackedScroller).toHaveClass(/epub-page-stack-transition/);
+  expect(await stackedScroller.evaluate((scroller) => scroller.scrollLeft)).toBeGreaterThan(
+    stackedStart + 100,
+  );
   await page.waitForTimeout(30);
   await page.screenshot({ path: 'test-results/epub-stacked-page-turn.png', fullPage: true });
   await expect
@@ -1035,6 +1065,11 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
   await page.keyboard.press('f');
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
   await expect(pdfSidebar).toBeHidden();
+  await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
+  await page
+    .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+    .click();
+  await expect(pdfSidebar).toBeVisible();
   await page.keyboard.press('Escape');
   await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(false);
 

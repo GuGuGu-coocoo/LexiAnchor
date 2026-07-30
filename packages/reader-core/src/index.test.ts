@@ -100,20 +100,21 @@ describe('stacked page gesture', () => {
     } as unknown as Animation;
     const skipTransition = vi.fn();
     const update = vi.fn();
+    const startViewTransition = vi.fn((callback: () => void) => {
+      callback();
+      return {
+        ready: Promise.resolve(),
+        finished: new Promise<void>(() => {}),
+        updateCallbackDone: Promise.resolve(),
+        types: new Set<string>(),
+        skipTransition,
+      };
+    });
     const ownerDocument = {
       documentElement: {
         animate: vi.fn(() => sheetAnimation),
       },
-      startViewTransition: vi.fn((callback: () => void) => {
-        callback();
-        return {
-          ready: Promise.resolve(),
-          finished: Promise.resolve(),
-          updateCallbackDone: Promise.resolve(),
-          types: new Set<string>(),
-          skipTransition,
-        };
-      }),
+      startViewTransition,
     } as unknown as Document;
     const classes = new Set<string>();
     const scroller = {
@@ -139,8 +140,11 @@ describe('stacked page gesture', () => {
       preventDefault: vi.fn(),
     } as unknown as WheelEvent;
 
-    gesture.handleWheel(wheel);
+    gesture.prepare?.();
     await Promise.resolve();
+    expect(startViewTransition).toHaveBeenCalledOnce();
+
+    gesture.handleWheel(wheel);
     expect(scroller.scrollLeft).toBe(1_000);
     expect(classes.has('epub-page-stack-transition')).toBe(true);
     expect(pauseAnimation).toHaveBeenCalledOnce();
@@ -153,7 +157,7 @@ describe('stacked page gesture', () => {
     });
     expect(sheetAnimation.currentTime).toBe(500);
 
-    vi.advanceTimersByTime(120);
+    vi.advanceTimersByTime(180);
     let time = performance.now();
     for (let index = 0; index < 240 && frames.size > 0; index += 1) {
       const [id, callback] = frames.entries().next().value as [number, FrameRequestCallback];
@@ -235,12 +239,14 @@ describe('stacked page gesture', () => {
 
     gesture.handleWheel(wheel);
     await Promise.resolve();
-    vi.advanceTimersByTime(120);
+    vi.advanceTimersByTime(180);
     expect(frames.size).toBeGreaterThan(0);
 
     gesture.handleWheel(wheel);
     expect(startViewTransition).toHaveBeenCalledTimes(1);
     finishedResolvers[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
@@ -313,12 +319,14 @@ describe('stacked page gesture', () => {
       vi.advanceTimersByTime(12);
     }
     await Promise.resolve();
-    vi.advanceTimersByTime(120);
+    vi.advanceTimersByTime(180);
     gesture.handleWheel(wheel);
 
     const firstPaint = frames.entries().next().value as [number, FrameRequestCallback];
     frames.delete(firstPaint[0]);
     firstPaint[1](performance.now() + 16);
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 

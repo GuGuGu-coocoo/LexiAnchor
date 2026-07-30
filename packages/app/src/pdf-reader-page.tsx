@@ -143,7 +143,9 @@ export function PdfReaderPage({
     };
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(!isFullscreen);
-  const isSidebarVisible = isSidebarOpen && !isFullscreen;
+  const wasFullscreenRef = useRef(isFullscreen);
+  const sidebarBeforeFullscreenRef = useRef(isSidebarOpen);
+  const isSidebarVisible = isSidebarOpen;
   const [selection, setSelection] = useState<ReaderSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -158,6 +160,20 @@ export function PdfReaderPage({
   useEffect(() => {
     openExternalRef.current = onOpenExternal;
   }, [onOpenExternal]);
+
+  useEffect(() => {
+    const wasFullscreen = wasFullscreenRef.current;
+    wasFullscreenRef.current = isFullscreen;
+
+    if (!wasFullscreen && isFullscreen) {
+      setIsSidebarOpen((current) => {
+        sidebarBeforeFullscreenRef.current = current;
+        return false;
+      });
+    } else if (wasFullscreen && !isFullscreen) {
+      setIsSidebarOpen(sidebarBeforeFullscreenRef.current);
+    }
+  }, [isFullscreen]);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
