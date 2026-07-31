@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@readium/navigator": "2.6.1",
+    "@readium/navigator": "2.8.0",
     "@readium/navigator-html-injectables": "2.6.1",
     "@readium/shared": "2.3.0"
   },
