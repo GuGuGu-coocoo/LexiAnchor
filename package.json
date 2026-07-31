@@ -27,16 +27,16 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.61.1",
-    "@types/node": "24.13.3",
+    "@playwright/test": "1.62.0",
+    "@types/node": "26.1.2",
     "@vitest/coverage-v8": "4.1.10",
-    "eslint": "10.7.0",
+    "eslint": "10.8.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-react-refresh": "0.5.3",
-    "globals": "17.7.0",
+    "globals": "17.8.0",
     "prettier": "3.9.6",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"
   }
