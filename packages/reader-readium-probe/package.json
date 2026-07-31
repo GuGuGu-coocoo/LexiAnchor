@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@readium/navigator": "2.6.1",
-    "@readium/navigator-html-injectables": "2.6.1",
+    "@readium/navigator-html-injectables": "2.6.3",
     "@readium/shared": "2.3.0"
   },
   "devDependencies": {
