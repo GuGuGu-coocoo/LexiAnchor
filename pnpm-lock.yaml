@@ -273,8 +273,8 @@ importers:
         specifier: 2.6.1
         version: 2.6.1
       '@readium/shared':
-        specifier: 2.3.0
-        version: 2.3.0
+        specifier: 2.4.0
+        version: 2.4.0
     devDependencies:
       typescript:
         specifier: 6.0.3
@@ -1223,6 +1223,10 @@ packages:
 
   '@readium/shared@2.3.0':
     resolution: {integrity: sha512-svrkfzOuYVzBsBQc4WlClkVbexdhxNCtmxhVEG3O49BnlF6tDQvT6tV8FKDnCvrivuVtv/rhN2hoFkB/vRdX+Q==}
+    engines: {node: '>=18'}
+
+  '@readium/shared@2.4.0':
+    resolution: {integrity: sha512-j3N2dqCuFja5ToksYr+G4uKg5vnzNVSLlZy9C071jSkQeRUSIIdREPYo5Gx/XOptkvPwip9O28oaG/JXCW4Z1g==}
     engines: {node: '>=18'}
 
   '@rolldown/binding-android-arm64@1.1.5':
@@ -5478,6 +5482,8 @@ snapshots:
   '@readium/navigator@2.6.1': {}
 
   '@readium/shared@2.3.0': {}
+
+  '@readium/shared@2.4.0': {}
 
   '@rolldown/binding-android-arm64@1.1.5':
     optional: true
