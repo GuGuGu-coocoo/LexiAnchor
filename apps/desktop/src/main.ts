@@ -82,19 +82,39 @@ function createWindow() {
   }
 }
 
-void app.whenReady().then(() => {
-  registerPlatformHandlers();
-  createWindow();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+if (!hasSingleInstanceLock) {
+  // Multiple packaged copies share the same userData directory. Letting them
+  // open the OPFS-backed SQLite pool concurrently can corrupt its file map.
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const existingWindow = BrowserWindow.getAllWindows()[0];
+
+    if (existingWindow) {
+      if (existingWindow.isMinimized()) {
+        existingWindow.restore();
+      }
+      existingWindow.show();
+      existingWindow.focus();
     }
   });
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+  void app.whenReady().then(() => {
+    registerPlatformHandlers();
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
+}
