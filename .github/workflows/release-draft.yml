@@ -1,0 +1,132 @@
+name: Prepare release draft
+
+# This workflow can never publish a public release. It only builds the exact
+# commit entered by a maintainer and creates a draft for human acceptance.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version without the v prefix (for example 0.1.3)
+        required: true
+        type: string
+      commit_sha:
+        description: Exact tested commit SHA
+        required: true
+        type: string
+      confirmation:
+        description: Type PREPARE DRAFT to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate manual confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          VERSION: ${{ inputs.version }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          test "$CONFIRMATION" = "PREPARE DRAFT"
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+          echo "$COMMIT_SHA" | grep -Eq '^[0-9a-f]{40}$'
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+      - name: Require an exact commit from main
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+          git merge-base --is-ancestor "$COMMIT_SHA" origin/main
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            source: apps/desktop/out/make/zip/darwin/arm64/LexiAnchor-darwin-arm64-${{ inputs.version }}.zip
+            output: LexiAnchor-macOS-arm64.zip
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            source: apps/desktop/out/make/zip/win32/x64/LexiAnchor-win32-x64-${{ inputs.version }}.zip
+            output: LexiAnchor-Windows-x64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit_sha }}
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.17.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify package versions
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          node -e "const expected=process.env.VERSION; const versions=[require('./package.json').version,require('./apps/desktop/package.json').version]; if(versions.some(value=>value!==expected)){throw new Error('Package versions do not match '+expected+': '+versions.join(', '))}"
+      - name: Build candidate package
+        run: pnpm --filter @lexianchor/desktop make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Give the candidate its public filename
+        env:
+          SOURCE: ${{ matrix.source }}
+          OUTPUT: candidate/${{ matrix.output }}
+        shell: bash
+        run: |
+          mkdir -p candidate
+          node -e "require('node:fs').copyFileSync(process.env.SOURCE, process.env.OUTPUT)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          path: candidate/${{ matrix.output }}
+          if-no-files-found: error
+
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: candidate
+          merge-multiple: true
+      - name: Create an unpublished draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          gh release create "v$VERSION" \
+            candidate/LexiAnchor-macOS-arm64.zip \
+            candidate/LexiAnchor-Windows-x64.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$COMMIT_SHA" \
+            --title "LexiAnchor v$VERSION" \
+            --draft \
+            --notes "English: Unpublished candidate awaiting acceptance. Edit these notes before publishing. 中文：这是等待验收的未发布候选版本，正式发布前必须完善发布说明。"
+          echo "Draft created. This workflow never publishes it."

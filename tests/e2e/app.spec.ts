@@ -373,7 +373,7 @@ test('exports and restores a self-contained application backup', async ({ page }
     throw new Error('The application backup download has no local path.');
   }
 
-  await expect(page.getByRole('status')).toContainText(
+  await expect(page.locator('.application-backup-message')).toContainText(
     /Application backup downloaded|应用备份已下载|Sauvegarde de l'application téléchargée/,
   );
   await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
@@ -395,7 +395,7 @@ test('exports and restores a self-contained application backup', async ({ page }
   await page.getByRole('combobox', { name: /Appearance|外观|Apparence/ }).selectOption('light');
   page.once('dialog', (dialog) => dialog.accept());
   await page.locator('.application-backup-import input[type="file"]').setInputFiles(backupPath);
-  await expect(page.getByRole('status')).toContainText(
+  await expect(page.locator('.application-backup-message')).toContainText(
     /Backup restored|备份已恢复|Sauvegarde restaurée/,
   );
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'eye-care');
@@ -407,6 +407,55 @@ test('exports and restores a self-contained application backup', async ({ page }
   await restoredBook.getByRole('button', { name: /Continue|继续|Continuer/ }).click();
   await expect(page.locator('.reader-engine-label')).toContainText(/2.*3.*67%/);
   await page.screenshot({ path: 'test-results/application-backup-restored.png', fullPage: true });
+});
+
+test('checks only a stable release and offers a complete pre-update backup', async ({
+  page,
+  context,
+}) => {
+  await context.route(
+    'https://api.github.com/repos/GuGuGu-coocoo/LexiAnchor/releases/latest',
+    (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          tag_name: 'v0.1.3',
+          name: 'LexiAnchor v0.1.3',
+          html_url: 'https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.3',
+          published_at: '2026-08-05T02:00:00Z',
+          draft: false,
+          prerelease: false,
+        }),
+      }),
+  );
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
+  const updateCard = page.getByTestId('application-update');
+  await updateCard
+    .getByRole('button', {
+      name: /Check for updates|检查更新|Rechercher les mises à jour/,
+    })
+    .click();
+
+  await expect(updateCard.getByRole('status')).toContainText(/0\.1\.3/);
+  await expect(
+    updateCard.getByRole('button', {
+      name: /Open official download page|打开官方下载页面|Ouvrir la page officielle/,
+    }),
+  ).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await updateCard
+    .getByRole('button', {
+      name: /Back up everything|完整备份全部数据|Tout sauvegarder/,
+    })
+    .click();
+  await downloadPromise;
+  await expect(page.locator('.application-backup-message')).toContainText(
+    /Application backup downloaded|应用备份已下载|Sauvegarde de l'application téléchargée/,
+  );
 });
 
 test('opens the EPUB spike and validates selection and focus markup', async ({ page }) => {

@@ -18,7 +18,7 @@ import {
   type Locale,
   type MessageKey,
 } from '@lexianchor/i18n';
-import type { PlatformBridge } from '@lexianchor/platform';
+import type { PlatformBridge, UpdateCheckResult } from '@lexianchor/platform';
 import type { ReaderLocator, ReaderSource } from '@lexianchor/reader-core';
 import {
   createApplicationBackup,
@@ -337,6 +337,8 @@ export function App({ platform }: AppProps) {
   const [theme, setTheme] = useState<Theme>(readStoredTheme);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [appVersion, setAppVersion] = useState('0.1.0');
+  const [updateCheckResult, setUpdateCheckResult] = useState<UpdateCheckResult | null>(null);
+  const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [storageStatus, setStorageStatus] = useState<StorageStatus>();
   const [storageHealth, setStorageHealth] = useState<StorageHealth>();
@@ -413,6 +415,10 @@ export function App({ platform }: AppProps) {
   useEffect(() => {
     void platform.getAppVersion().then(setAppVersion);
     void platform.isFullscreen().then(setIsFullscreen);
+
+    if (platform.target === 'desktop') {
+      void platform.checkForUpdates().then(setUpdateCheckResult);
+    }
 
     const syncFullscreenState = () => {
       void platform.isFullscreen().then(setIsFullscreen);
@@ -1145,6 +1151,16 @@ export function App({ platform }: AppProps) {
     setIsRequestingPersistentStorage(false);
   }
 
+  async function checkForAppUpdate() {
+    setIsCheckingForUpdates(true);
+    try {
+      const result = await platform.checkForUpdates();
+      setUpdateCheckResult(result);
+    } finally {
+      setIsCheckingForUpdates(false);
+    }
+  }
+
   async function exportApplicationData(includeBookFiles: boolean) {
     setIsApplicationBackupBusy(true);
     setApplicationBackupMessage('');
@@ -1230,6 +1246,9 @@ export function App({ platform }: AppProps) {
   ];
 
   const settingsPageProps: SettingsPageProps = {
+    appVersion,
+    updateCheckResult,
+    isCheckingForUpdates,
     locale,
     storageHealth,
     isRequestingPersistentStorage,
@@ -1255,6 +1274,7 @@ export function App({ platform }: AppProps) {
     onCancelTranslationInstall: cancelTranslationInstall,
     onRemoveTranslationModel: removeTranslationModel,
     onOpenExternal: (url) => platform.openExternal(url),
+    onCheckForUpdates: checkForAppUpdate,
     onProtectLocalStorage: protectLocalStorage,
     onExportApplicationData: exportApplicationData,
     onImportApplicationData: importApplicationData,
@@ -1421,6 +1441,18 @@ export function App({ platform }: AppProps) {
       </aside>
 
       <main className="main-content">
+        {updateCheckResult?.status === 'available' ? (
+          <button
+            className="update-available-banner"
+            type="button"
+            onClick={() => setActiveSection('settings')}
+          >
+            <strong>
+              {t('updateAvailable')} v{updateCheckResult.release.version}
+            </strong>
+            <span>{t('reviewUpdate')}</span>
+          </button>
+        ) : null}
         {activeSection === 'home' ? (
           <HomePage
             appVersion={appVersion}
@@ -2524,6 +2556,9 @@ function WordCardEditor({ card, t, onSave, onCancel }: WordCardEditorProps) {
 }
 
 interface SettingsPageProps {
+  readonly appVersion: string;
+  readonly updateCheckResult: UpdateCheckResult | null;
+  readonly isCheckingForUpdates: boolean;
   readonly locale: Locale;
   readonly storageHealth: StorageHealth | undefined;
   readonly isRequestingPersistentStorage: boolean;
@@ -2549,12 +2584,16 @@ interface SettingsPageProps {
   readonly onCancelTranslationInstall: () => void;
   readonly onRemoveTranslationModel: (targetLanguage: TranslationTargetLanguage) => Promise<void>;
   readonly onOpenExternal: (url: string) => Promise<void>;
+  readonly onCheckForUpdates: () => Promise<void>;
   readonly onProtectLocalStorage: () => Promise<void>;
   readonly onExportApplicationData: (includeBookFiles: boolean) => Promise<void>;
   readonly onImportApplicationData: (file: File | undefined) => Promise<void>;
 }
 
 function SettingsPage({
+  appVersion,
+  updateCheckResult,
+  isCheckingForUpdates,
   locale,
   storageHealth,
   isRequestingPersistentStorage,
@@ -2580,6 +2619,7 @@ function SettingsPage({
   onCancelTranslationInstall,
   onRemoveTranslationModel,
   onOpenExternal,
+  onCheckForUpdates,
   onProtectLocalStorage,
   onExportApplicationData,
   onImportApplicationData,
@@ -2646,6 +2686,68 @@ function SettingsPage({
       </header>
 
       <header className="settings-section-heading settings-section-heading-first">
+        <h2>{t('applicationUpdate')}</h2>
+        <p>{t('applicationUpdateDescription')}</p>
+      </header>
+
+      <article className="application-update-card" data-testid="application-update">
+        <div className="application-update-status">
+          <div>
+            <span>{t('currentVersion')}</span>
+            <strong>v{appVersion}</strong>
+          </div>
+          <p role="status">
+            {isCheckingForUpdates
+              ? t('checkingForUpdates')
+              : updateCheckResult?.status === 'available'
+                ? `${t('updateAvailable')} v${updateCheckResult.release.version}`
+                : updateCheckResult?.status === 'up-to-date'
+                  ? t('upToDate')
+                  : updateCheckResult?.status === 'unavailable'
+                    ? t('updateCheckUnavailable')
+                    : t('updateNotChecked')}
+          </p>
+        </div>
+
+        <p className="application-update-safety">{t('updateDataSafety')}</p>
+
+        <div className="application-update-actions">
+          <button
+            className="storage-protect-action"
+            type="button"
+            disabled={isCheckingForUpdates}
+            onClick={() => void onCheckForUpdates()}
+          >
+            {isCheckingForUpdates ? t('checkingForUpdates') : t('checkForUpdates')}
+          </button>
+          {updateCheckResult?.status === 'available' ? (
+            <button
+              type="button"
+              onClick={() => void onOpenExternal(updateCheckResult.release.url)}
+            >
+              {t('openDownloadPage')}
+            </button>
+          ) : null}
+        </div>
+
+        {updateCheckResult?.status === 'available' ? (
+          <section className="update-backup-reminder" aria-labelledby="update-backup-title">
+            <div>
+              <h3 id="update-backup-title">{t('backupBeforeUpdate')}</h3>
+              <p>{t('backupBeforeUpdateDescription')}</p>
+            </div>
+            <button
+              type="button"
+              disabled={isApplicationBackupBusy}
+              onClick={() => void onExportApplicationData(true)}
+            >
+              {t('exportCompleteBackup')}
+            </button>
+          </section>
+        ) : null}
+      </article>
+
+      <header className="settings-section-heading">
         <h2>{t('localStorageTitle')}</h2>
         <p>{t('localStorageDescription')}</p>
       </header>

@@ -2,10 +2,20 @@ import path from 'node:path';
 
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 
-import { platformChannels } from '@lexianchor/platform';
+import { checkLatestStableRelease, platformChannels } from '@lexianchor/platform';
+
+// Keep this profile name stable across packaging and installer changes. The
+// application bundle can be replaced without moving or deleting the separate
+// userData directory derived from this name.
+const stableProfileDirectoryName = 'LexiAnchor';
+app.setName(stableProfileDirectoryName);
 
 function registerPlatformHandlers() {
   ipcMain.handle(platformChannels.getAppVersion, () => app.getVersion());
+
+  ipcMain.handle(platformChannels.checkForUpdates, () =>
+    checkLatestStableRelease(app.getVersion()),
+  );
 
   ipcMain.handle(platformChannels.isFullscreen, (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false;

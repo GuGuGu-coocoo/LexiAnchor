@@ -117,6 +117,10 @@ describe('application backup', () => {
       settings: {
         'lexianchor:theme': 'eye-care',
         'lexianchor:online-translation-provider': 'bing',
+        'lexianchor:reader-presets': JSON.stringify({
+          activePresetId: 'preset-test',
+          presets: [{ id: 'preset-test', name: 'Upgrade-safe preset' }],
+        }),
       },
       exportedAt: '2026-07-26T01:00:00.000Z',
     });
@@ -131,6 +135,10 @@ describe('application backup', () => {
     expect(restored.settings).toEqual({
       'lexianchor:theme': 'eye-care',
       'lexianchor:online-translation-provider': 'bing',
+      'lexianchor:reader-presets': JSON.stringify({
+        activePresetId: 'preset-test',
+        presets: [{ id: 'preset-test', name: 'Upgrade-safe preset' }],
+      }),
     });
     expect(restored.counts).toEqual({ books: 1, progress: 1, wordCards: 1 });
     expect(targetRepository.snapshot()).toEqual(snapshot);

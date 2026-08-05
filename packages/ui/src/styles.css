@@ -2424,6 +2424,114 @@ button {
   accent-color: var(--accent);
 }
 
+.update-available-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: calc(100% - 48px);
+  margin: 20px 24px 0;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-raised));
+  color: var(--text);
+  text-align: left;
+}
+
+.update-available-banner span {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.application-update-card {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+
+.application-update-status {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.application-update-status div {
+  display: grid;
+  gap: 3px;
+}
+
+.application-update-status span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.application-update-status strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.application-update-status p,
+.application-update-safety,
+.update-backup-reminder p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.application-update-status p {
+  text-align: right;
+}
+
+.application-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.update-backup-reminder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.update-backup-reminder h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .application-update-status,
+  .update-backup-reminder {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .application-update-status p {
+    text-align: left;
+  }
+
+  .update-available-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
 .application-backup-controls {
   display: grid;
   gap: 14px;

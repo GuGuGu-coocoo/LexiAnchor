@@ -7,6 +7,11 @@ const platformBridge: PlatformBridge = {
   getAppVersion() {
     return ipcRenderer.invoke(platformChannels.getAppVersion) as Promise<string>;
   },
+  checkForUpdates() {
+    return ipcRenderer.invoke(platformChannels.checkForUpdates) as ReturnType<
+      PlatformBridge['checkForUpdates']
+    >;
+  },
   isFullscreen() {
     return ipcRenderer.invoke(platformChannels.isFullscreen) as Promise<boolean>;
   },
