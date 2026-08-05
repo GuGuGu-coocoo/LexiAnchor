@@ -69,7 +69,7 @@ Les fiches conservent les mots et leurs définitions anglaises, avec affichage d
 
 ### 1. 我应该下载哪个文件？
 
-前往 [LexiAnchor v0.1.0 下载页面](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.0)，根据电脑选择：
+前往 [LexiAnchor 最新正式版下载页面](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/latest)，根据电脑选择：
 
 | 你的电脑                                           | 下载文件                     |
 | -------------------------------------------------- | ---------------------------- |
@@ -100,7 +100,19 @@ Les fiches conservent les mots et leurs définitions anglaises, avec affichage d
 
 当前版本还没有 Windows 代码签名，因此首次启动可能出现安全提醒。整个解压文件夹都属于应用程序，使用过程中不要随意删除里面的文件。
 
-### 4. 第一次使用
+### 4. 如何升级已有版本？
+
+LexiAnchor 会在启动时检查最新正式版；你也可以打开“设置 → 应用更新”手动检查。应用只会打开官方 Release 下载页面，不会自动下载或安装。
+
+1. 建议先打开“设置 → 本地存储 → 应用数据备份”，勾选“包含书籍文件”并导出完整备份。
+2. **完全退出所有正在运行的 LexiAnchor，不要同时运行新旧副本。**
+3. 从上面的最新正式版页面下载对应系统的 ZIP。
+4. Mac：解压后把新的 `LexiAnchor.app` 拖入“应用程序”并选择替换。Windows：把新版完整解压到一个新文件夹，不要与旧版文件混合。
+5. 打开新版 LexiAnchor。
+
+正常替换应用程序不会删除原来的书籍、阅读位置、词卡或阅读预设。这些数据保存在独立的 LexiAnchor 用户资料目录中，而不是 `.app` 或 Windows 程序文件夹内。不要手动删除系统中的 LexiAnchor 应用数据。
+
+### 5. 第一次使用
 
 1. 启动 LexiAnchor。
 2. 在“书库”页面点击导入按钮，选择一本 `.epub` 或 `.pdf` 书籍；也可以把文件直接拖进窗口。
@@ -115,7 +127,7 @@ Les fiches conservent les mots et leurs définitions anglaises, avec affichage d
 
 阅读进度和外观设置会自动保存在当前电脑上。侧边栏开关、全屏标题栏自动隐藏和阅读布局也会保留到下次启动。
 
-### 5. 常用功能
+### 6. 常用功能
 
 - **目录跳转：** 点击阅读器顶部的章节标题，在下拉菜单中选择章节。
 - **划词翻译：** 用鼠标拖动选中文字，翻译浮窗会显示在选区附近。
@@ -125,13 +137,13 @@ Les fiches conservent les mots et leurs définitions anglaises, avec affichage d
 - **全屏阅读：** 进入全屏后，标题栏可以自动隐藏；鼠标移到窗口顶部时会重新出现。
 - **EPUB / PDF 布局：** 两种格式都支持上下连续阅读和左右分页阅读。
 
-### 6. 书籍和数据保存在哪里？
+### 7. 书籍和数据保存在哪里？
 
 LexiAnchor 采用本地优先设计。导入的书籍、阅读进度、词卡、词典和设置主要保存在你的电脑上，不会自动上传到云端。
 
 卸载应用、清除浏览器数据或手动删除应用数据前，请先在设置中导出备份。应用数据备份可以选择包含原始书籍；词卡也可以单独导出为 JSON 文件。
 
-### 7. 常见问题
+### 8. 常见问题
 
 **双击应用没有反应怎么办？**
 
@@ -163,7 +175,7 @@ Mac 请使用“按住 `Control` 点按 → 打开”；Windows 请先完整解�
 
 ### 1. Which file should I download?
 
-Open the [LexiAnchor v0.1.0 download page](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.0) and choose:
+Open the [latest stable LexiAnchor download page](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/latest) and choose:
 
 | Your computer                                     | Download                     |
 | ------------------------------------------------- | ---------------------------- |
@@ -194,7 +206,19 @@ If macOS says the app requires Apple silicon, your Mac has an Intel processor an
 
 This test build is not code-signed, so Windows may display a warning on first launch. The entire extracted folder belongs to the application; do not delete individual files from it.
 
-### 4. Your first book
+### 4. How do I update an existing installation?
+
+LexiAnchor checks for the latest stable release when it starts. You can also use **Settings → Application updates → Check for updates**. The app only opens the official Release page; it never downloads or installs an update automatically.
+
+1. We recommend opening **Settings → Local storage → Application backup**, selecting **Include book files**, and exporting a complete backup.
+2. **Quit every running copy of LexiAnchor completely. Never run the old and new copies at the same time.**
+3. Download the ZIP for your system from the latest stable release page above.
+4. Mac: extract the ZIP, drag the new `LexiAnchor.app` into Applications, and choose **Replace**. Windows: extract the complete new version into a new folder; do not mix it with the old files.
+5. Open the new version of LexiAnchor.
+
+Normally replacing the application does not delete your books, reading positions, word cards, or appearance presets. They live in a separate LexiAnchor user-data profile, not inside the `.app` or Windows program folder. Do not manually delete LexiAnchor's system application data.
+
+### 5. Your first book
 
 1. Start LexiAnchor.
 2. On the Library page, click the import button and select an `.epub` or `.pdf` book. You can also drag the file into the window.
@@ -209,7 +233,7 @@ This test build is not code-signed, so Windows may display a warning on first la
 
 Reading progress and appearance settings are saved automatically on this computer. Sidebar visibility, the full-screen toolbar option, and the reading layout are also restored the next time you start the app.
 
-### 5. Main features
+### 6. Main features
 
 - **Table of contents:** Click the chapter title in the top bar and choose a chapter from the menu.
 - **Selection lookup:** Drag across text; a translation panel appears near the selection.
@@ -219,13 +243,13 @@ Reading progress and appearance settings are saved automatically on this compute
 - **Full-screen reading:** The top bar can hide automatically and reappear when the pointer reaches the top of the window.
 - **EPUB and PDF layouts:** Both formats support continuous vertical reading and horizontal pagination.
 
-### 6. Where is my data?
+### 7. Where is my data?
 
 LexiAnchor is local-first. Imported books, reading progress, word cards, dictionaries, and settings are primarily stored on your computer and are not automatically uploaded to a cloud service.
 
 Before uninstalling the app, clearing browser data, or deleting application data, export a backup from Settings. An application backup can optionally include the original books. Word cards can also be exported separately as JSON.
 
-### 7. Troubleshooting
+### 8. Troubleshooting
 
 **Nothing happens when I open the app.**
 
@@ -257,7 +281,7 @@ There is no publicly hosted Web version yet. Regular users should use a desktop 
 
 ### 1. Quel fichier dois-je télécharger ?
 
-Ouvrez la [page de téléchargement de LexiAnchor v0.1.0](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/tag/v0.1.0), puis choisissez :
+Ouvrez la [page de téléchargement de la dernière version stable de LexiAnchor](https://github.com/GuGuGu-coocoo/LexiAnchor/releases/latest), puis choisissez :
 
 | Votre ordinateur                                     | Fichier à télécharger        |
 | ---------------------------------------------------- | ---------------------------- |
@@ -288,7 +312,19 @@ Si macOS indique que l'application nécessite une puce Apple, votre Mac utilise 
 
 Cette version de test n'est pas signée numériquement. Windows peut donc afficher un avertissement au premier lancement. Tous les fichiers du dossier extrait sont nécessaires à l'application : ne les supprimez pas séparément.
 
-### 4. Ouvrir votre premier livre
+### 4. Comment mettre à jour une installation existante ?
+
+LexiAnchor vérifie la dernière version stable au démarrage. Vous pouvez aussi utiliser **Réglages → Mises à jour de l'application → Rechercher les mises à jour**. L'application ouvre uniquement la page Releases officielle ; elle ne télécharge et n'installe jamais une mise à jour automatiquement.
+
+1. Nous recommandons d'ouvrir **Réglages → Stockage local → Sauvegarde de l'application**, de sélectionner **Inclure les fichiers des livres**, puis d'exporter une sauvegarde complète.
+2. **Quittez complètement toutes les copies de LexiAnchor. N'exécutez jamais l'ancienne et la nouvelle version en même temps.**
+3. Téléchargez le fichier ZIP correspondant à votre système depuis la page de la dernière version stable.
+4. Mac : extrayez le ZIP, faites glisser le nouveau `LexiAnchor.app` dans Applications et choisissez **Remplacer**. Windows : extrayez toute la nouvelle version dans un nouveau dossier, sans mélanger ses fichiers avec ceux de l'ancienne version.
+5. Ouvrez la nouvelle version de LexiAnchor.
+
+Le remplacement normal de l'application ne supprime ni vos livres, ni vos positions de lecture, ni vos fiches, ni vos préréglages. Ces données se trouvent dans un profil utilisateur LexiAnchor séparé, et non dans le fichier `.app` ou le dossier du programme Windows. Ne supprimez pas manuellement les données système de LexiAnchor.
+
+### 5. Ouvrir votre premier livre
 
 1. Lancez LexiAnchor.
 2. Dans la Bibliothèque, cliquez sur le bouton d'importation et choisissez un livre `.epub` ou `.pdf`. Vous pouvez aussi faire glisser le fichier dans la fenêtre.
@@ -303,7 +339,7 @@ Cette version de test n'est pas signée numériquement. Windows peut donc affich
 
 La progression de lecture et les réglages d'affichage sont enregistrés automatiquement sur cet ordinateur. L'état de la barre latérale, l'option de masquage de la barre en plein écran et la mise en page sont également restaurés au prochain démarrage.
 
-### 5. Fonctions principales
+### 6. Fonctions principales
 
 - **Table des matières :** cliquez sur le titre du chapitre dans la barre supérieure, puis choisissez un chapitre.
 - **Traduction d'une sélection :** sélectionnez du texte ; un panneau de traduction apparaît près de la sélection.
@@ -313,13 +349,13 @@ La progression de lecture et les réglages d'affichage sont enregistrés automat
 - **Lecture en plein écran :** la barre supérieure peut se masquer automatiquement et réapparaître lorsque le pointeur atteint le haut de la fenêtre.
 - **Mise en page EPUB / PDF :** les deux formats proposent la lecture verticale continue et la pagination horizontale.
 
-### 6. Où sont enregistrées mes données ?
+### 7. Où sont enregistrées mes données ?
 
 LexiAnchor fonctionne en priorité en local. Les livres importés, la progression, les fiches, les dictionnaires et les réglages sont principalement conservés sur votre ordinateur et ne sont pas envoyés automatiquement dans le cloud.
 
 Avant de désinstaller l'application, d'effacer les données du navigateur ou de supprimer les données de l'application, exportez une sauvegarde depuis les Réglages. La sauvegarde de l'application peut inclure les livres originaux. Les fiches de vocabulaire peuvent aussi être exportées séparément au format JSON.
 
-### 7. Problèmes fréquents
+### 8. Problèmes fréquents
 
 **Rien ne se passe lorsque j'ouvre l'application.**
 
