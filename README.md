@@ -1,10 +1,10 @@
 # LexiAnchor
 
-> 本项目由作者主导，并在 AI 辅助下完成需求梳理、设计、编码、测试与文档。
+> 本项目由作者提出需求、实际测试并持续反馈，AI 辅助设计、编码、自动化测试与文档。
 >
-> This project is led by its author and developed with AI assistance across requirements, design, coding, testing, and documentation.
+> The author defines the requirements, tests the app, and provides ongoing feedback; AI assists with design, coding, automated testing, and documentation.
 >
-> Ce projet est dirigé par son auteur et développé avec l’aide de l’IA pour les besoins, la conception, le code, les tests et la documentation.
+> L’auteur définit les besoins, teste l’application et fournit des retours continus ; l’IA aide à la conception, au code, aux tests automatisés et à la documentation.
 
 一款本地优先的 EPUB / PDF 阅读器，帮助你专注阅读、查询单词、翻译内容并制作词卡。
 
