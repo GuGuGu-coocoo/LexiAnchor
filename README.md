@@ -1,5 +1,11 @@
 # LexiAnchor
 
+> 本项目由作者主导，并在 AI 辅助下完成需求梳理、设计、编码、测试与文档。
+>
+> This project is led by its author and developed with AI assistance across requirements, design, coding, testing, and documentation.
+>
+> Ce projet est dirigé par son auteur et développé avec l’aide de l’IA pour les besoins, la conception, le code, les tests et la documentation.
+
 一款本地优先的 EPUB / PDF 阅读器，帮助你专注阅读、查询单词、翻译内容并制作词卡。
 
 A local-first EPUB / PDF reader for focused reading, dictionary lookup, translation, and vocabulary cards.
