@@ -113,8 +113,10 @@ export function SelectionTools({
 }: SelectionToolsProps) {
   const selectedText = normalizeSelectionText(selection?.text ?? '');
   const canUseDictionary = isSingleWord(selectedText);
-  const sentenceText = normalizeSelectionText(selection?.sentence ?? '');
-  const translationText = canUseDictionary && sentenceText ? sentenceText : selectedText;
+  // Translation follows the user's explicit selection. Substituting the
+  // surrounding sentence for a single word made the local model translate an
+  // entire paragraph even though only one word was highlighted.
+  const translationText = selectedText;
   const [lookupState, setLookupState] = useState<LookupState>({
     term: '',
     results: [],

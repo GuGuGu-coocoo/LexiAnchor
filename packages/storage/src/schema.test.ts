@@ -200,4 +200,50 @@ describe('storage migrations', () => {
       db.close();
     }
   });
+
+  it('indexes every editable word-card definition', async () => {
+    const sqlite3 = await sqlite3InitModule();
+    const db = new sqlite3.oo1.DB(':memory:', 'c');
+
+    try {
+      applyMigrations(db);
+      db.exec({
+        sql: `
+          INSERT INTO word_cards (
+            id, term, normalized_term, part_of_speech, definition, definitions_json,
+            dictionary_source, source_book_title, source_sentence, created_at, updated_at, version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        bind: [
+          'card-definitions',
+          'anchor',
+          'anchor',
+          'noun',
+          'A secure point.',
+          JSON.stringify(['A secure point.', 'A source of emotional stability.']),
+          'User edited',
+          'Test book',
+          'The thought became an anchor.',
+          '2026-08-05T00:00:00.000Z',
+          '2026-08-05T00:00:00.000Z',
+          1,
+        ],
+      });
+
+      const matches = db.exec({
+        sql: `
+          SELECT word_cards.id
+          FROM word_cards
+          JOIN word_cards_fts ON word_cards_fts.rowid = word_cards.rowid
+          WHERE word_cards_fts MATCH '"emotional"*'
+        `,
+        rowMode: 0,
+        returnValue: 'resultRows',
+      });
+
+      expect(matches).toEqual(['card-definitions']);
+    } finally {
+      db.close();
+    }
+  });
 });

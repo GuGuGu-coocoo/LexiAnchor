@@ -88,7 +88,7 @@ interface OpenBookSession {
 interface WordCardEditDraft {
   readonly term: string;
   readonly partOfSpeech: string;
-  readonly definition: string;
+  readonly definitions: readonly string[];
   readonly rootOrEtymology: string;
   readonly sourceBookTitle: string;
   readonly sourceSentence: string;
@@ -374,6 +374,7 @@ export function App({ platform }: AppProps) {
   const isClosingReader = useRef(false);
   const [openBook, setOpenBook] = useState<OpenBookSession | null>(null);
   const [isReaderSettingsOpen, setIsReaderSettingsOpen] = useState(false);
+  const [isReaderCardsOpen, setIsReaderCardsOpen] = useState(false);
   const t = useCallback((key: MessageKey) => translate(locale, key), [locale]);
   const dictionaryProviders = useMemo<readonly DictionaryProvider[]>(() => {
     return dictionaryPreferences.order.flatMap((id) =>
@@ -550,7 +551,7 @@ export function App({ platform }: AppProps) {
   }, []);
 
   useEffect(() => {
-    if (activeSection !== 'cards') {
+    if (activeSection !== 'cards' && !isReaderCardsOpen) {
       return;
     }
 
@@ -564,7 +565,7 @@ export function App({ platform }: AppProps) {
     }, 120);
 
     return () => window.clearTimeout(timeout);
-  }, [activeSection, cardSearch]);
+  }, [activeSection, cardSearch, isReaderCardsOpen]);
 
   const refreshLibrary = useCallback(async () => {
     setLibrary(await loadLibrary());
@@ -798,6 +799,7 @@ export function App({ platform }: AppProps) {
         readingProgressWriteQueue.current = Promise.resolve();
         latestReadingProgress.current = null;
         setIsReaderSettingsOpen(false);
+        setIsReaderCardsOpen(false);
         setOpenBook(null);
         isClosingReader.current = false;
         void refreshLibrary();
@@ -884,11 +886,13 @@ export function App({ platform }: AppProps) {
       }
 
       const term = draft.term.trim();
-      const definition = draft.definition.trim();
+      const definitions = [
+        ...new Set(draft.definitions.map((definition) => definition.trim()).filter(Boolean)),
+      ].slice(0, 12);
       const sourceBookTitle = draft.sourceBookTitle.trim();
       const sourceSentence = draft.sourceSentence.trim();
 
-      if (!term || !definition || !sourceBookTitle || !sourceSentence) {
+      if (!term || definitions.length === 0 || !sourceBookTitle || !sourceSentence) {
         throw new Error(t('cardRequiredFields'));
       }
 
@@ -898,13 +902,8 @@ export function App({ platform }: AppProps) {
           term,
           normalizedTerm: term.toLocaleLowerCase('en-US'),
           partOfSpeech: draft.partOfSpeech.trim() || 'unknown',
-          definition,
-          definitions: [
-            ...new Set([
-              definition,
-              ...card.definitions.filter((candidate) => candidate !== card.definition),
-            ]),
-          ].slice(0, 6),
+          definition: definitions[0] ?? '',
+          definitions,
           rootOrEtymology: draft.rootOrEtymology.trim() || null,
           sourceBookTitle,
           sourceSentence,
@@ -1275,7 +1274,14 @@ export function App({ platform }: AppProps) {
             locale={locale}
             t={t}
             onClose={closeReader}
-            onOpenSettings={() => setIsReaderSettingsOpen(true)}
+            onOpenWordCards={() => {
+              setIsReaderSettingsOpen(false);
+              setIsReaderCardsOpen(true);
+            }}
+            onOpenSettings={() => {
+              setIsReaderCardsOpen(false);
+              setIsReaderSettingsOpen(true);
+            }}
             onThemeChange={setTheme}
             onToggleFullscreen={toggleFullscreen}
             onLocationChange={persistLocation}
@@ -1302,6 +1308,37 @@ export function App({ platform }: AppProps) {
             </div>
             <div className="reader-settings-overlay-content">
               <SettingsPage {...settingsPageProps} />
+            </div>
+          </div>
+        ) : null}
+        {isReaderCardsOpen ? (
+          <div
+            className="reader-settings-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reader-cards-overlay-title"
+          >
+            <div className="reader-settings-overlay-bar">
+              <strong id="reader-cards-overlay-title">{t('cardsTitle')}</strong>
+              <button type="button" onClick={() => setIsReaderCardsOpen(false)}>
+                {t('closeWordCards')}
+              </button>
+            </div>
+            <div className="reader-settings-overlay-content">
+              <CardsPage
+                cards={wordCards}
+                query={cardSearch}
+                locale={locale}
+                t={t}
+                onQueryChange={setCardSearch}
+                onUpdate={updateWordCard}
+                onDelete={deleteWordCard}
+                deletedCard={lastDeletedCard}
+                onUndoDelete={undoDeleteWordCard}
+                onExport={exportWordCards}
+                onImport={importWordCards}
+                transferMessage={cardTransferMessage}
+              />
             </div>
           </div>
         ) : null}
@@ -2333,7 +2370,7 @@ function WordCardEditor({ card, t, onSave, onCancel }: WordCardEditorProps) {
   const [draft, setDraft] = useState<WordCardEditDraft>({
     term: card.term,
     partOfSpeech: card.partOfSpeech,
-    definition: card.definition,
+    definitions: card.definitions.length > 0 ? [...card.definitions] : [card.definition],
     rootOrEtymology: card.rootOrEtymology ?? '',
     sourceBookTitle: card.sourceBookTitle,
     sourceSentence: card.sourceSentence,
@@ -2393,16 +2430,53 @@ function WordCardEditor({ card, t, onSave, onCancel }: WordCardEditorProps) {
         </label>
       </div>
 
-      <label>
-        <span>{t('englishDefinition')}</span>
-        <textarea
-          required
-          rows={3}
-          maxLength={2_000}
-          value={draft.definition}
-          onChange={(event) => setDraft({ ...draft, definition: event.target.value })}
-        />
-      </label>
+      <fieldset className="word-card-definition-editor">
+        <legend>{t('englishDefinition')}</legend>
+        {draft.definitions.map((definition, index) => (
+          <div className="word-card-definition-editor-row" key={index}>
+            <label>
+              <span>
+                {t('englishDefinition')} {index + 1}
+              </span>
+              <textarea
+                required
+                rows={2}
+                maxLength={2_000}
+                value={definition}
+                onChange={(event) => {
+                  const definitions = [...draft.definitions];
+                  definitions[index] = event.target.value;
+                  setDraft({ ...draft, definitions });
+                }}
+              />
+            </label>
+            <button
+              className="word-card-definition-remove"
+              type="button"
+              aria-label={`${t('removeDefinition')} ${index + 1}`}
+              disabled={draft.definitions.length === 1}
+              onClick={() =>
+                setDraft({
+                  ...draft,
+                  definitions: draft.definitions.filter(
+                    (_, candidateIndex) => candidateIndex !== index,
+                  ),
+                })
+              }
+            >
+              {t('removeDefinition')}
+            </button>
+          </div>
+        ))}
+        <button
+          className="word-card-definition-add"
+          type="button"
+          disabled={draft.definitions.length >= 12}
+          onClick={() => setDraft({ ...draft, definitions: [...draft.definitions, ''] })}
+        >
+          + {t('addDefinition')}
+        </button>
+      </fieldset>
       <label>
         <span>{t('wordRoot')}</span>
         <input

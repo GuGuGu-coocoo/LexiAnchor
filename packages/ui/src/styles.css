@@ -1018,6 +1018,13 @@ button {
   font-size: 19px;
 }
 
+.reader-toolbar-cards-button {
+  width: 40px;
+  padding: 0;
+  font-size: 17px;
+}
+
+.reader-toolbar-cards-button span:not([aria-hidden='true']),
 .reader-toolbar-settings-button span:not([aria-hidden='true']) {
   display: none;
 }
@@ -2032,6 +2039,59 @@ button {
 
 .word-card-editor textarea {
   resize: vertical;
+}
+
+.word-card-definition-editor {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.word-card-definition-editor legend {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.word-card-definition-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.word-card-definition-remove,
+.word-card-definition-add {
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.word-card-definition-remove {
+  margin-bottom: 1px;
+}
+
+.word-card-definition-add {
+  justify-self: start;
+}
+
+.word-card-definition-remove:disabled,
+.word-card-definition-add:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .word-card-editor-error {
@@ -3233,6 +3293,14 @@ html.epub-page-stack-active::view-transition-old(lexianchor-page) {
 
   .word-card-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .word-card-definition-editor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .word-card-definition-remove {
+    justify-self: start;
   }
 
   .word-card-heading {

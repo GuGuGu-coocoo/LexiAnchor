@@ -39,6 +39,7 @@ interface PdfReaderPageProps {
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onOpenWordCards: () => void;
   readonly onOpenSettings: () => void;
   readonly onThemeChange: (theme: Theme) => void;
   readonly onToggleFullscreen: () => Promise<void>;
@@ -109,6 +110,7 @@ export function PdfReaderPage({
   locale,
   t,
   onClose,
+  onOpenWordCards,
   onOpenSettings,
   onThemeChange,
   onToggleFullscreen,
@@ -486,15 +488,26 @@ export function PdfReaderPage({
         onPointerEnter={revealToolbar}
         onPointerLeave={() => scheduleHide(700)}
       >
-        <button
-          className="reader-icon-button"
-          type="button"
-          aria-label={t('backToLibrary')}
-          onClick={onClose}
-        >
-          <span aria-hidden="true">←</span>
-          <span>{t('backToLibrary')}</span>
-        </button>
+        <div className="reader-toolbar-leading">
+          <button
+            className="reader-icon-button"
+            type="button"
+            aria-label={t('backToLibrary')}
+            onClick={onClose}
+          >
+            <span aria-hidden="true">←</span>
+            <span>{t('backToLibrary')}</span>
+          </button>
+          <button
+            className="reader-icon-button reader-toolbar-cards-button"
+            type="button"
+            aria-label={t('openWordCards')}
+            onClick={onOpenWordCards}
+          >
+            <span aria-hidden="true">▤</span>
+            <span>{t('openWordCards')}</span>
+          </button>
+        </div>
         <div className="reader-title-group">
           <p className="reader-title">{source.name}</p>
           <p className="reader-engine-label">

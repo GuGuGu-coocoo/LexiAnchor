@@ -49,6 +49,7 @@ interface ReaderPageProps {
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
+  readonly onOpenWordCards: () => void;
   readonly onOpenSettings: () => void;
   readonly onThemeChange: (theme: Theme) => void;
   readonly onToggleFullscreen: () => Promise<void>;
@@ -175,6 +176,7 @@ function EpubReaderPage({
   locale,
   t,
   onClose,
+  onOpenWordCards,
   onOpenSettings,
   onThemeChange,
   onToggleFullscreen,
@@ -629,6 +631,15 @@ function EpubReaderPage({
           >
             <span aria-hidden="true">←</span>
             <span>{t('backToLibrary')}</span>
+          </button>
+          <button
+            className="reader-icon-button reader-toolbar-cards-button"
+            type="button"
+            aria-label={t('openWordCards')}
+            onClick={onOpenWordCards}
+          >
+            <span aria-hidden="true">▤</span>
+            <span>{t('openWordCards')}</span>
           </button>
         </div>
         <div

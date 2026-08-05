@@ -666,11 +666,9 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
       }),
     )
     .toBe(true);
-  await expect(
-    page.getByText(/Sentence translation|整句翻译|Traduction de la phrase/),
-  ).toBeVisible();
-  await expect(page.locator('aside.reader-settings .local-translation-source')).toContainText(
-    'Select the word attentive, or select this entire sentence',
+  await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
+  await expect(page.locator('aside.reader-settings .local-translation-source')).toHaveText(
+    'attentive',
   );
   expect(
     await page
@@ -765,8 +763,8 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     .poll(async () => page.locator('.selection-popover-shell').boundingBox())
     .toMatchObject({ width: 520 });
   await expect(page.locator('.selection-popover-shell .selection-word')).toHaveText('attentive');
-  await expect(page.locator('.selection-popover-shell .local-translation-source')).toContainText(
-    'Select the word attentive, or select this entire sentence',
+  await expect(page.locator('.selection-popover-shell .local-translation-source')).toHaveText(
+    'attentive',
   );
   await expect(page.locator('.selection-popover-shell .dictionary-result').first()).toBeVisible();
   await expect(
@@ -1843,6 +1841,7 @@ test('imports, queries, and removes a user StarDict dictionary', async ({ page }
 });
 
 test('saves, searches, and deletes a persistent word card', async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto('/');
   await page.getByRole('button', { name: /Library|书库|Bibliothèque/ }).click();
   const samplePdfCard = page.locator('article').filter({ hasText: 'Anchored Pages' });
@@ -1881,6 +1880,21 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
       name: /Saved to word cards|已添加到词卡|Enregistré dans les fiches/,
     }),
   ).toBeDisabled();
+
+  await page.getByRole('button', { name: /Open word cards|打开词卡库|Ouvrir les fiches/ }).click();
+  const readerCardsOverlay = page.locator('.reader-settings-overlay');
+  await expect(readerCardsOverlay).toBeVisible();
+  await expect(
+    readerCardsOverlay.getByRole('heading', { level: 1, name: /word cards|词卡|fiches/i }),
+  ).toBeVisible();
+  await expect(
+    readerCardsOverlay.locator('article[data-word-card-id]').filter({ hasText: 'resilient' }),
+  ).toBeVisible();
+  await readerCardsOverlay
+    .getByRole('button', { name: /Close word cards|关闭词卡库|Fermer les fiches/ })
+    .click();
+  await expect(readerCardsOverlay).toHaveCount(0);
+  await expect(page.locator('.pdf-reader-stage')).toBeVisible();
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   const cardsNavigation = page.getByRole('button', {
@@ -1934,9 +1948,26 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
     .getByRole('button', { name: /Edit resilient|编辑 resilient|Modifier resilient/ })
     .click();
   const editor = savedCard.locator('form.word-card-editor');
+  const definitionFields = editor.getByLabel(
+    /English definition \d+|英语释义 \d+|Définition anglaise \d+/,
+  );
+  const initialDefinitionCount = await definitionFields.count();
+  expect(initialDefinitionCount).toBeGreaterThan(1);
+  await definitionFields.first().fill('Able to recover and keep going.');
+  const removedDefinition = await definitionFields.nth(1).inputValue();
   await editor
-    .getByLabel(/English definition|英语释义|Définition anglaise/)
-    .fill('Able to recover and keep going.');
+    .getByRole('button', {
+      name: /Remove definition 2|删除释义 2|Supprimer la définition 2/,
+    })
+    .click();
+  await expect(definitionFields).toHaveCount(initialDefinitionCount - 1);
+  await editor
+    .getByRole('button', {
+      name: /Add definition|添加释义|Ajouter une définition/,
+    })
+    .click();
+  await expect(definitionFields).toHaveCount(initialDefinitionCount);
+  await definitionFields.last().fill('Able to adapt after a difficult change.');
   await editor
     .getByLabel(/Root or etymology|词根或词源|Racine ou étymologie/)
     .fill('Latin resilire');
@@ -1949,11 +1980,16 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   await savedCard
     .getByRole('button', { name: /View details resilient|查看详情 resilient|Voir les détails/ })
     .click();
+  await expect(cardDetails).toContainText('Able to recover and keep going.');
+  await expect(cardDetails).toContainText('Able to adapt after a difficult change.');
+  await expect(cardDetails.getByText(removedDefinition, { exact: true })).toHaveCount(0);
   await expect(cardDetails).toContainText('Latin resilire');
   await expect(cardDetails).toContainText('A resilient reader returns to the page.');
   await cardDetails.getByRole('button', { name: /Close|关闭|Fermer/ }).click();
 
   await search.fill('latin');
+  await expect(savedCard).toBeVisible();
+  await search.fill('adapt');
   await expect(savedCard).toBeVisible();
   await search.fill('');
 
@@ -1969,13 +2005,21 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   const backup = JSON.parse(await readFile(exportPath, 'utf8')) as {
     format: string;
     schemaVersion: number;
-    cards: Array<{ term: string; rootOrEtymology: string | null }>;
+    cards: Array<{
+      term: string;
+      definitions: string[];
+      rootOrEtymology: string | null;
+    }>;
   };
   expect(backup.format).toBe('lexianchor.word-cards');
   expect(backup.schemaVersion).toBe(1);
   expect(backup.cards).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ term: 'resilient', rootOrEtymology: 'Latin resilire' }),
+      expect.objectContaining({
+        term: 'resilient',
+        definitions: expect.arrayContaining(['Able to adapt after a difficult change.']),
+        rootOrEtymology: 'Latin resilire',
+      }),
     ]),
   );
 
