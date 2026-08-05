@@ -323,7 +323,7 @@ const english = {
     'Downloads 25.8 MB and uses about 36.7 MB after verification. Translation runs locally.',
   chineseTranslationModelNote:
     'Downloads 36.7 MB and uses about 49.9 MB after verification. Translation runs locally.',
-  localTranslation: 'Local translation',
+  localTranslation: 'Sentence translation',
   translationTarget: 'Translation target',
   simplifiedChinese: 'Simplified Chinese',
   french: 'French',
@@ -640,7 +640,7 @@ const simplifiedChinese: Record<MessageKey, string> = {
   installModel: '安装模型',
   frenchTranslationModelNote: '下载 25.8 MB，校验并解压后约占 36.7 MB；翻译完全在本机运行。',
   chineseTranslationModelNote: '下载 36.7 MB，校验并解压后约占 49.9 MB；翻译完全在本机运行。',
-  localTranslation: '本地翻译',
+  localTranslation: '整句翻译',
   translationTarget: '翻译目标语言',
   simplifiedChinese: '简体中文',
   french: '法语',
@@ -984,7 +984,7 @@ const french: Record<MessageKey, string> = {
     'Télécharge 25,8 Mo et occupe environ 36,7 Mo après vérification. La traduction reste locale.',
   chineseTranslationModelNote:
     'Télécharge 36,7 Mo et occupe environ 49,9 Mo après vérification. La traduction reste locale.',
-  localTranslation: 'Traduction locale',
+  localTranslation: 'Traduction de la phrase',
   translationTarget: 'Langue cible',
   simplifiedChinese: 'Chinois simplifié',
   french: 'Français',

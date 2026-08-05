@@ -666,10 +666,17 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
       }),
     )
     .toBe(true);
-  await expect(page.getByText(/Local translation|本地翻译|Traduction locale/)).toBeVisible();
+  await expect(
+    page.getByText(/Sentence translation|整句翻译|Traduction de la phrase/),
+  ).toBeVisible();
   await expect(page.locator('aside.reader-settings .local-translation-source')).toHaveText(
     'attentive',
   );
+  await expect(
+    page.getByRole('button', {
+      name: /Translate locally|本地翻译|Traduire localement/,
+    }),
+  ).toBeVisible();
   expect(
     await page
       .locator('aside.reader-settings .selection-inspector')
@@ -1914,6 +1921,7 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   await expect(cardDetails).toBeVisible();
   await expect(cardDetails).toContainText('Anchored Pages');
   await expect(cardDetails).toContainText('A resilient reader keeps the page steady');
+  await expect(cardDetails.locator('.word-card-sentence-term')).toHaveText('resilient');
   await expect(cardDetails).toContainText('Princeton WordNet 3.1');
   await expect
     .poll(() => cardDetails.locator('.word-card-english-definition li').count())
@@ -1985,6 +1993,7 @@ test('saves, searches, and deletes a persistent word card', async ({ page }) => 
   await expect(cardDetails.getByText(removedDefinition, { exact: true })).toHaveCount(0);
   await expect(cardDetails).toContainText('Latin resilire');
   await expect(cardDetails).toContainText('A resilient reader returns to the page.');
+  await expect(cardDetails.locator('.word-card-sentence-term')).toHaveText('resilient');
   await cardDetails.getByRole('button', { name: /Close|关闭|Fermer/ }).click();
 
   await search.fill('latin');

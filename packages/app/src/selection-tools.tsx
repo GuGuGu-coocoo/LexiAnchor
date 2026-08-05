@@ -317,18 +317,16 @@ export function SelectionTools({
       <p className="local-translation-source">{translationText}</p>
 
       <div className="translation-actions">
-        {localModelInstalled ? (
-          <button
-            className="dictionary-action local-translation-action"
-            type="button"
-            disabled={translationText.length > 2_000 || activeTranslation?.status === 'translating'}
-            onClick={() => void translateLocally()}
-          >
-            {activeTranslation?.status === 'translating'
-              ? t('translatingLocally')
-              : t('translateLocally')}
-          </button>
-        ) : null}
+        <button
+          className="dictionary-action local-translation-action"
+          type="button"
+          disabled={translationText.length > 2_000 || activeTranslation?.status === 'translating'}
+          onClick={() => void translateLocally()}
+        >
+          {activeTranslation?.status === 'translating'
+            ? t('translatingLocally')
+            : t('translateLocally')}
+        </button>
         <button
           className="dictionary-action online-translation-action"
           type="button"
@@ -337,7 +335,7 @@ export function SelectionTools({
           {t('translateOnlineWith')} {translationProviderName(onlineTranslationProvider)}
         </button>
       </div>
-      {!localModelInstalled ? (
+      {!localModelInstalled && !activeTranslation?.result ? (
         <p className="dictionary-status">{t('localModelNotInstalled')}</p>
       ) : null}
 

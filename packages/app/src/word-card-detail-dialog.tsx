@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef } from 'react';
 
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { WordCardRecord } from '@lexianchor/storage';
@@ -10,6 +10,33 @@ interface WordCardDetailDialogProps {
   readonly t: (key: MessageKey) => string;
   readonly onActiveCardChange: (cardId: string) => void;
   readonly onClose: () => void;
+}
+
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function emphasizeTerm(sourceSentence: string, term: string): ReactNode {
+  const normalizedTerm = term.trim();
+
+  if (!normalizedTerm) {
+    return sourceSentence;
+  }
+
+  const parts = sourceSentence.split(
+    new RegExp(`(${escapeRegularExpression(normalizedTerm)})`, 'giu'),
+  );
+  const comparableTerm = normalizedTerm.toLocaleLowerCase('en-US');
+
+  return parts.map((part, index) =>
+    part.toLocaleLowerCase('en-US') === comparableTerm ? (
+      <strong className="word-card-sentence-term" key={index}>
+        {part}
+      </strong>
+    ) : (
+      part
+    ),
+  );
 }
 
 export function WordCardDetailDialog({
@@ -188,7 +215,7 @@ export function WordCardDetailDialog({
                 </div>
                 <div>
                   <dt>{t('originalSentence')}</dt>
-                  <dd>“{card.sourceSentence}”</dd>
+                  <dd>“{emphasizeTerm(card.sourceSentence, card.term)}”</dd>
                 </div>
                 <div>
                   <dt>{t('dictionarySource')}</dt>

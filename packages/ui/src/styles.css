@@ -1992,6 +1992,11 @@ button {
   line-height: 1.55;
 }
 
+.word-card-sentence-term {
+  color: var(--text);
+  font-weight: 800;
+}
+
 .word-card-editor {
   display: grid;
   gap: 14px;
