@@ -1351,6 +1351,18 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
     }),
   ).toHaveValue('scrolled');
   await expect(page.locator('.pdf-page')).toHaveCount(3);
+  // Check the restored viewport, not just the initially loaded progress label.
+  await expect
+    .poll(() =>
+      pdfStage.evaluate((stage) => {
+        const restoredPage = stage.querySelector('.pdf-page[data-page-number="3"]');
+        return restoredPage
+          ? Math.abs(restoredPage.getBoundingClientRect().top - stage.getBoundingClientRect().top)
+          : Number.POSITIVE_INFINITY;
+      }),
+    )
+    .toBeLessThan(40);
+  await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
   await expect(page.getByRole('status', { name: /Zoom|缩放/ })).toHaveText('150%');
   await expect(
     page.getByRole('checkbox', { name: /Focus emphasis|焦点加粗|Mise en évidence/ }),

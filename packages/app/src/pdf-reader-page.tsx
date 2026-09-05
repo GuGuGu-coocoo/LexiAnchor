@@ -292,6 +292,12 @@ export function PdfReaderPage({
           return;
         }
 
+        // Restore the viewport before enabling visible-page tracking. Otherwise
+        // a newly rendered document starts at page 1 and overwrites saved progress.
+        container
+          .querySelector<HTMLElement>(`.pdf-page[data-page-number="${pageNumberRef.current}"]`)
+          ?.scrollIntoView({ behavior: 'instant', block: 'start' });
+        pendingScrollPageRef.current = null;
         setContinuousPages(result.pages);
         setPageResult(result.pages[pageNumberRef.current - 1] ?? result.pages[0]);
         setIsLoading(false);
