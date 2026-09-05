@@ -276,8 +276,8 @@ importers:
         specifier: 2.6.1
         version: 2.6.1
       '@readium/navigator-html-injectables':
-        specifier: 2.6.1
-        version: 2.6.1
+        specifier: 2.6.3
+        version: 2.6.3
       '@readium/shared':
         specifier: 2.3.0
         version: 2.3.0
@@ -1223,8 +1223,8 @@ packages:
     resolution: {integrity: sha512-7q1ZZhY6/drlSyJvcNweWZlbqv4yfr5fLgM+UF4sf1qa7EJJ+yPmVcuhui1ntPbiS3Wae0mh0kL4AFsyOXyrbQ==}
     engines: {node: '>=18'}
 
-  '@readium/navigator-html-injectables@2.6.1':
-    resolution: {integrity: sha512-MA4viLVeYB18dEe0EQE8WaE90Azg3R91d21+Cyi8XF5Bj+FHXjLHVb9h+T8MXBa9wKriw0xdobJJ9yMDZ4O49Q==}
+  '@readium/navigator-html-injectables@2.6.3':
+    resolution: {integrity: sha512-9txUqqQ2pJ6UJvnVFFrCsxCf9qujAi99sP6DeyCGBF3WIKVP2UGC63El35A8im68aDMbFOmeGLY+HXCOaxvviw==}
     engines: {node: '>=18'}
 
   '@readium/navigator@2.6.1':
@@ -1233,6 +1233,10 @@ packages:
 
   '@readium/shared@2.3.0':
     resolution: {integrity: sha512-svrkfzOuYVzBsBQc4WlClkVbexdhxNCtmxhVEG3O49BnlF6tDQvT6tV8FKDnCvrivuVtv/rhN2hoFkB/vRdX+Q==}
+    engines: {node: '>=18'}
+
+  '@readium/shared@2.4.0':
+    resolution: {integrity: sha512-j3N2dqCuFja5ToksYr+G4uKg5vnzNVSLlZy9C071jSkQeRUSIIdREPYo5Gx/XOptkvPwip9O28oaG/JXCW4Z1g==}
     engines: {node: '>=18'}
 
   '@rolldown/binding-android-arm64@1.1.5':
@@ -5462,14 +5466,16 @@ snapshots:
     dependencies:
       user-agent-data-types: 0.4.3
 
-  '@readium/navigator-html-injectables@2.6.1':
+  '@readium/navigator-html-injectables@2.6.3':
     dependencies:
       '@readium/helpers': 1.0.0
-      '@readium/shared': 2.3.0
+      '@readium/shared': 2.4.0
 
   '@readium/navigator@2.6.1': {}
 
   '@readium/shared@2.3.0': {}
+
+  '@readium/shared@2.4.0': {}
 
   '@rolldown/binding-android-arm64@1.1.5':
     optional: true
