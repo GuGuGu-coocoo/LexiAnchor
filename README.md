@@ -27,6 +27,8 @@
 
 调整主题、字体、字号、字重、行距、字间距和文字宽度；还可以选择单栏 / 双栏、连续滚动 / 水平翻页及翻页效果，并把配置保存为预设。
 
+阅读 EPUB 时，还可以开启英文单词前半部分加粗，为视线提供落点，辅助专注阅读。
+
 #### 划词查询与翻译
 
 ![划词查询与翻译](docs/images/reader2.png)
@@ -209,6 +211,8 @@ Import, search, and organize EPUB / PDF books, see your progress, and continue w
 
 Adjust the theme, font, size, weight, line height, letter spacing, and text width. Choose one or two columns, continuous scrolling or horizontal pages, a page-turn effect, and save everything as a preset.
 
+When reading EPUBs, you can also bold the beginning of English words to provide visual anchors and support more focused reading.
+
 #### Selection lookup and translation
 
 ![Selection lookup and translation](docs/images/reader2.png)
@@ -390,6 +394,8 @@ Importez, recherchez et organisez vos livres EPUB / PDF, consultez votre progres
 ![Mise en page personnalisée](docs/images/reader1.png)
 
 Réglez le thème, la police, la taille, la graisse, l'interligne, l'espacement des lettres et la largeur du texte. Choisissez une ou deux colonnes, le défilement continu ou les pages horizontales, un effet de changement de page, puis enregistrez le tout comme préréglage.
+
+Pour les EPUB, vous pouvez aussi mettre en gras le début des mots anglais afin de créer des repères visuels et de favoriser une lecture plus attentive.
 
 #### Recherche et traduction
 
