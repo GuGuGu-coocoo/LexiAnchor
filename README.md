@@ -1,71 +1,43 @@
 # LexiAnchor
 
-> 本项目由作者提出需求、实际测试并持续反馈，AI 辅助设计、编码、自动化测试与文档。
->
-> The author defines the requirements, tests the app, and provides ongoing feedback; AI assists with design, coding, automated testing, and documentation.
->
-> L’auteur définit les besoins, teste l’application et fournit des retours continus ; l’IA aide à la conception, au code, aux tests automatisés et à la documentation.
-
-一款本地优先的 EPUB / PDF 阅读器，帮助你专注阅读、查询单词、翻译内容并制作词卡。
-
-A local-first EPUB / PDF reader for focused reading, dictionary lookup, translation, and vocabulary cards.
-
-Un lecteur EPUB / PDF local, conçu pour lire sans distraction, consulter le dictionnaire, traduire et créer des fiches de vocabulaire.
-
 [中文](#中文) · [English](#english) · [Français](#français)
-
-> [!IMPORTANT]
-> LexiAnchor 目前是测试版本。请只打开你信任的、无 DRM 的 EPUB 或 PDF 文件，并定期备份重要数据。
->
-> LexiAnchor is currently a test release. Open only trusted, DRM-free EPUB or PDF files and back up important data regularly.
->
-> LexiAnchor est actuellement en version de test. Ouvrez uniquement des fichiers EPUB ou PDF fiables et sans DRM, et sauvegardez régulièrement vos données importantes.
-
-## 功能一览 · Feature tour · Aperçu
-
-### 本地书库 · Local library · Bibliothèque locale
-
-![LexiAnchor local library showing imported EPUB and PDF books](docs/images/library.png)
-
-导入、搜索和整理 EPUB / PDF，查看每本书的阅读进度，并从上次停下的位置继续阅读。
-
-Import, search, and organize EPUB / PDF books, see your progress, and continue where you stopped.
-
-Importez, recherchez et organisez vos livres EPUB / PDF, consultez votre progression et reprenez où vous vous êtes arrêté.
-
-### 自定义阅读页面 · Custom reading layout · Mise en page personnalisée
-
-![LexiAnchor reader showing typography, spacing, columns, and page-turn settings](docs/images/reader1.png)
-
-调整主题、字体、字号、字重、行距、字间距和文字宽度；还可以选择单栏 / 双栏、连续滚动 / 水平翻页及翻页效果，并把配置保存为预设。
-
-Adjust the theme, font, size, weight, line height, letter spacing, and text width. Choose one or two columns, continuous scrolling or horizontal pages, a page-turn effect, and save everything as a preset.
-
-Réglez le thème, la police, la taille, la graisse, l'interligne, l'espacement des lettres et la largeur du texte. Choisissez une ou deux colonnes, le défilement continu ou les pages horizontales, un effet de changement de page, puis enregistrez le tout comme préréglage.
-
-### 划词查询与翻译 · Selection lookup and translation · Recherche et traduction
-
-![LexiAnchor reader showing definitions and translation tools for a selected word](docs/images/reader2.png)
-
-选中单词即可在阅读页面旁查看多条英英释义和例句，也可以进行本地翻译、在线翻译、网页搜索或把单词加入词卡。
-
-Select a word to see multiple English definitions and examples beside the page. Translate locally or online, search the Web, or add the word to your cards.
-
-Sélectionnez un mot pour afficher plusieurs définitions et exemples en anglais à côté de la page. Traduisez-le localement ou en ligne, recherchez-le sur le Web ou ajoutez-le à vos fiches.
-
-### 词卡 · Word cards · Fiches de vocabulaire
-
-![LexiAnchor word cards with English definitions, search, and sorting](docs/images/wordcard.png)
-
-词卡会保存单词和英英释义，并支持查看详细内容、搜索、按时间排序、编辑、删除以及导入 / 导出备份。
-
-Word cards preserve words and English definitions, with detailed views, search, time-based sorting, editing, deletion, and backup import / export.
-
-Les fiches conservent les mots et leurs définitions anglaises, avec affichage détaillé, recherche, tri chronologique, modification, suppression et importation / exportation des sauvegardes.
 
 ---
 
 ## 中文
+
+一款本地优先的 EPUB / PDF 阅读器，帮助你专注阅读、查询单词、翻译内容并制作词卡。
+
+> 本项目由作者提出需求、实际测试并持续反馈，AI 辅助设计、编码、自动化测试与文档。
+
+> [!IMPORTANT]
+> LexiAnchor 目前是测试版本。请只打开你信任的、无 DRM 的 EPUB 或 PDF 文件，并定期备份重要数据。
+
+### 功能一览
+
+#### 本地书库
+
+![本地书库](docs/images/library.png)
+
+导入、搜索和整理 EPUB / PDF，查看每本书的阅读进度，并从上次停下的位置继续阅读。
+
+#### 自定义阅读页面
+
+![自定义阅读页面](docs/images/reader1.png)
+
+调整主题、字体、字号、字重、行距、字间距和文字宽度；还可以选择单栏 / 双栏、连续滚动 / 水平翻页及翻页效果，并把配置保存为预设。
+
+#### 划词查询与翻译
+
+![划词查询与翻译](docs/images/reader2.png)
+
+选中单词即可在阅读页面旁查看多条英英释义和例句，也可以进行本地翻译、在线翻译、网页搜索或把单词加入词卡。
+
+#### 词卡
+
+![词卡](docs/images/wordcard.png)
+
+词卡会保存单词和英英释义，并支持查看详细内容、搜索、按时间排序、编辑、删除以及导入 / 导出备份。
 
 ### 1. 我应该下载哪个文件？
 
@@ -169,9 +141,85 @@ Mac 请使用“按住 `Control` 点按 → 打开”；Windows 请先完整解�
 
 目前没有公开部署的网页版本。普通用户请使用上面的桌面版；开发者可以按照文末步骤在本机运行网页端。
 
+### 9. 开发者指南
+
+#### 环境要求
+
+- Node.js 24 LTS
+- pnpm 11
+- 打包桌面端需要 macOS 或 Windows
+
+#### 本地运行
+
+```bash
+pnpm install
+
+# 网页端：打开终端显示的地址，通常为 http://localhost:5173
+pnpm dev:web
+
+# 桌面端
+pnpm dev:desktop
+```
+
+localhost 只有在开发命令持续运行时才能访问；关闭终端后，本地网页服务也会停止。
+
+#### 打包与测试
+
+```bash
+# 为当前操作系统生成桌面测试包
+pnpm --filter @lexianchor/desktop make
+
+# 运行格式、代码规范、类型检查与单元测试
+pnpm check
+
+# 运行浏览器端到端测试
+pnpm test:e2e
+```
+
+书籍、下载的词典、翻译模型、本地数据库、测试文档和内部开发文档不会提交到 Git。
+
+### 许可证
+
+[MIT](LICENSE)
+
+[↑ 返回顶部](#lexianchor)
+
 ---
 
 ## English
+
+A local-first EPUB / PDF reader for focused reading, dictionary lookup, translation, and vocabulary cards.
+
+> The author defines the requirements, tests the app, and provides ongoing feedback; AI assists with design, coding, automated testing, and documentation.
+
+> [!IMPORTANT]
+> LexiAnchor is currently a test release. Open only trusted, DRM-free EPUB or PDF files and back up important data regularly.
+
+### Feature tour
+
+#### Local library
+
+![Local library](docs/images/library.png)
+
+Import, search, and organize EPUB / PDF books, see your progress, and continue where you stopped.
+
+#### Custom reading layout
+
+![Custom reading layout](docs/images/reader1.png)
+
+Adjust the theme, font, size, weight, line height, letter spacing, and text width. Choose one or two columns, continuous scrolling or horizontal pages, a page-turn effect, and save everything as a preset.
+
+#### Selection lookup and translation
+
+![Selection lookup and translation](docs/images/reader2.png)
+
+Select a word to see multiple English definitions and examples beside the page. Translate locally or online, search the Web, or add the word to your cards.
+
+#### Word cards
+
+![Word cards](docs/images/wordcard.png)
+
+Word cards preserve words and English definitions, with detailed views, search, time-based sorting, editing, deletion, and backup import / export.
 
 ### 1. Which file should I download?
 
@@ -275,9 +323,85 @@ Yes, but sharing the official Release link is safer and less likely to produce a
 
 There is no publicly hosted Web version yet. Regular users should use a desktop download. Developers can run the Web app locally using the instructions at the end of this README.
 
+### 9. Developer guide
+
+#### Requirements
+
+- Node.js 24 LTS
+- pnpm 11
+- macOS or Windows for desktop packaging
+
+#### Run locally
+
+```bash
+pnpm install
+
+# Web app: open the address printed in the terminal, normally http://localhost:5173
+pnpm dev:web
+
+# Desktop app
+pnpm dev:desktop
+```
+
+localhost only works while the development command is running. Closing the terminal stops the local Web server.
+
+#### Package and test
+
+```bash
+# Create a desktop test package for the current operating system
+pnpm --filter @lexianchor/desktop make
+
+# Run formatting, lint, type checks, and unit tests
+pnpm check
+
+# Run end-to-end browser tests
+pnpm test:e2e
+```
+
+Books, downloaded dictionaries, translation models, local databases, test documents, and internal development documents are intentionally excluded from Git.
+
+### License
+
+[MIT](LICENSE)
+
+[↑ Back to top](#lexianchor)
+
 ---
 
 ## Français
+
+Un lecteur EPUB / PDF local, conçu pour lire sans distraction, consulter le dictionnaire, traduire et créer des fiches de vocabulaire.
+
+> L’auteur définit les besoins, teste l’application et fournit des retours continus ; l’IA aide à la conception, au code, aux tests automatisés et à la documentation.
+
+> [!IMPORTANT]
+> LexiAnchor est actuellement en version de test. Ouvrez uniquement des fichiers EPUB ou PDF fiables et sans DRM, et sauvegardez régulièrement vos données importantes.
+
+### Aperçu des fonctionnalités
+
+#### Bibliothèque locale
+
+![Bibliothèque locale](docs/images/library.png)
+
+Importez, recherchez et organisez vos livres EPUB / PDF, consultez votre progression et reprenez où vous vous êtes arrêté.
+
+#### Mise en page personnalisée
+
+![Mise en page personnalisée](docs/images/reader1.png)
+
+Réglez le thème, la police, la taille, la graisse, l'interligne, l'espacement des lettres et la largeur du texte. Choisissez une ou deux colonnes, le défilement continu ou les pages horizontales, un effet de changement de page, puis enregistrez le tout comme préréglage.
+
+#### Recherche et traduction
+
+![Recherche et traduction](docs/images/reader2.png)
+
+Sélectionnez un mot pour afficher plusieurs définitions et exemples en anglais à côté de la page. Traduisez-le localement ou en ligne, recherchez-le sur le Web ou ajoutez-le à vos fiches.
+
+#### Fiches de vocabulaire
+
+![Fiches de vocabulaire](docs/images/wordcard.png)
+
+Les fiches conservent les mots et leurs définitions anglaises, avec affichage détaillé, recherche, tri chronologique, modification, suppression et importation / exportation des sauvegardes.
 
 ### 1. Quel fichier dois-je télécharger ?
 
@@ -381,53 +505,45 @@ Oui, mais il est préférable de partager le lien officiel de la Release afin d'
 
 Il n'existe pas encore de version Web publique. Les utilisateurs ordinaires doivent télécharger l'application de bureau. Les développeurs peuvent lancer la version Web localement en suivant les instructions ci-dessous.
 
----
+### 9. Guide de développement
 
-## For developers / 开发者 / Pour les développeurs
-
-### Requirements / 环境要求 / Prérequis
+#### Prérequis
 
 - Node.js 24 LTS
 - pnpm 11
-- macOS or Windows for desktop packaging
+- macOS ou Windows pour créer les paquets de bureau
 
-### Run locally / 本地运行 / Exécution locale
+#### Exécution locale
 
 ```bash
 pnpm install
 
-# Web app: open the address printed in the terminal, normally http://localhost:5173
+# Application Web : ouvrez l’adresse affichée dans le terminal, généralement http://localhost:5173
 pnpm dev:web
 
-# Desktop app
+# Application de bureau
 pnpm dev:desktop
 ```
 
-`localhost` only works while the development command is running. Closing the terminal stops the local Web server.
+localhost fonctionne uniquement tant que la commande de développement reste active. La fermeture du terminal arrête le serveur Web local.
 
-`localhost` 只有在开发命令持续运行时才能访问；关闭终端后，本地网页服务也会停止。
-
-`localhost` fonctionne uniquement tant que la commande de développement reste active. La fermeture du terminal arrête le serveur Web local.
-
-### Package and test / 打包与测试 / Création et tests
+#### Création et tests
 
 ```bash
-# Create a desktop test package for the current operating system
+# Créer un paquet de test pour le système actuel
 pnpm --filter @lexianchor/desktop make
 
-# Run formatting, lint, type checks, and unit tests
+# Vérifier le formatage, le code, les types et les tests unitaires
 pnpm check
 
-# Run end-to-end browser tests
+# Exécuter les tests de navigateur de bout en bout
 pnpm test:e2e
 ```
 
-Books, downloaded dictionaries, translation models, local databases, test documents, and internal development documents are intentionally excluded from Git.
-
-书籍、下载的词典、翻译模型、本地数据库、测试文档和内部开发文档不会提交到 Git。
-
 Les livres, dictionnaires téléchargés, modèles de traduction, bases de données locales, documents de test et documents internes de développement sont volontairement exclus de Git.
 
-## License
+### Licence
 
 [MIT](LICENSE)
+
+[↑ Retour en haut](#lexianchor)
