@@ -182,7 +182,7 @@ pnpm test:e2e
 
 ### 许可证
 
-[MIT](LICENSE)
+[MIT](LICENSE) · [Third-party licenses and resource notices](THIRD-PARTY-NOTICES.md)
 
 [↑ 返回顶部](#lexianchor)
 
@@ -366,7 +366,7 @@ Books, downloaded dictionaries, translation models, local databases, test docume
 
 ### License
 
-[MIT](LICENSE)
+[MIT](LICENSE) · [Third-party licenses and resource notices](THIRD-PARTY-NOTICES.md)
 
 [↑ Back to top](#lexianchor)
 
@@ -550,6 +550,6 @@ Les livres, dictionnaires téléchargés, modèles de traduction, bases de donn�
 
 ### Licence
 
-[MIT](LICENSE)
+[MIT](LICENSE) · [Third-party licenses and resource notices](THIRD-PARTY-NOTICES.md)
 
 [↑ Retour en haut](#lexianchor)

@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { cp, access } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { MakerZIP } from '@electron-forge/maker-zip';
@@ -8,6 +10,7 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 
+const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
 
 const config: ForgeConfig = {
@@ -19,6 +22,31 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   hooks: {
     postPackage: async (_forgeConfig, packageResult) => {
+      for (const outputPath of packageResult.outputPaths) {
+        const resources =
+          packageResult.platform === 'darwin'
+            ? path.join(outputPath, 'LexiAnchor.app', 'Contents', 'Resources')
+            : path.join(outputPath, 'resources');
+        await cp(
+          path.resolve('.vite/renderer/main_window/licenses'),
+          path.join(resources, 'licenses'),
+          { recursive: true },
+        );
+        const electronDist = path.join(
+          path.dirname(require.resolve('electron/package.json')),
+          'dist',
+        );
+        await cp(
+          path.join(electronDist, 'LICENSE'),
+          path.join(resources, 'licenses', 'LICENSE.electron.txt'),
+        );
+        await cp(
+          path.join(electronDist, 'LICENSES.chromium.html'),
+          path.join(resources, 'licenses', 'LICENSES.chromium.html'),
+        );
+        await access(path.join(resources, 'licenses', 'DEPENDENCY-NOTICES.txt'));
+        await access(path.join(resources, 'licenses', 'BERGAMOT-MPL-2.0.txt'));
+      }
       if (packageResult.platform !== 'darwin') {
         return;
       }
