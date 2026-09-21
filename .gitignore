@@ -112,7 +112,11 @@ packages/dictionary/resources/freedict-*/
 *~
 
 # Local planning, architecture notes, and agent tooling
-.local-docs/
+# Internal development docs and agent rules are local-only and must never be
+# committed or pushed. External docs under docs/ stay versioned.
+/docs/internal/
+/AGENTS.md
+/.agent/
 .agents/
 
 # Operating-system files
