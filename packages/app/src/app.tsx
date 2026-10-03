@@ -752,7 +752,7 @@ export function App({ platform }: AppProps) {
     (locator: ReaderLocator, percentage: number) => {
       const bookId = openBook?.bookId;
 
-      if (!bookId) {
+      if (!bookId || isClosingReader.current) {
         return;
       }
 
@@ -767,10 +767,6 @@ export function App({ platform }: AppProps) {
         version: 1,
       } satisfies ReadingProgressRecord;
       latestReadingProgress.current = progress;
-
-      if (isClosingReader.current) {
-        return;
-      }
 
       const write = readingProgressWriteQueue.current
         .catch(() => undefined)

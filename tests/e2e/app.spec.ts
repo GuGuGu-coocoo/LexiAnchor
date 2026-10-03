@@ -222,6 +222,13 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
   const positions: number[] = [];
 
   for (let index = 0; index < 10; index += 1) {
+    const before = await scroller.evaluate((element) => element.scrollLeft);
+    const committedCfi = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((candidate) =>
+        candidate.startsWith('lexianchor:epub-location:'),
+      );
+      return key ? (JSON.parse(localStorage.getItem(key) ?? '{}') as { cfi?: string }).cfi : '';
+    });
     for (let sample = 0; sample < 5; sample += 1) {
       await page
         .locator('.epub-container iframe')
@@ -237,7 +244,22 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
         });
       await page.waitForTimeout(12);
     }
-    await page.waitForTimeout(220);
+    // Independent page turns wait for a real commit. Another input during an
+    // unfinished spring must take over that same sheet, not force a new page.
+    await expect(scroller).not.toHaveClass(/epub-page-stack-transition/, { timeout: 4_000 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const key = Object.keys(localStorage).find((candidate) =>
+            candidate.startsWith('lexianchor:epub-location:'),
+          );
+          return key ? (JSON.parse(localStorage.getItem(key) ?? '{}') as { cfi?: string }).cfi : '';
+        }),
+      )
+      .not.toBe(committedCfi);
+    await expect
+      .poll(() => scroller.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(before + initial.extent * 0.8);
     positions.push(await scroller.evaluate((element) => element.scrollLeft));
   }
 
@@ -468,6 +490,8 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
 
   const bookFrame = page.locator('.epub-container iframe').first().contentFrame();
   await expect(bookFrame.getByRole('heading', { name: 'A Quiet Beginning' })).toBeVisible();
+  await expect(page.getByTestId('epub-container')).toHaveAttribute('aria-busy', 'false');
+  await expect.poll(() => currentEpubHref(page)).toContain('chapter-1.xhtml');
   const hrefBeforeSettings = await currentEpubHref(page);
   await page.getByRole('button', { name: /Settings|设置|Réglages/ }).click();
   const readerSettingsOverlay = page.locator('.reader-settings-overlay');
@@ -941,7 +965,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
   await expect(bookFrame.locator('em')).toHaveText('attentive');
 
   await bookFrame.locator('body').click({ position: { x: 24, y: 24 } });
-  const continuousSwipe = await bookFrame.locator('body').evaluate((body) => {
+  const continuousSwipeStart = await bookFrame.locator('body').evaluate((body) => {
     const frame = body.ownerDocument.defaultView?.frameElement;
     const reader = frame?.ownerDocument.querySelector<HTMLElement>(
       '[data-testid="epub-container"]',
@@ -957,15 +981,20 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
         deltaY: 2,
       }),
     );
+    return before;
+  });
+  // A neighbour may replace the iframe while preparation resolves. Observe
+  // the first presentation frame from the stable host, not that old iframe.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  const continuousSwipe = await epubScroller.evaluate((scroller) => {
     return {
-      before,
-      after: scroller?.scrollLeft ?? 0,
-      clientWidth: scroller?.clientWidth ?? 0,
-      scrollWidth: scroller?.scrollWidth ?? 0,
-      renderedViews: scroller?.querySelectorAll('.epub-view').length ?? 0,
+      after: scroller.scrollLeft,
+      clientWidth: scroller.clientWidth,
+      scrollWidth: scroller.scrollWidth,
+      renderedViews: scroller.querySelectorAll('.epub-view').length,
     };
   });
-  expect(continuousSwipe.after - continuousSwipe.before).toBeGreaterThan(100);
+  expect(continuousSwipe.after - continuousSwipeStart).toBeGreaterThan(100);
   expect(continuousSwipe.scrollWidth).toBeGreaterThan(continuousSwipe.clientWidth);
   expect(continuousSwipe.renderedViews).toBeGreaterThan(0);
   await page.waitForTimeout(500);

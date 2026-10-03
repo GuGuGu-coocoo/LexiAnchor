@@ -1,4 +1,5 @@
 interface ReaderFooterProps {
+  readonly pageLabel?: string;
   readonly currentPage: number | undefined;
   readonly totalPages: number | undefined;
   readonly pagesRemaining: number | undefined;
@@ -9,6 +10,7 @@ interface ReaderFooterProps {
 }
 
 export function ReaderFooter({
+  pageLabel = '',
   currentPage,
   totalPages,
   pagesRemaining,
@@ -20,7 +22,7 @@ export function ReaderFooter({
   return (
     <footer
       className="reader-footer"
-      aria-label={`${currentPage ?? '—'} ${ofLabel} ${totalPages ?? '—'}`}
+      aria-label={`${pageLabel} ${currentPage ?? '—'} ${ofLabel} ${totalPages ?? '—'}`.trim()}
     >
       <div className="reader-footer-leading">
         {onBack ? (
@@ -32,6 +34,7 @@ export function ReaderFooter({
       <output className="reader-footer-page">
         <span className="reader-footer-page-current">{currentPage ?? '—'}</span>
         <span className="reader-footer-page-details">
+          {pageLabel ? `${pageLabel} ` : ''}
           {currentPage ?? '—'} {ofLabel} {totalPages ?? '—'}
         </span>
       </output>
