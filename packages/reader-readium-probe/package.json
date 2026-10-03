@@ -12,7 +12,7 @@
   "dependencies": {
     "@readium/navigator": "2.6.1",
     "@readium/navigator-html-injectables": "2.6.1",
-    "@readium/shared": "2.3.0"
+    "@readium/shared": "2.4.0"
   },
   "devDependencies": {
     "typescript": "6.0.3"
