@@ -241,6 +241,47 @@ async function intersects(page: Page, selector: string) {
   }, selector);
 }
 
+async function visibleFirstCharacter(page: Page, selector: string) {
+  return page.evaluate((target) => {
+    const scroller = document.querySelector<HTMLElement>(
+      '[data-testid="epub-container"] > .epub-container',
+    );
+    if (!scroller) return false;
+    const viewport = scroller.getBoundingClientRect();
+    for (const frame of Array.from(scroller.querySelectorAll('iframe'))) {
+      const document = frame.contentDocument;
+      const element = document?.querySelector(target);
+      if (!document || !element) continue;
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const text = node.textContent ?? '';
+        const offset = text.search(/\S/);
+        if (offset >= 0) {
+          const range = document.createRange();
+          range.setStart(node, offset);
+          range.setEnd(node, offset + ((text.codePointAt(offset) ?? 0) > 0xffff ? 2 : 1));
+          const frameBox = frame.getBoundingClientRect();
+          return Array.from(range.getClientRects()).some((box) => {
+            const x = frameBox.left + (box.left + box.right) / 2;
+            const y = frameBox.top + (box.top + box.bottom) / 2;
+            return (
+              box.width > 0 &&
+              box.height > 0 &&
+              x > viewport.left &&
+              x < viewport.right &&
+              y > viewport.top &&
+              y < viewport.bottom
+            );
+          });
+        }
+        node = walker.nextNode();
+      }
+    }
+    return false;
+  }, selector);
+}
+
 for (const effect of ['slide', 'stack'] as const) {
   test(`${effect}: preview cancellation writes no checkpoint; each committed turn advances one actual page`, async ({
     page,
@@ -291,58 +332,123 @@ for (const effect of ['slide', 'stack'] as const) {
   });
 }
 
-test('stack prepares previous chapter at its start and preserves child TOC/Back/reflow content', async ({
+for (const font of ['default serif', 'Times New Roman']) {
+  test(`stack prepares previous chapter at its start and preserves child TOC/Back/reflow content (${font})`, async ({
+    page,
+  }) => {
+    await openBook(page);
+    if (font !== 'default serif') {
+      await page.getByRole('combobox', { name: /^Font$|^字体$|^Police$/ }).selectOption('custom');
+      await page
+        .getByRole('textbox', { name: /Installed font name|已安装字体名称|Nom de la police/ })
+        .fill(font);
+      await expect
+        .poll(async () =>
+          page.evaluate(() => {
+            const key = Object.keys(localStorage).find((value) =>
+              value.startsWith('lexianchor:epub-location:'),
+            );
+            return key ? JSON.parse(localStorage.getItem(key) ?? '{}').layoutSignature : '';
+          }),
+        )
+        .toContain(font);
+      await waitSettled(page);
+    }
+    await toc(page, 'Finding an Anchor');
+    await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
+    await waitSettled(page);
+    await swipe(page, -1);
+    await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-1.xhtml');
+    await waitSettled(page);
+    const backward = await page.evaluate(() =>
+      (window as ProbeWindow).__epubGestureProbe.snapshots.at(-1),
+    );
+    const previous = await checkpoint(page);
+    expect(previous.pageNumber).toBe(previous.pageCount);
+    expect(backward?.next.join(' ')).toContain('The book closed for the evening');
+    await swipe(page, 1);
+    await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
+
+    await toc(page, 'The Bookmark');
+    await expect
+      .poll(async () => (await checkpoint(page)).href)
+      .toBe('chapter-1.xhtml#page-turn-3');
+    await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
+    const child = await checkpoint(page);
+    await page.waitForTimeout(500);
+    expect((await checkpoint(page)).cfi).toBe(child.cfi);
+    await page.evaluate(() => {
+      for (const frame of Array.from(
+        document.querySelectorAll<HTMLIFrameElement>('.epub-container iframe'),
+      )) {
+        const link = frame.contentDocument?.querySelector<HTMLElement>('#cross-chapter-link');
+        if (link) {
+          link.click();
+          return;
+        }
+      }
+      throw new Error('Missing exact child link');
+    });
+    await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
+    await page.locator('.reader-footer-leading button').click();
+    await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-1.xhtml');
+    await expect.poll(async () => (await checkpoint(page)).cfi).toMatch(/^epubcfi\(/);
+    await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(() => visibleFirstCharacter(page, '#cross-chapter-link')).toBe(true);
+    const returnCfi = (await checkpoint(page)).cfi;
+    expect(returnCfi).toContain('[page-turn-3]');
+    expect(returnCfi).toContain('[cross-chapter-link]');
+    await page
+      .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
+      .click();
+    await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(() => visibleFirstCharacter(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(async () => (await checkpoint(page)).cfi).toBe(returnCfi);
+    await page
+      .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
+      .click();
+    await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(() => visibleFirstCharacter(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(async () => (await checkpoint(page)).cfi).toBe(returnCfi);
+    await page.getByRole('slider', { name: /Text size|字体大小|Taille du texte/ }).fill('130');
+    await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(() => visibleFirstCharacter(page, '#cross-chapter-link')).toBe(true);
+    await expect.poll(async () => (await checkpoint(page)).cfi).toBe(returnCfi);
+    await page.waitForTimeout(500);
+    expect((await checkpoint(page)).cfi).toBe(returnCfi);
+    expect(await intersects(page, '#cross-chapter-link')).toBe(true);
+    expect(await visibleFirstCharacter(page, '#cross-chapter-link')).toBe(true);
+    console.log(
+      'EPUB_SEMANTIC_BACK_REFLOW',
+      JSON.stringify({ font, returnCfi, after: await checkpoint(page) }),
+    );
+  });
+}
+
+test('a completed child TOC keeps its own visible heading through typography and sidebar reflow', async ({
   page,
 }) => {
   await openBook(page);
-  await toc(page, 'Finding an Anchor');
-  await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
-  await waitSettled(page);
-  await swipe(page, -1);
-  await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-1.xhtml');
-  await waitSettled(page);
-  const backward = await page.evaluate(() =>
-    (window as ProbeWindow).__epubGestureProbe.snapshots.at(-1),
-  );
-  const previous = await checkpoint(page);
-  expect(previous.pageNumber).toBe(previous.pageCount);
-  expect(backward?.next.join(' ')).toContain('The book closed for the evening');
-  await swipe(page, 1);
-  await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
-
   await toc(page, 'The Bookmark');
   await expect.poll(async () => (await checkpoint(page)).href).toBe('chapter-1.xhtml#page-turn-3');
   await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
-  const child = await checkpoint(page);
-  await page.waitForTimeout(500);
-  expect((await checkpoint(page)).cfi).toBe(child.cfi);
-  await page.evaluate(() => {
-    for (const frame of Array.from(
-      document.querySelectorAll<HTMLIFrameElement>('.epub-container iframe'),
-    )) {
-      const link = frame.contentDocument?.querySelector<HTMLElement>('#cross-chapter-link');
-      if (link) {
-        link.click();
-        return;
-      }
-    }
-    throw new Error('Missing exact child link');
-  });
-  await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
-  await page.locator('.reader-footer-leading button').click();
-  await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-1.xhtml');
-  await expect.poll(async () => (await checkpoint(page)).cfi).toMatch(/^epubcfi\(/);
-  await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+  await expect.poll(() => visibleFirstCharacter(page, '#page-turn-3 > h2')).toBe(true);
+  await page.getByRole('slider', { name: /Text size|字体大小|Taille du texte/ }).fill('130');
+  await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
+  await expect.poll(() => visibleFirstCharacter(page, '#page-turn-3 > h2')).toBe(true);
   await page
     .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
     .click();
-  await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+  await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
+  await expect.poll(() => visibleFirstCharacter(page, '#page-turn-3 > h2')).toBe(true);
   await page
     .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
     .click();
-  await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
-  await page.getByRole('slider', { name: /Text size|字体大小|Taille du texte/ }).fill('130');
-  await expect.poll(() => intersects(page, '#cross-chapter-link')).toBe(true);
+  await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
+  await expect.poll(() => visibleFirstCharacter(page, '#page-turn-3 > h2')).toBe(true);
+  await page.waitForTimeout(500);
+  expect((await checkpoint(page)).href).toBe('chapter-1.xhtml#page-turn-3');
+  expect(await intersects(page, '#page-turn-3 > h2')).toBe(true);
 });
 
 test('two-column turns count a screen once and keep the publisher child after layout switch', async ({

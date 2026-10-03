@@ -1,4 +1,4 @@
-import type { Book, Rendition } from 'epubjs';
+import type { Book, Contents, Rendition } from 'epubjs';
 import type * as ReaderCore from '@lexianchor/reader-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -68,6 +68,7 @@ import { EpubJsReaderEngine } from './index';
 
 interface Location {
   start: { href: string; cfi: string; displayed: { page: number; total: number } };
+  end?: { cfi: string };
 }
 
 function location(cfi: string, href = 'chapter.xhtml', page = 1): Location {
@@ -143,7 +144,18 @@ function harness(ownedQueue = false) {
     flow: vi.fn(),
     spread: vi.fn(),
     themes: { override: vi.fn() },
-    getContents: () => [],
+    getContents: vi.fn<() => Contents[]>(() => []),
+    epubcfi: {
+      parse: vi.fn((cfi: string) => {
+        const match = /^epubcfi\(\/6\/(\d+)!\/4\/(\d+):0\)$/.exec(cfi);
+        if (!match) throw new Error('Invalid test CFI');
+        return { spinePos: Number(match[1]) / 2 - 1 };
+      }),
+      compare: vi.fn((one: string, two: string) => {
+        const position = (cfi: string) => Number(cfi.match(/!\/4\/(\d+):0/)?.[1]);
+        return position(one) - position(two);
+      }),
+    },
   };
   let queueTail = Promise.resolve<unknown>(undefined);
   let queueHold: Promise<void> | null = null;
@@ -224,6 +236,59 @@ async function open(fixture: ReturnType<typeof harness>) {
   fixture.callbacks.onLocationChange.mockClear();
 }
 
+const exactCfi = (position: number, spine = 0) =>
+  `epubcfi(/6/${(spine + 1) * 2}!/4/${position * 2}:0)`;
+
+function semanticContents(f: ReturnType<typeof harness>) {
+  const rectangle = (left: number, right: number, top = 20, bottom = 40) =>
+    ({ left, right, top, bottom, width: right - left, height: bottom - top }) as DOMRect;
+  let point = rectangle(980, 994);
+  const frame = {
+    isConnected: true,
+    getBoundingClientRect: () => rectangle(0, 1000, 0, 600),
+  };
+  const scroller = {
+    getBoundingClientRect: () => rectangle(0, 1000, 0, 600),
+    contains: vi.fn(() => true),
+  };
+  Object.assign(f.manager, { container: scroller });
+  Object.assign(f.book, {
+    spine: { get: (index: number) => ({ href: index === 0 ? 'chapter.xhtml' : 'other.xhtml' }) },
+  });
+  const text = { nodeType: 3, textContent: '  Precise target' };
+  const element = { nodeType: 1, childNodes: [text] };
+  const range = {
+    setStart: vi.fn(),
+    setEnd: vi.fn(),
+    getClientRects: () => [point],
+  };
+  const contents = {
+    sectionIndex: 0,
+    document: {
+      defaultView: { frameElement: frame },
+      createRange: () => range,
+      getElementById: () => element,
+    },
+    range: vi.fn<() => Pick<Range, 'startContainer' | 'startOffset'>>(() => ({
+      startContainer: element as unknown as Node,
+      startOffset: 0,
+    })),
+    cfiFromNode: vi.fn(() => exactCfi(30)),
+  };
+  f.rendition.getContents.mockReturnValue([contents as unknown as Contents]);
+  f.rendition.display.mockImplementation(() => Promise.resolve());
+  return {
+    contents,
+    text,
+    range,
+    frame,
+    scroller,
+    setPoint: (left: number, right: number, top = 20, bottom = 40) => {
+      point = rectangle(left, right, top, bottom);
+    },
+  };
+}
+
 beforeEach(() => {
   mock.gestures.length = 0;
   mock.defaultDisplay = () => Promise.resolve();
@@ -243,6 +308,166 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('EPUB committed locator ownership', () => {
+  it('retains a completed in-interval semantic CFI through typography and late metadata, not page turns', async () => {
+    const f = harness();
+    await open(f);
+    semanticContents(f);
+    const live = { ...location(exactCfi(10), 'chapter.xhtml', 3), end: { cfi: exactCfi(40) } };
+    f.setLive(live);
+    await f.engine.goTo({ href: 'chapter.xhtml', cfi: exactCfi(30) });
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0]).toMatchObject({
+      cfi: exactCfi(30),
+      pageNumber: 3,
+      pageCount: 12,
+    });
+    f.generated.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    f.emit(location('stale-metadata', 'chapter.xhtml', 11));
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0]).toMatchObject({
+      cfi: exactCfi(30),
+      pageNumber: 3,
+      totalPageCount: 20,
+    });
+    await f.engine.setPreferences({ ...defaultReaderPreferences, fontSizePercent: 130 });
+    expect(f.rendition.display).toHaveBeenLastCalledWith(exactCfi(30));
+    const gesture = mock.gestures[1]!.options;
+    gesture.onInteractionStart?.();
+    f.setLive(location(exactCfi(50), 'chapter.xhtml', 4));
+    gesture.onSettled?.(0);
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(30));
+    gesture.onInteractionStart?.();
+    gesture.onSettled?.(1);
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(50));
+    await f.engine.previous();
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe('cfi-prev');
+    await f.engine.next();
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe('cfi-next');
+  });
+
+  it('accepts a real right-edge character missed by the interval and resolves a completed child href', async () => {
+    const f = harness();
+    await open(f);
+    const proof = semanticContents(f);
+    f.setLive({ ...location(exactCfi(10), 'chapter.xhtml', 3), end: { cfi: exactCfi(20) } });
+    await f.engine.goTo({ href: 'chapter.xhtml', cfi: exactCfi(30) });
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(30));
+    expect(proof.contents.range).toHaveBeenLastCalledWith(exactCfi(30), 'lexianchor-focus');
+    expect(proof.range.setStart).toHaveBeenLastCalledWith(proof.text, 2);
+    expect(proof.range.setEnd).toHaveBeenLastCalledWith(proof.text, 3);
+    await f.engine.goTo({ href: 'chapter.xhtml#precise-child' });
+    expect(proof.contents.cfiFromNode).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'lexianchor-focus',
+    );
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(30));
+  });
+
+  it.each([
+    'horizontal',
+    'vertical',
+    'detached',
+    'neighbor',
+    'wrong-document',
+    'wrong-spine',
+    'parse-error',
+    'range-error',
+  ])(
+    'rejects a semantic candidate with %s proof failure even if its parent box would intersect',
+    async (failure) => {
+      const f = harness();
+      await open(f);
+      const proof = semanticContents(f);
+      f.setLive({
+        ...location(exactCfi(10)),
+        end: { cfi: exactCfi(failure === 'wrong-spine' ? 40 : 20) },
+      });
+      let target = exactCfi(30);
+      if (failure === 'horizontal') proof.setPoint(1005, 1020);
+      if (failure === 'vertical') proof.setPoint(400, 420, 605, 625);
+      if (failure === 'detached') proof.frame.isConnected = false;
+      if (failure === 'neighbor') proof.scroller.contains.mockReturnValue(false);
+      if (failure === 'wrong-document') proof.contents.sectionIndex = 1;
+      if (failure === 'wrong-spine') target = exactCfi(30, 1);
+      if (failure === 'parse-error')
+        f.rendition.epubcfi.parse.mockImplementation(() => {
+          throw new Error('invalid');
+        });
+      if (failure === 'range-error')
+        proof.contents.range.mockImplementation(() => {
+          throw new Error('invalid');
+        });
+      await f.engine.goTo({ href: 'chapter.xhtml', cfi: target });
+      expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(10));
+    },
+  );
+
+  it('proves the requested text offset rather than the beginning of its parent, including one Unicode glyph', async () => {
+    const f = harness();
+    await open(f);
+    const proof = semanticContents(f);
+    f.setLive({ ...location(exactCfi(10)), end: { cfi: exactCfi(20) } });
+    proof.contents.range.mockReturnValue({
+      startContainer: proof.text as unknown as Node,
+      startOffset: 5,
+    });
+    await f.engine.goTo({ href: 'chapter.xhtml', cfi: exactCfi(30) });
+    expect(proof.range.setStart).toHaveBeenLastCalledWith(proof.text, 5);
+    expect(proof.range.setEnd).toHaveBeenLastCalledWith(proof.text, 6);
+    proof.text.textContent = '🙂 focus';
+    proof.contents.range.mockReturnValue({
+      startContainer: proof.text as unknown as Node,
+      startOffset: 0,
+    });
+    await f.engine.goTo({ href: 'chapter.xhtml', cfi: exactCfi(30) });
+    expect(proof.range.setEnd).toHaveBeenLastCalledWith(proof.text, 2);
+  });
+
+  it('a newer gesture and synchronous freeze reject an asynchronously completed exact candidate', async () => {
+    const f = harness();
+    await open(f);
+    semanticContents(f);
+    f.setLive({ ...location(exactCfi(10)), end: { cfi: exactCfi(40) } });
+    const pending = deferred();
+    f.rendition.display.mockImplementationOnce(() => pending.promise);
+    const navigation = f.engine.goTo({ href: 'chapter.xhtml', cfi: exactCfi(30) });
+    await Promise.resolve();
+    await Promise.resolve();
+    const gesture = mock.gestures[0]!.options;
+    gesture.onInteractionStart?.();
+    f.setLive(location(exactCfi(50)));
+    gesture.onSettled?.(1);
+    expect(f.engine.freezeLocation()?.cfi).toBe(exactCfi(50));
+    pending.resolve();
+    await navigation;
+    f.emit(location(exactCfi(10)));
+    expect(
+      f.callbacks.onLocationChange.mock.calls.every(([locator]) => locator.cfi !== exactCfi(30)),
+    ).toBe(true);
+  });
+
+  it('keeps an initial exact semantic point and ignores a same-page scrolled report until actual movement', async () => {
+    const f = harness();
+    semanticContents(f);
+    f.setLive({ ...location(exactCfi(10)), end: { cfi: exactCfi(40) } });
+    await f.engine.open(
+      {} as HTMLElement,
+      { name: 'isolated.epub', data: 'mock', format: 'epub' },
+      { href: 'chapter.xhtml', cfi: exactCfi(30) },
+    );
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(30));
+    await f.engine.setPreferences({ ...defaultReaderPreferences, flow: 'scrolled' });
+    f.callbacks.onPageInteraction.mockClear();
+    f.emit(location('queued-pre-layout'));
+    expect(f.callbacks.onPageInteraction).not.toHaveBeenCalled();
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(30));
+    f.setLive(location(exactCfi(50), 'chapter.xhtml', 2));
+    f.emit(location('queued-pre-layout'));
+    expect(f.callbacks.onPageInteraction).toHaveBeenCalledTimes(1);
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe(exactCfi(50));
+  });
+
   it('a queued display loses ownership before rendition work executes, but the next target still runs', async () => {
     const f = harness(true);
     await open(f);

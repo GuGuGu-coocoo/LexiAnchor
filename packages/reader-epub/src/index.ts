@@ -30,6 +30,7 @@ interface EpubLocation {
       readonly total: number;
     };
   };
+  readonly end?: { readonly cfi: string };
 }
 
 interface ContinuousManagerRuntime {
@@ -557,6 +558,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private rendition: ContinuousRendition | null = null;
   private preferences: ReaderPreferences | null = null;
   private currentLocator: ReaderLocator | null = null;
+  private committedPageStartCfi: string | null = null;
   private requestedLocator: ReaderLocator | null = null;
   private preferenceUpdate = 0;
   private interactionRevision = 0;
@@ -713,7 +715,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
           }
           this.resizeSettleTimer = setTimeout(() => {
             this.resizeSettleTimer = null;
-            void this.restoreLayoutAnchor(revision, anchorTarget, generation);
+            void this.restoreLayoutAnchor(revision, anchor, generation);
           }, 60);
         });
       });
@@ -792,7 +794,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
         );
       });
 
-      this.rendition.on('relocated', (location: EpubLocation) => {
+      this.rendition.on('relocated', () => {
         if (
           this.locationFrozen ||
           sessionRendition !== this.rendition ||
@@ -806,19 +808,31 @@ export class EpubJsReaderEngine implements ReaderEngine {
           // same-CFI metadata enrichment is not a reading interaction.
           const live = sessionRendition.currentLocation() as unknown as EpubLocation | undefined;
           if (!live?.start?.cfi || !live.start.href) return;
-          if (live.start.cfi !== this.currentLocator?.cfi) this.callbacks.onPageInteraction?.();
-          this.publishLocation(this.mapLocation(live));
+          const moved = live.start.cfi !== this.committedPageStartCfi;
+          if (moved) this.callbacks.onPageInteraction?.();
+          this.committedPageStartCfi = live.start.cfi;
+          this.publishLocation(
+            this.mapLocation(
+              live,
+              moved
+                ? undefined
+                : this.visibleExactAnchor(sessionRendition, live, this.currentLocator),
+            ),
+          );
           return;
         }
         // reportLocation() queues a later RAF; it is not a completion barrier.
         // In paginated flow only an explicit commit owns a new CFI. A late
         // preview/open/layout report may enrich that CFI, never replace it.
+        const live = sessionRendition.currentLocation() as unknown as EpubLocation | undefined;
         if (
-          location.start.cfi !== this.currentLocator?.cfi ||
-          !refersToSameDocument(location.start.href, this.currentLocator.href)
+          !live?.start?.cfi ||
+          live.start.cfi !== this.committedPageStartCfi ||
+          !this.currentLocator?.href ||
+          !refersToSameDocument(live.start.href, this.currentLocator.href)
         )
           return;
-        this.publishLocation(this.mapLocation(location));
+        this.publishLocation(this.mapLocation(live, this.currentLocator.cfi));
       });
 
       this.rendition.on('selected', (cfiRange: string, contents: Contents) => {
@@ -860,7 +874,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       if (!this.isLocationOperationCurrent(openingGeneration, openedRendition)) return;
       this.requestedLocator = null;
       this.locationGate = null;
-      this.commitLiveLocation(openedRendition, openingGeneration);
+      this.commitLiveLocation(openedRendition, openingGeneration, false, initialLocator);
 
       // Generating a full-book locations index can take several seconds for a
       // long EPUB. The exact saved CFI does not depend on that index, so show
@@ -913,6 +927,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.book = null;
     this.preferences = null;
     this.currentLocator = null;
+    this.committedPageStartCfi = null;
     this.requestedLocator = null;
     this.layoutAnchor = null;
     this.layoutRevision = 0;
@@ -967,7 +982,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
         // Two child anchors can share the same displayed page/spread CFI.
         // A completed explicit navigation still needs an owned commit so
         // the host can adopt its publisher anchor after the pending gate.
-        this.commitLiveLocation(rendition, generation, true);
+        this.commitLiveLocation(rendition, generation, true, locator);
       }
     } catch (error) {
       if (this.requestedLocator === locator) {
@@ -1087,7 +1102,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
         this.resizeSettleTimer = null;
       }
       this.locationGate = null;
-      this.commitLiveLocation(rendition, generation);
+      this.commitLiveLocation(rendition, generation, false, anchor);
       if (preferences.flow === 'scrolled') rendition.manager?.resumeContinuousChecks?.(1);
     }
     this.preparePageGesture();
@@ -1152,11 +1167,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
     };
   }
 
-  private mapLocation(location: EpubLocation): ReaderLocator {
+  private mapLocation(location: EpubLocation, exactCfi?: string): ReaderLocator {
     const displayed = location.start.displayed;
     return this.enrichLocation({
       href: location.start.href,
-      cfi: location.start.cfi,
+      cfi: exactCfi ?? location.start.cfi,
       progression:
         location.start.percentage ??
         (displayed && displayed.total > 0 ? displayed.page / displayed.total : undefined),
@@ -1183,13 +1198,152 @@ export class EpubJsReaderEngine implements ReaderEngine {
     rendition: ContinuousRendition,
     generation: number,
     forceCommit = false,
+    anchor?: ReaderLocator | null,
   ): void {
     if (!this.isLocationOperationCurrent(generation, rendition)) return;
     // The pinned continuous manager returns synchronously. Do not await
     // reportLocation(): its queued RAF can belong to an obsolete operation.
     const location = rendition.currentLocation() as unknown as EpubLocation | undefined;
-    if (location?.start?.cfi && location.start.href)
-      this.publishLocation(this.mapLocation(location), forceCommit);
+    if (location?.start?.cfi && location.start.href) {
+      this.committedPageStartCfi = location.start.cfi;
+      this.publishLocation(
+        this.mapLocation(location, this.visibleExactAnchor(rendition, location, anchor)),
+        forceCommit,
+      );
+    }
+  }
+
+  private visibleExactAnchor(
+    rendition: ContinuousRendition,
+    location: EpubLocation,
+    anchor?: ReaderLocator | null,
+  ): string | undefined {
+    if (!anchor?.href || !refersToSameDocument(location.start.href, anchor.href)) return undefined;
+    let cfi = anchor.cfi;
+    const scroller = rendition.manager?.container;
+    const fragment = anchor.href.split('#')[1];
+    if (!cfi && fragment && scroller) {
+      // A completed publisher-child navigation has the same semantic
+      // precision as an exact Back CFI, even when its input was only a href.
+      for (const contents of rendition.getContents() as unknown as Contents[]) {
+        if (!this.isCurrentAnchorContents(contents, anchor.href, scroller)) continue;
+        try {
+          const element = contents.document.getElementById(decodeURIComponent(fragment));
+          if (element) {
+            cfi = contents.cfiFromNode(element, 'lexianchor-focus');
+            break;
+          }
+        } catch {
+          // Unresolvable fragments still safely commit the actual page.
+        }
+      }
+    }
+    if (!cfi) return undefined;
+    if (cfi === location.start.cfi) return cfi;
+    let spinePos: number;
+    try {
+      spinePos = rendition.epubcfi.parse(cfi).spinePos;
+      const startSpine = rendition.epubcfi.parse(location.start.cfi).spinePos;
+      const sectionHref = this.book?.spine?.get(spinePos)?.href;
+      if (
+        spinePos < 0 ||
+        spinePos !== startSpine ||
+        !sectionHref ||
+        !refersToSameDocument(sectionHref, anchor.href)
+      )
+        return undefined;
+    } catch {
+      return undefined;
+    }
+    try {
+      if (
+        location.end?.cfi &&
+        rendition.epubcfi.compare(location.start.cfi, cfi) <= 0 &&
+        rendition.epubcfi.compare(location.end.cfi, cfi) >= 0
+      )
+        return cfi;
+    } catch {
+      // Missing/invalid interval metadata cannot prove the requested point.
+    }
+
+    // EPUB.js' end mapping stops at a multi-column text node's union bounds.
+    // That can omit a later child anchor whose first character is really on
+    // screen. Prove the character itself, never a section/element union box.
+    if (!scroller) return undefined;
+    const viewport = scroller.getBoundingClientRect();
+    for (const contents of rendition.getContents() as unknown as Contents[]) {
+      if (
+        contents.sectionIndex !== spinePos ||
+        !this.isCurrentAnchorContents(contents, anchor.href, scroller)
+      )
+        continue;
+      const document = contents.document;
+      const frame = document.defaultView!.frameElement!;
+      try {
+        const resolved = contents.range(cfi, 'lexianchor-focus');
+        let node = resolved.startContainer;
+        let offset = resolved.startOffset;
+        if (node.nodeType === 1) {
+          let found: { node: Node; offset: number } | undefined;
+          for (const child of Array.from(node.childNodes).slice(offset)) {
+            const walker = child.nodeType === 3 ? undefined : document.createTreeWalker(child, 4);
+            let text = walker ? walker.nextNode() : child;
+            while (text) {
+              const start = text.textContent?.search(/\S/) ?? -1;
+              if (start >= 0) {
+                found = { node: text, offset: start };
+                break;
+              }
+              text = walker?.nextNode() ?? null;
+            }
+            if (found) break;
+          }
+          if (!found) continue;
+          node = found.node;
+          offset = found.offset;
+        }
+        if (node.nodeType !== 3) continue;
+        const text = node.textContent ?? '';
+        const next = text.slice(offset).search(/\S/);
+        if (next < 0) continue;
+        offset += next;
+        const point = document.createRange();
+        point.setStart(node, offset);
+        point.setEnd(node, offset + ((text.codePointAt(offset) ?? 0) > 0xffff ? 2 : 1));
+        const frameBox = frame.getBoundingClientRect();
+        for (const box of Array.from(point.getClientRects())) {
+          const x = frameBox.left + (box.left + box.right) / 2;
+          const y = frameBox.top + (box.top + box.bottom) / 2;
+          if (
+            box.width > 0 &&
+            box.height > 0 &&
+            x > viewport.left &&
+            x < viewport.right &&
+            y > viewport.top &&
+            y < viewport.bottom
+          )
+            return cfi;
+        }
+      } catch {
+        // A stale or unresolvable target is never promoted to committed data.
+      }
+    }
+    return undefined;
+  }
+
+  private isCurrentAnchorContents(
+    contents: Contents,
+    href: string,
+    scroller: HTMLElement,
+  ): boolean {
+    const sectionHref = this.book?.spine?.get(contents.sectionIndex)?.href;
+    const frame = contents.document.defaultView?.frameElement;
+    return Boolean(
+      sectionHref &&
+      refersToSameDocument(sectionHref, href) &&
+      frame?.isConnected &&
+      scroller.contains(frame),
+    );
   }
 
   private async stepPage(direction: -1 | 1): Promise<void> {
@@ -1255,7 +1409,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
   private async restoreLayoutAnchor(
     revision: number,
-    anchor: string | undefined,
+    anchor: ReaderLocator | null | undefined,
     generation: number,
   ): Promise<void> {
     const rendition = this.rendition;
@@ -1269,10 +1423,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
     }
 
     try {
-      if (anchor) {
+      const target = displayTarget(anchor);
+      if (target) {
         await this.queueDisplayAtStableLocation(
           rendition,
-          anchor,
+          target,
           () =>
             revision === this.layoutRevision &&
             this.isLocationOperationCurrent(generation, rendition),
@@ -1297,7 +1452,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
     this.layoutAnchor = null;
     this.locationGate = null;
-    this.commitLiveLocation(rendition, generation);
+    this.commitLiveLocation(rendition, generation, false, anchor);
     this.preparePageGesture();
   }
 
