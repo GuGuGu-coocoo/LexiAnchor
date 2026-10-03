@@ -31,6 +31,8 @@ interface Probe {
     at: number;
     source: string;
     trusted: boolean;
+    cancelable: boolean;
+    target: string;
     prevented: boolean;
     deltaX: number;
     deltaY: number;
@@ -49,6 +51,7 @@ interface Probe {
     at: number;
     readyAt?: number;
     readyWheelCount?: number;
+    finishedAt?: number;
     error?: string;
   }[];
   writes: { stage: string; at: number; wheelCount: number; value: Checkpoint }[];
@@ -144,6 +147,8 @@ async function installProbe(page: Page) {
             at: performance.now(),
             source,
             trusted: event.isTrusted,
+            cancelable: event.cancelable,
+            target: (event.target as Element | null)?.tagName ?? '',
             // A native event can run a microtask checkpoint between capture
             // and bubble listeners. Read the event's final flag at sample/
             // serialization time, not in a capture-scheduled microtask.
@@ -195,6 +200,12 @@ async function installProbe(page: Page) {
         (error: unknown) => {
           sample.error = String(error);
         },
+      );
+      void transition.finished.then(
+        () => {
+          sample.finishedAt = performance.now();
+        },
+        () => undefined,
       );
       return transition;
     };
@@ -462,6 +473,144 @@ test('source Electron stack routes continuous trusted wheel through VT and does 
     } finally {
       // Never let a failed/stalled renderer diagnostic bypass owned cleanup.
       // If the helper cannot stop this child, retain its profile for safety.
+      if (session) await bounded(stopSourceApp(session, 'kill'), 10_000);
+      await removeIsolatedProfile(profile);
+    }
+  }
+});
+
+test('source Electron stack turns successive pages at one stationary input point without clicks', async () => {
+  test.skip(!applicationEntry, 'Set LEXIANCHOR_SOURCE_APP to an isolated source-only build.');
+  test.setTimeout(90_000);
+  if (!applicationEntry) return;
+  const profile = await createIsolatedProfile();
+  let session: { app: ElectronApplication; page: Page } | undefined;
+  let windowId: number | undefined;
+  const testInfo = test.info();
+  try {
+    session = await launchSourceApp(applicationEntry, profile);
+    const { app, page } = session;
+    await page.getByRole('button', { name: /^Library$|^书库$|^Bibliothèque$/ }).click();
+    await page.locator('.import-button input[type="file"]').setInputFiles(fixture);
+    await waitForEpubOpen(page);
+    await page.locator('details.reader-appearance-panel > summary').click();
+    await page
+      .getByRole('combobox', { name: /^Layout$|^阅读布局$|^Disposition$/ })
+      .selectOption('paginated');
+    await page
+      .getByRole('combobox', { name: /Page columns|页面栏数|Colonnes/ })
+      .selectOption('single');
+    await page
+      .getByRole('combobox', { name: /Page turn effect|翻页效果|Effet de changement/ })
+      .selectOption('stack');
+    await waitForEpubLayout(page, {
+      pageSpread: 'single',
+      contentWidthPercent: 90,
+      fontSizePercent: 100,
+    });
+    await quietCheckpoint(page);
+    await installProbe(page);
+    windowId = await app.evaluate(({ BrowserWindow }) => {
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length !== 1) throw new Error('Expected exactly one isolated QA window.');
+      const window = windows[0]!;
+      if (window.webContents.debugger.isAttached())
+        throw new Error('QA debugger already attached.');
+      window.webContents.debugger.attach('1.3');
+      return window.id;
+    });
+    const send = (method: string, params: Record<string, unknown>) =>
+      app.evaluate(
+        async ({ BrowserWindow }, command) => {
+          const window = BrowserWindow.fromId(command.windowId);
+          if (!window) throw new Error('Owned QA window closed during CDP input.');
+          await window.webContents.debugger.sendCommand(command.method, command.params);
+        },
+        { windowId: windowId!, method, params },
+      );
+    const point = await inputPoint(page);
+    // Position the pointer only once. No click, mouse move, keyboard, Next,
+    // TOC navigation or renderer reset is allowed between these gestures.
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y });
+    for (const [index, direction] of [1, 1, 1, 1, -1, -1].entries()) {
+      const stage = `successive-${index}-${direction}`;
+      const before = await checkpoint(page);
+      const beforePoint = await inputPoint(page);
+      await setStage(page, stage);
+      await send('Input.synthesizeScrollGesture', {
+        x: point.x,
+        y: point.y,
+        xDistance: -direction * point.extent * 0.55,
+        yDistance: 0,
+        speed: 640,
+        preventFling: true,
+        gestureSourceType: 'mouse',
+      });
+      // Start the next gesture as soon as this one commits, without the long
+      // idle window used by the separate light-touch cancellation check.
+      await expect
+        .poll(async () => (await checkpoint(page)).cfi, { timeout: 1_400, intervals: [10] })
+        .not.toBe(before.cfi);
+      const trace = await evidence(page, stage);
+      const after = await checkpoint(page);
+      const afterPoint = await inputPoint(page);
+      await testInfo.attach(stage, {
+        body: JSON.stringify({ before, beforePoint, after, afterPoint, ...trace }, null, 2),
+        contentType: 'application/json',
+      });
+      const wheels = trace.wheels.filter((wheel) => Math.abs(wheel.deltaX) > 0);
+      expect(wheels.length, `${stage}: same-point input must still be delivered`).toBeGreaterThan(
+        10,
+      );
+      expect(wheels.every((wheel) => wheel.trusted && wheel.prevented)).toBe(true);
+      expect(trace.transitions).toHaveLength(1);
+      expect(trace.transitions[0]?.readyAt).toBeDefined();
+      expect(
+        trace.transitions[0]?.finishedAt,
+        `${stage}: snapshot must release without a click`,
+      ).toBeDefined();
+      expect(after.href).toBe(before.href);
+      expect(
+        after.pageNumber,
+        `${stage}: each independent gesture must turn exactly one page`,
+      ).toBe(before.pageNumber! + direction);
+      expect(after.cfi).not.toBe(before.cfi);
+      expect(
+        Math.abs(afterPoint.scrollLeft - beforePoint.scrollLeft - direction * point.extent),
+      ).toBeLessThanOrEqual(1.1);
+      const lastSequence = wheels.at(-1)!.sequence;
+      const held = trace.frames.filter(
+        (frame) => frame.wheelCount > wheels[0]!.sequence && frame.wheelCount < lastSequence,
+      );
+      expect(held.length).toBeGreaterThan(2);
+      expect(held.every((frame) => frame.cfi === before.cfi)).toBe(true);
+      expect(trace.writes.filter((write) => write.wheelCount < lastSequence)).toEqual([]);
+    }
+  } finally {
+    try {
+      if (session) {
+        const probe = await bounded(
+          session.page.evaluate(() => {
+            const probe = (window as Partial<ProbeWindow>).__trackpadRoutingProbe;
+            if (probe) probe.running = false;
+            return probe;
+          }),
+        ).catch((error: unknown) => ({ diagnosticError: String(error) }));
+        await testInfo
+          .attach('successive-full-probe', {
+            body: JSON.stringify(probe, null, 2),
+            contentType: 'application/json',
+          })
+          .catch(() => undefined);
+        if (windowId !== undefined)
+          await bounded(
+            session.app.evaluate(({ BrowserWindow }, id) => {
+              const window = BrowserWindow.fromId(id);
+              if (window?.webContents.debugger.isAttached()) window.webContents.debugger.detach();
+            }, windowId),
+          ).catch(() => undefined);
+      }
+    } finally {
       if (session) await bounded(stopSourceApp(session, 'kill'), 10_000);
       await removeIsolatedProfile(profile);
     }

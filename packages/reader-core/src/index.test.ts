@@ -463,6 +463,25 @@ describe('sliding page gesture', () => {
     f.gesture.dispose();
   });
 
+  it('preserves an external rebase even when the previous spring is at its endpoint', () => {
+    const f = fixture({ stacked: false });
+    f.wheel(500);
+    vi.advanceTimersByTime(220);
+    for (let frame = 0; frame < 180 && Math.abs(f.presentation() - 1_000) > 1; frame += 1)
+      f.stepFrame();
+    expect(Math.abs(f.presentation() - 1_000)).toBeLessThanOrEqual(1);
+    expect(f.settled).not.toHaveBeenCalled();
+    f.scroller.scrollLeft = 4_000;
+    f.wheel(160);
+    expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
+    expect(f.scroller.scrollLeft).toBe(4_160);
+    vi.advanceTimersByTime(220);
+    f.settleFrames();
+    expect(f.scroller.scrollLeft).toBe(5_000);
+    expect(f.settled.mock.calls).toEqual([[0], [1]]);
+    f.gesture.dispose();
+  });
+
   it('commits a fresh forward burst after a reversed preview has cancelled', () => {
     const f = fixture({ stacked: false });
     f.wheel(180);
@@ -827,6 +846,101 @@ describe('stacked page gesture', () => {
     expect(f.scroller.scrollLeft).toBe(2_000);
     f.gesture.dispose();
   });
+
+  it.each([1, -1])(
+    'hands a completed sheet to the next outward gesture without a click (%s)',
+    async (direction) => {
+      const f = fixture();
+      f.wheel(direction * 500);
+      await f.ready();
+      vi.advanceTimersByTime(220);
+      for (
+        let frame = 0;
+        frame < 180 && Math.abs(f.presentation() - direction * 1_000) > 1;
+        frame += 1
+      ) {
+        f.stepFrame();
+      }
+      expect(Math.abs(f.presentation() - direction * 1_000)).toBeLessThanOrEqual(1);
+      expect(f.settled).not.toHaveBeenCalled();
+      // The old sheet is already gone to within a pixel, but its spring velocity
+      // has not reached the old <5px/s stop condition. A new outward input must
+      // not remain clamped against that old page's exhausted one-screen budget.
+      f.wheel(direction * 160);
+      expect(f.settled).toHaveBeenCalledExactlyOnceWith(direction);
+      f.stepFrame();
+      expect(f.transitions).toHaveLength(2);
+      expect(f.transitions[1]?.origin).toBe(2_000 + direction * 1_000);
+      await f.ready();
+      expect(f.presentation()).toBe(direction * 160);
+      vi.advanceTimersByTime(220);
+      f.settleFrames();
+      expect(f.scroller.scrollLeft).toBe(2_000 + direction * 2_000);
+      expect(f.settled.mock.calls).toEqual([[direction], [direction]]);
+      f.gesture.dispose();
+    },
+  );
+
+  it('does not promote a short book-edge cancellation into a completed sheet', async () => {
+    const f = fixture();
+    Object.defineProperty(f.scroller, 'scrollWidth', { value: 3_050 });
+    f.wheel(48);
+    await f.ready();
+    vi.advanceTimersByTime(200);
+    f.stepFrame();
+    expect(Math.abs(f.presentation() - 50)).toBeLessThanOrEqual(1);
+    f.wheel(8);
+    expect(f.settled).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(220);
+    f.settleFrames();
+    expect(f.scroller.scrollLeft).toBe(2_000);
+    expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
+    f.gesture.dispose();
+  });
+
+  it('keeps a near-terminal reverse input attached to the original sheet', async () => {
+    const f = fixture();
+    f.wheel(500);
+    await f.ready();
+    vi.advanceTimersByTime(220);
+    for (let frame = 0; frame < 180 && Math.abs(f.presentation() - 1_000) > 1; frame += 1)
+      f.stepFrame();
+    const before = f.presentation();
+    expect(Math.abs(before - 1_000)).toBeLessThanOrEqual(1);
+    expect(f.settled).not.toHaveBeenCalled();
+    f.wheel(-8);
+    expect(f.presentation()).toBeCloseTo(before - 8, 8);
+    expect(f.transitions).toHaveLength(1);
+    expect(f.settled).not.toHaveBeenCalled();
+    f.gesture.dispose();
+  });
+
+  it.each(['close', 'replace', 'disable', 'dispose'] as const)(
+    'does not hand terminal input to an owner changed by settlement (%s)',
+    async (change) => {
+      const f = fixture();
+      f.wheel(500);
+      await f.ready();
+      vi.advanceTimersByTime(220);
+      for (let frame = 0; frame < 180 && Math.abs(f.presentation() - 1_000) > 1; frame += 1)
+        f.stepFrame();
+      expect(Math.abs(f.presentation() - 1_000)).toBeLessThanOrEqual(1);
+      expect(f.settled).not.toHaveBeenCalled();
+      f.settled.mockImplementation(() => {
+        if (change === 'close') f.setOwner(null);
+        else if (change === 'replace') f.setOwner({ ...f.scroller, scrollLeft: 4_000 });
+        else if (change === 'disable') f.setEnabled(false);
+        else f.gesture.dispose();
+      });
+      f.wheel(160);
+      f.stepFrame();
+      expect(f.settled).toHaveBeenCalledExactlyOnceWith(1);
+      expect(f.started).toHaveBeenCalledTimes(1);
+      expect(f.transitions).toHaveLength(1);
+      expect(f.scroller.scrollLeft).toBe(3_000);
+      f.gesture.dispose();
+    },
+  );
 
   it('does not replay closing input after invalidation or mode changes', async () => {
     const f = fixture();

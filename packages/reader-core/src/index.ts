@@ -337,6 +337,8 @@ interface PageScrollSession {
   ready: boolean;
   finishRequested: boolean;
   settling: boolean;
+  settleDirection: -1 | 0 | 1;
+  settleDestination: number;
   springRevision: number;
   frame: number | null;
   endTimer: ReturnType<typeof setTimeout> | null;
@@ -395,6 +397,8 @@ function createPageScrollGesture(
       session.frame = null;
     }
     session.settling = false;
+    session.settleDirection = 0;
+    session.settleDestination = 0;
   }
 
   function clearTimers(session: PageScrollSession): void {
@@ -744,6 +748,8 @@ function createPageScrollGesture(
     }
     stopSpring(session);
     session.settling = true;
+    session.settleDirection = settledDirection;
+    session.settleDestination = destination;
     const revision = session.springRevision;
     const stiffness = ((2 * Math.PI) / (session.stack ? 0.28 : 0.32)) ** 2;
     const damping = 2 * Math.sqrt(stiffness);
@@ -810,6 +816,9 @@ function createPageScrollGesture(
         return;
       const scroller = options.getScroller();
       if (!scroller) return;
+      // This owner has accepted the packet. Settlement can replace/disable it,
+      // but must not let that same packet leak into native scrolling.
+      event.preventDefault();
       if (
         active &&
         !active.stack &&
@@ -819,8 +828,24 @@ function createPageScrollGesture(
       ) {
         active.origin = scroller.scrollLeft;
         end(active, 0, true);
+        if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false)
+          return;
       }
-      event.preventDefault();
+      if (
+        active?.settling &&
+        active.settleDirection !== 0 &&
+        sign(event.deltaX) === active.settleDirection &&
+        Math.abs(active.presentation - active.settleDestination) <= 1
+      ) {
+        // The committed sheet is already at its endpoint to pixel precision.
+        // Do not make fresh outward input reuse its exhausted page budget
+        // merely because the old spring has not reached its velocity epsilon.
+        // A cancellation, reversal or mid-flight takeover keeps the old origin.
+        end(active, active.settleDirection, true);
+        // Settlement callbacks can navigate, close, or replace this owner.
+        if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false)
+          return;
+      }
       const now = performance.now();
       if (!active) {
         const session: PageScrollSession = {
@@ -847,6 +872,8 @@ function createPageScrollGesture(
           ready: false,
           finishRequested: false,
           settling: false,
+          settleDirection: 0,
+          settleDestination: 0,
           springRevision: 0,
           frame: null,
           endTimer: null,
