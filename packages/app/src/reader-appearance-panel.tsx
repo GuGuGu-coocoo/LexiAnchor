@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 
 import { defaultReaderPreferences, type ReaderPreferences } from '@lexianchor/reader-core';
 import type { MessageKey } from '@lexianchor/i18n';
@@ -40,6 +40,7 @@ export function ReaderAppearancePanel({
   onApplyPreferences,
   onThemeChange,
 }: ReaderAppearancePanelProps) {
+  const pageSwipeHintId = useId();
   const [presetStore, setPresetStore] = useState(readReaderPresetStore);
   const activePreset = presetStore.presets.find(
     (preset) => preset.id === presetStore.activePresetId,
@@ -217,6 +218,7 @@ export function ReaderAppearancePanel({
           <span>{t('pageTurnEffect')}</span>
           <select
             value={preferences.pageTurnEffect}
+            aria-describedby={pageSwipeHintId}
             disabled={preferences.flow === 'scrolled'}
             onChange={(event) =>
               updatePreference(
@@ -229,6 +231,13 @@ export function ReaderAppearancePanel({
             <option value="stack">{t('stackedPages')}</option>
           </select>
         </label>
+        <p
+          id={pageSwipeHintId}
+          className="reader-control-help"
+          hidden={preferences.flow === 'scrolled'}
+        >
+          {t('pageSwipeHint')}
+        </p>
 
         <label className="reader-control">
           <span>{t('fontFamily')}</span>

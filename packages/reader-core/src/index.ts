@@ -301,7 +301,8 @@ export function createHorizontalPageGesture(
 /**
  * Both presentations share one uncommitted gesture origin and lifecycle.
  * The stack is an origin snapshot over a live adjacent page; slide renders
- * the live strip directly. Neither presentation commits while input owns it.
+ * one adjacent screen from the live strip. Both keep input and presentation
+ * within one page of the uncommitted origin; neither commits during input.
  */
 export function createHorizontalPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
@@ -373,6 +374,8 @@ function createPageScrollGesture(
   const sign = (value: number): -1 | 0 | 1 => (value > 0 ? 1 : value < 0 ? -1 : 0);
   const clamp = (scroller: HTMLElement, value: number) =>
     Math.max(0, Math.min(Math.max(0, scroller.scrollWidth - scroller.clientWidth), value));
+  const pageDistance = (session: PageScrollSession, value: number) =>
+    Math.max(-session.extent, Math.min(session.extent, value));
 
   function valid(session: PageScrollSession): boolean {
     if (disposed || active !== session || session.id !== generation) return false;
@@ -525,6 +528,9 @@ function createPageScrollGesture(
 
   function render(session: PageScrollSession, requested: number): void {
     if (!valid(session)) return;
+    // A horizontal page turn is not a freely scrolling strip. This also
+    // bounds spring overshoot and a failed snapshot's live-strip fallback.
+    requested = pageDistance(session, requested);
     if (!session.stack) {
       const position = clamp(session.scroller, session.origin + requested);
       session.scroller.scrollLeft = position;
@@ -638,6 +644,7 @@ function createPageScrollGesture(
       // Read pixels only after the adapter has preserved/rebased the origin.
       session.origin = session.scroller.scrollLeft;
       session.extent = extent();
+      session.distance = pageDistance(session, session.distance);
       session.prepared.add(direction);
       if (failed) {
         abort.abort();
@@ -686,6 +693,14 @@ function createPageScrollGesture(
       return;
     }
     render(session, session.distance);
+    if (!valid(session)) return;
+    if (!session.finishRequested && session.started && (!session.stack || session.ready)) {
+      // Only discard unavailable travel after adjacent-page preparation.
+      // Clamping against scrollWidth before that would block a previous
+      // chapter at its first page. Do not leave overscroll debt at book edges.
+      if (Math.abs(session.distance - session.presentation) > 0.5) session.velocity = 0;
+      session.distance = session.presentation;
+    }
     if (session.finishRequested) finish(session);
   }
 
@@ -755,6 +770,7 @@ function createPageScrollGesture(
       }
       render(session, next);
       if (!valid(session) || revision !== session.springRevision) return;
+      if (Math.abs(next - session.presentation) > 0.5) session.velocity = 0;
       expectedScroll = session.scroller.scrollLeft;
       if (Math.abs(session.presentation - destination) < 0.5 && Math.abs(session.velocity) < 5) {
         render(session, destination);
@@ -859,8 +875,13 @@ function createPageScrollGesture(
             : 1);
       const elapsed = session.lastInputAt > 0 ? Math.max(8, now - session.lastInputAt) : 16;
       session.lastInputAt = now;
-      session.distance += delta;
-      session.velocity = session.velocity * 0.42 + (delta / elapsed) * 1_000 * 0.58;
+      // Keep the accumulator bounded too: limiting only the rendered page
+      // stores invisible extra travel, making a reverse gesture feel stuck.
+      session.distance = pageDistance(session, session.distance + delta);
+      session.velocity =
+        Math.abs(session.distance) === session.extent && delta * session.distance > 0
+          ? 0
+          : session.velocity * 0.42 + (delta / elapsed) * 1_000 * 0.58;
       session.finishRequested = false;
       if (session.endTimer !== null) clearTimeout(session.endTimer);
       session.endTimer = setTimeout(() => finish(session), idleDelay);

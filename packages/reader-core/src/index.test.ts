@@ -244,7 +244,87 @@ function fixture({
   };
 }
 
-describe('continuous page gesture', () => {
+describe('single-page swipe bounds', () => {
+  const modes = [
+    { name: 'slide', stacked: false },
+    { name: 'stack', stacked: true },
+    { name: 'stack without ViewTransition', stacked: true, viewTransitions: false },
+    { name: 'stack capture failure', stacked: true, throwCapture: true },
+    { name: 'reduced motion', stacked: true, reducedMotion: true },
+  ];
+
+  for (const mode of modes) {
+    it.each([1, -1])(
+      `${mode.name}: bounds a long burst to one page and immediately follows reversal (%i)`,
+      async (direction) => {
+        const f = fixture(mode);
+        f.wheel(direction * 100);
+        await f.ready();
+        expect(f.presentation()).toBe(direction * 100);
+        for (let index = 0; index < 8; index += 1) {
+          vi.advanceTimersByTime(16);
+          f.wheel(direction * 400);
+          expect(Math.abs(f.presentation())).toBeLessThanOrEqual(1_000);
+          expect(f.settled).not.toHaveBeenCalled();
+        }
+        expect(f.presentation()).toBe(direction * 1_000);
+        f.wheel(direction * -20);
+        expect(f.presentation()).toBe(direction * 980);
+        vi.advanceTimersByTime(180);
+        f.settleFrames();
+        expect(f.scroller.scrollLeft).toBe(2_000 + direction * 1_000);
+        expect(f.writes.every((position) => Math.abs(position - 2_000) <= 1_000)).toBe(true);
+        expect(f.settled).toHaveBeenCalledExactlyOnceWith(direction);
+        f.gesture.dispose();
+      },
+    );
+    it.each([1, -1])(
+      `${mode.name}: keeps a fast release spring inside one page (%i)`,
+      async (direction) => {
+        const f = fixture(mode);
+        f.wheel(direction * 990);
+        await f.ready();
+        vi.advanceTimersByTime(180);
+        for (let index = 0; index < 240 && f.frames.size > 0; index += 1) {
+          f.stepFrame();
+          expect(Math.abs(f.presentation())).toBeLessThanOrEqual(1_000);
+        }
+        expect(f.writes.every((position) => Math.abs(position - 2_000) <= 1_000)).toBe(true);
+        expect(f.scroller.scrollLeft).toBe(2_000 + direction * 1_000);
+        expect(f.settled).toHaveBeenCalledExactlyOnceWith(direction);
+        f.gesture.dispose();
+      },
+    );
+  }
+
+  it.each([false, true])(
+    'also bounds input buffered during preparation (stack=%s)',
+    async (stacked) => {
+      const gate = deferred();
+      const f = fixture({ stacked, preparePage: () => gate.promise });
+      f.wheel(3_500);
+      f.wheel(-20);
+      gate.resolve();
+      await microtasks();
+      await f.ready();
+      expect(f.presentation()).toBe(980);
+      expect(f.settled).not.toHaveBeenCalled();
+      f.gesture.dispose();
+    },
+  );
+
+  it('releases overscroll at the book edge so a small reverse input moves immediately', () => {
+    const f = fixture({ stacked: false });
+    f.scroller.scrollLeft = 0;
+    f.wheel(-3_500);
+    expect(f.scroller.scrollLeft).toBe(0);
+    f.wheel(20);
+    expect(f.scroller.scrollLeft).toBe(20);
+    f.gesture.dispose();
+  });
+});
+
+describe('sliding page gesture', () => {
   it('directly follows input and commits once after settling', () => {
     const f = fixture({ stacked: false });
     f.wheel(180);

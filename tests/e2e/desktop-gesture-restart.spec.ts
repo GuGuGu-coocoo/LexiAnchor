@@ -232,6 +232,7 @@ async function assertSavedData(page: Page, presetId: string, effect: string) {
 for (const effect of ['stack', 'slide'] as const) {
   for (const stopMode of ['normal', 'kill'] as const) {
     test(`source Electron ${effect}: ${stopMode} restart retains committed page/data and cancels a half gesture`, async () => {
+      const testInfo = test.info();
       test.skip(
         !applicationEntry,
         'Set LEXIANCHOR_SOURCE_APP to an isolated source-only build directory.',
@@ -241,10 +242,32 @@ for (const effect of ['stack', 'slide'] as const) {
         return;
       }
       const profile = await createIsolatedProfile();
+      const trace: unknown[] = [];
+      const observe = async (page: Page, stage: string) => {
+        await page.exposeFunction('__readingQaTrace', (record: unknown) => {
+          trace.push({ stage, receivedAt: Date.now(), record });
+        });
+        await page.evaluate(() => {
+          const record = (value: unknown) => {
+            void (
+              window as Window & { __readingQaTrace: (record: unknown) => Promise<void> }
+            ).__readingQaTrace(value);
+          };
+          const save = Storage.prototype.setItem;
+          Storage.prototype.setItem = function (key, value) {
+            save.call(this, key, value);
+            if (key.startsWith('lexianchor:epub-location:')) {
+              record({ kind: 'checkpoint', at: Date.now(), value: JSON.parse(value) });
+            }
+          };
+          record({ kind: 'observe', at: Date.now() });
+        });
+      };
       let session: Session | undefined;
       try {
         session = await launchSourceApp(applicationEntry, profile);
         let page = session.page;
+        await observe(page, 'first');
         await seedWordCard(page);
         await page.getByRole('button', { name: labels.library }).click();
         await page.locator('.import-button input[type="file"]').setInputFiles(fixture);
@@ -271,16 +294,19 @@ for (const effect of ['stack', 'slide'] as const) {
         expect(presetId).not.toBe('default');
         await committedTurn(page);
         const lastCommitted = await committedTurn(page);
+        trace.push({ kind: 'lastCommitted', at: Date.now(), value: lastCommitted });
         await stopSourceApp(session, stopMode);
         session = undefined;
 
         session = await launchSourceApp(applicationEntry, profile);
         page = session.page;
+        await observe(page, 'preview');
         await assertSavedData(page, presetId, effect);
         await expect.poll(async () => (await checkpoint(page)).cfi).toBe(lastCommitted.cfi);
         expect((await stableCheckpoint(page, true)).cfi).toBe(lastCommitted.cfi);
 
         const beforePreview = await stableCheckpoint(page, true);
+        trace.push({ kind: 'beforePreview', at: Date.now(), value: beforePreview });
         const scroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
         const origin = await scroller.evaluate((element) => element.scrollLeft);
         await keepGestureOpen(page);
@@ -292,15 +318,22 @@ for (const effect of ['stack', 'slide'] as const) {
             .not.toBe(origin);
         }
         expect((await checkpoint(page)).cfi).toBe(beforePreview.cfi);
+        trace.push({ kind: 'beforeKill', at: Date.now(), value: await checkpoint(page) });
         await stopSourceApp(session, stopMode);
         session = undefined;
 
         session = await launchSourceApp(applicationEntry, profile);
         page = session.page;
+        await observe(page, 'reopen');
         await assertSavedData(page, presetId, effect);
+        trace.push({ kind: 'reopened', at: Date.now(), value: await checkpoint(page) });
         await expect.poll(async () => (await checkpoint(page)).cfi).toBe(beforePreview.cfi);
         expect((await stableCheckpoint(page, true)).cfi).toBe(beforePreview.cfi);
       } finally {
+        await testInfo.attach('reading-checkpoint-trace', {
+          body: JSON.stringify(trace, null, 2),
+          contentType: 'application/json',
+        });
         if (session) {
           await stopSourceApp(session, 'kill').catch(() => undefined);
         }
