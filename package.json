@@ -20,7 +20,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
+    "test": "vitest run && node --test tools/source-launch-lock.test.mjs",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "pnpm build:web && playwright test",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"

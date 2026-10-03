@@ -7,7 +7,6 @@ import {
   appendFile,
   mkdir,
   mkdtemp,
-  open,
   readFile,
   realpath,
   rm,
@@ -21,6 +20,8 @@ import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, URL } from 'node:url';
 import { promisify } from 'node:util';
+
+import { acquireSourceLaunchLock } from './source-launch-lock.mjs';
 
 export const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
 const desktopDirectory = path.join(repositoryRoot, 'apps', 'desktop');
@@ -139,57 +140,6 @@ function processExists(pid) {
     return true;
   } catch (error) {
     return error.code === 'EPERM';
-  }
-}
-
-async function existingLauncher() {
-  // Another double click can observe the exclusively created file before its
-  // first JSON write. Wait at most 300 ms without deleting that file.
-  for (let attempt = 0; attempt < 7; attempt += 1) {
-    try {
-      return await readLauncher();
-    } catch (error) {
-      if (error.cause instanceof SyntaxError && attempt < 6) {
-        await delay(50);
-        continue;
-      }
-      throw error;
-    }
-  }
-}
-
-async function readLauncher() {
-  try {
-    const state = JSON.parse(await readFile(launchLock, 'utf8'));
-    if (state.mode === 'verification') {
-      const temporaryRoot = await realpath(tmpdir());
-      if (
-        state.disposableProfile !== true ||
-        (state.profile === null
-          ? state.status !== 'starting'
-          : typeof state.profile !== 'string' ||
-            path.dirname(state.profile) !== temporaryRoot ||
-            !path.basename(state.profile).startsWith('lexianchor-source-qa-'))
-      )
-        throw new Error('Source verification lock does not identify a disposable QA session.');
-    } else if (state.profile !== path.join(sourceDirectory, 'profile')) {
-      throw new Error('Source launch lock does not identify the fixed independent profile.');
-    }
-    if (!processExists(state.pid) && !processExists(state.devPid)) {
-      throw new Error(
-        '上次源码启动锁仍在，但进程已结束。未自动清理资料或启动第二个进程；请检查 source-test/launcher.lock.json 后移走该锁文件。\nA stale source lock remains. After checking that the source dev process has ended, move source-test/launcher.lock.json aside and retry; do not remove profile/.',
-      );
-    }
-    return state;
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return null;
-    }
-    // Never assume a partially written or unreadable lock is safe to replace.
-    throw new Error(
-      `源码启动锁无法读取，未启动第二个进程 / Unreadable source launch lock: ${error.message}`,
-      { cause: error },
-    );
   }
 }
 
@@ -902,7 +852,6 @@ async function launchDevelopment(pnpmExecutable, verifyLaunch = false) {
   let electronExecutable;
   let profile;
   let status;
-  let lock;
   let ownsLock = false;
   let child;
   let childError;
@@ -924,31 +873,26 @@ async function launchDevelopment(pnpmExecutable, verifyLaunch = false) {
     status = await sourceStatus();
     Object.assign(record, status);
     await mkdir(sourceDirectory, { recursive: true });
-    const running = await existingLauncher();
-    if (running) {
+    const acquisition = await acquireSourceLaunchLock({
+      lockPath: launchLock,
+      normalProfile: path.join(sourceDirectory, 'profile'),
+      temporaryRoot: await realpath(tmpdir()),
+      initialState: state,
+      ensurePortAvailable: () => assertPortAvailable(5173),
+    });
+    if (!acquisition.owned) {
       if (verifyLaunch)
         throw new Error('A source test session already exists; validation will not close it.');
-      await focusExistingSource(electronExecutable, running);
+      await focusExistingSource(electronExecutable, acquisition.state);
       return;
     }
-    // Both modes exclusively own the same .vite build entry. A normal double
-    // click during verification waits; it never focuses disposable QA data.
-    try {
-      lock = await open(launchLock, 'wx');
-      ownsLock = true;
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
-      const current = await existingLauncher();
-      if (current && !verifyLaunch) {
-        await focusExistingSource(electronExecutable, current);
-        return;
-      }
-      throw new Error('Another source launcher owns the build entry; please wait.', {
-        cause: error,
-      });
+    ownsLock = true;
+    if (acquisition.recovered) {
+      console.log(
+        '已安全归档失效启动锁，资料目录未动 / Stale launch lock archived; profile untouched.',
+      );
+      console.log(acquisition.recovered);
     }
-    await lock.writeFile(`${JSON.stringify(state)}\n`);
-    await lock.close();
     profile = verifyLaunch ? await createIsolatedProfile() : state.profile;
     state.profile = profile;
     await updateLock();
@@ -1086,7 +1030,6 @@ if (process.versions.electron && process.type === 'browser') {
   } catch (error) {
     primaryError = error;
   } finally {
-    await lock?.close().catch(() => undefined);
     if (verifyLaunch && child) {
       try {
         cleanup = await stopOwnDevelopment(
