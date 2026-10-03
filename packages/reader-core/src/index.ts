@@ -102,17 +102,13 @@ export interface HorizontalPageScrollGestureOptions {
   readonly getPageExtent?: () => number;
   readonly isEnabled?: () => boolean;
   readonly shouldPrearm?: () => boolean;
+  readonly onInteractionStart?: () => void;
+  readonly preparePage?: (direction: -1 | 1, signal: AbortSignal) => void | Promise<void>;
   readonly onSettled?: (direction: -1 | 0 | 1) => void;
 }
 
 function projectedDistance(velocity: number, decelerationRate = 0.99): number {
   return (velocity / 1000) * (decelerationRate / (1 - decelerationRate));
-}
-
-function afterNextPaint(): Promise<void> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => resolve());
-  });
 }
 
 /**
@@ -281,6 +277,16 @@ export function createHorizontalPageGesture(
 
   return {
     handleWheel,
+    invalidate() {
+      stopAnimation();
+      if (endTimer !== null) {
+        clearTimeout(endTimer);
+        endTimer = null;
+      }
+      velocity = 0;
+      lastInputAt = 0;
+      resetVisual();
+    },
     dispose() {
       stopAnimation();
       if (endTimer !== null) {
@@ -293,248 +299,201 @@ export function createHorizontalPageGesture(
 }
 
 /**
- * Directly scrolls a pre-rendered horizontal page strip. Unlike the transform
- * gesture above, this reveals the real adjacent page during the gesture.
+ * Both presentations share one uncommitted gesture origin and lifecycle.
+ * The stack is an origin snapshot over a live adjacent page; slide renders
+ * the live strip directly. Neither presentation commits while input owns it.
  */
 export function createHorizontalPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
 ): HorizontalPageGestureController {
-  let origin = 0;
-  let velocity = 0;
-  let lastInputAt = 0;
-  let isTracking = false;
-  let endTimer: ReturnType<typeof setTimeout> | null = null;
-  let animationFrame: number | null = null;
-  let animationSequence = 0;
-
-  function stopAnimation(): void {
-    if (animationFrame !== null) {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = null;
-    }
-    animationSequence += 1;
-  }
-
-  function pageExtent(): number {
-    return Math.max(1, options.getPageExtent?.() ?? options.getScroller()?.clientWidth ?? 1);
-  }
-
-  function settle(target: number, initialVelocity: number, direction: -1 | 0 | 1): void {
-    stopAnimation();
-    const ownSequence = animationSequence;
-    const response = 0.32;
-    const stiffness = ((2 * Math.PI) / response) ** 2;
-    const damping = 2 * Math.sqrt(stiffness);
-    let springVelocity = initialVelocity;
-    let previousTime = performance.now();
-    let expectedPosition = options.getScroller()?.scrollLeft ?? target;
-
-    const tick = (time: number) => {
-      if (ownSequence !== animationSequence) {
-        return;
-      }
-
-      const scroller = options.getScroller();
-      if (!scroller) {
-        return;
-      }
-
-      const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
-      previousTime = time;
-      const position = scroller.scrollLeft;
-
-      // EPUB.js can rebase its continuous strip when it trims an off-screen
-      // section. That preserves the visible page but changes scrollLeft. Stop
-      // the old spring instead of pulling the reader back toward a stale pixel.
-      if (Math.abs(position - expectedPosition) > pageExtent() * 0.45) {
-        animationFrame = null;
-        velocity = 0;
-        options.onSettled?.(direction);
-        return;
-      }
-
-      const acceleration = -stiffness * (position - target) - damping * springVelocity;
-      springVelocity += acceleration * elapsed;
-      scroller.scrollLeft = position + springVelocity * elapsed;
-      expectedPosition = scroller.scrollLeft;
-
-      if (Math.abs(scroller.scrollLeft - target) < 0.5 && Math.abs(springVelocity) < 5) {
-        scroller.scrollLeft = target;
-        animationFrame = null;
-        velocity = 0;
-        options.onSettled?.(direction);
-        return;
-      }
-
-      animationFrame = requestAnimationFrame(tick);
-    };
-
-    animationFrame = requestAnimationFrame(tick);
-  }
-
-  function finishGesture(): void {
-    endTimer = null;
-    const scroller = options.getScroller();
-
-    if (!scroller) {
-      isTracking = false;
-      lastInputAt = 0;
-      return;
-    }
-
-    // The wheel burst owns its origin only until input ends. A later gesture
-    // interrupts the spring from the live presentation position and must not
-    // inherit the page where an earlier gesture began.
-    isTracking = false;
-    lastInputAt = 0;
-    const extent = pageExtent();
-    const distance = scroller.scrollLeft - origin;
-    const projected =
-      distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
-    const direction: -1 | 0 | 1 =
-      distance > 10 && (projected > extent * 0.16 || velocity > 480)
-        ? 1
-        : distance < -10 && (projected < -extent * 0.16 || velocity < -480)
-          ? -1
-          : 0;
-    const maximum = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-    const pageIndex =
-      direction > 0
-        ? Math.floor(origin / extent) + 1
-        : direction < 0
-          ? Math.ceil(origin / extent) - 1
-          : Math.round(scroller.scrollLeft / extent);
-    const target = Math.max(0, Math.min(maximum, pageIndex * extent));
-
-    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      scroller.scrollLeft = target;
-      velocity = 0;
-      options.onSettled?.(target === origin ? 0 : direction);
-      return;
-    }
-
-    settle(target, velocity, target === origin ? 0 : direction);
-  }
-
-  return {
-    handleWheel(event: WheelEvent) {
-      if (
-        options.isEnabled?.() === false ||
-        Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
-      ) {
-        return;
-      }
-
-      const scroller = options.getScroller();
-      if (!scroller) {
-        return;
-      }
-
-      event.preventDefault();
-      const now = performance.now();
-      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
-      const delta = event.deltaX * scale;
-      const elapsed = lastInputAt > 0 ? Math.max(8, now - lastInputAt) : 16;
-      lastInputAt = now;
-
-      if (!isTracking) {
-        origin = scroller.scrollLeft;
-        isTracking = true;
-      }
-
-      stopAnimation();
-      const instantaneousVelocity = (delta / elapsed) * 1000;
-      velocity = velocity * 0.42 + instantaneousVelocity * 0.58;
-      scroller.scrollLeft += delta;
-
-      if (endTimer !== null) {
-        clearTimeout(endTimer);
-      }
-      endTimer = setTimeout(finishGesture, 90);
-    },
-    dispose() {
-      stopAnimation();
-      if (endTimer !== null) {
-        clearTimeout(endTimer);
-        endTimer = null;
-      }
-      isTracking = false;
-      velocity = 0;
-    },
-  };
+  return createPageScrollGesture(options, false);
 }
 
-/**
- * Treats the current viewport as the top sheet in a stack. Chromium's View
- * Transition snapshot keeps that sheet visually intact while the real
- * scroller is moved to the adjacent page underneath. The snapshot then tracks
- * the gesture 1:1 and settles with an interruptible, critically damped spring.
- */
 export function createStackedPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
 ): HorizontalPageGestureController {
-  // A macOS trackpad can leave ~80 ms gaps inside one slow physical swipe.
-  // Treating those gaps as gesture-end makes the sheet settle underneath the
-  // fingers and feels like a lock. Keep the stream alive long enough to remain
-  // 1:1 while still committing promptly after a deliberate flick.
-  const gestureIdleDelay = 170;
-  let origin = 0;
-  let target = 0;
-  let distance = 0;
-  let velocity = 0;
-  let direction: -1 | 0 | 1 = 0;
-  let progress = 0;
-  let activeExtent = 1;
-  let lastInputAt = 0;
-  let isTracking = false;
-  let isReady = false;
-  let isSettling = false;
-  let settlingCommit = false;
-  let shouldFinishWhenReady = false;
-  let endTimer: ReturnType<typeof setTimeout> | null = null;
-  let animationFrame: number | null = null;
-  let transition: ViewTransition | null = null;
-  let closingTransition: Promise<void> | null = null;
-  let sheetAnimation: Animation | null = null;
-  let sequence = 0;
-  let previousTransitionName = '';
-  let bufferedDistance = 0;
-  let bufferedVelocity = 0;
-  let bufferedLastInputAt = 0;
-  let isDisposed = false;
+  return createPageScrollGesture(options, true);
+}
 
-  const fallback = createHorizontalPageScrollGesture(options);
+interface PageScrollSession {
+  readonly id: number;
+  readonly scroller: HTMLElement;
+  origin: number;
+  extent: number;
+  distance: number;
+  presentation: number;
+  velocity: number;
+  lastInputAt: number;
+  direction: -1 | 0 | 1;
+  target: number;
+  stack: boolean;
+  started: boolean;
+  preparing: boolean;
+  prepared: Set<number>;
+  prepareAborts: Set<AbortController>;
+  prepareRevision: number;
+  captureRevision: number;
+  ready: boolean;
+  finishRequested: boolean;
+  settling: boolean;
+  springRevision: number;
+  frame: number | null;
+  endTimer: ReturnType<typeof setTimeout> | null;
+  prepareTimer: ReturnType<typeof setTimeout> | null;
+  readyTimer: ReturnType<typeof setTimeout> | null;
+  transition: ViewTransition | null;
+  animation: Animation | null;
+  animationDirection: -1 | 0 | 1;
+  animationExtent: number;
+  snapshotDirection: -1 | 0 | 1;
+  previousTransitionName: string;
+}
 
-  function pageExtent(): number {
-    return Math.max(1, options.getPageExtent?.() ?? options.getScroller()?.clientWidth ?? 1);
-  }
+function createPageScrollGesture(
+  options: HorizontalPageScrollGestureOptions,
+  stacked: boolean,
+): HorizontalPageGestureController {
+  // A recovery ceiling, not an input-latency target. Normal preparation/ready
+  // completes immediately; a missing browser/adapter promise cannot lock input.
+  const preparationTimeout = 250;
+  const idleDelay = stacked ? 170 : 90;
+  let active: PageScrollSession | null = null;
+  let generation = 0;
+  let disposed = false;
+  let closing: {
+    scroller: HTMLElement;
+    frame: number | null;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null = null;
 
-  function stopAnimation(): void {
-    if (animationFrame !== null) {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = null;
+  const reducedMotion = () =>
+    globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  const extent = () =>
+    Math.max(1, options.getPageExtent?.() ?? options.getScroller()?.clientWidth ?? 1);
+  const sign = (value: number): -1 | 0 | 1 => (value > 0 ? 1 : value < 0 ? -1 : 0);
+  const clamp = (scroller: HTMLElement, value: number) =>
+    Math.max(0, Math.min(Math.max(0, scroller.scrollWidth - scroller.clientWidth), value));
+
+  function valid(session: PageScrollSession): boolean {
+    if (disposed || active !== session || session.id !== generation) return false;
+    if (options.getScroller() !== session.scroller || options.isEnabled?.() === false) {
+      invalidate();
+      return false;
     }
-    sequence += 1;
+    return true;
   }
 
-  function render(nextProgress: number): void {
-    progress = Math.max(0, Math.min(1, nextProgress));
-    if (sheetAnimation) {
-      sheetAnimation.currentTime = progress * 1_000;
+  function stopSpring(session: PageScrollSession): void {
+    session.springRevision += 1;
+    if (session.frame !== null) {
+      cancelAnimationFrame(session.frame);
+      session.frame = null;
+    }
+    session.settling = false;
+  }
+
+  function clearTimers(session: PageScrollSession): void {
+    for (const name of ['endTimer', 'prepareTimer', 'readyTimer'] as const) {
+      if (session[name] !== null) {
+        clearTimeout(session[name]);
+        session[name] = null;
+      }
     }
   }
 
-  function createSheetAnimation(document: Document): void {
-    sheetAnimation = document.documentElement.animate(
-      direction > 0
-        ? [
-            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
-            { opacity: 1, transform: `translate3d(${-activeExtent}px, 0, 0)` },
-          ]
-        : [
-            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
-            { opacity: 1, transform: `translate3d(${activeExtent}px, 0, 0)` },
-          ],
+  function removeSnapshot(session: PageScrollSession): ViewTransition | null {
+    session.captureRevision += 1;
+    if (session.readyTimer !== null) {
+      clearTimeout(session.readyTimer);
+      session.readyTimer = null;
+    }
+    session.animation?.cancel();
+    session.animation = null;
+    session.animationDirection = 0;
+    session.ready = false;
+    session.snapshotDirection = 0;
+    const transition = session.transition;
+    session.transition = null;
+    const scroller = session.scroller;
+    scroller.style.viewTransitionName = session.previousTransitionName;
+    scroller.classList.remove('epub-page-stack-transition');
+    scroller.ownerDocument.documentElement.classList?.remove('epub-page-stack-prepared');
+    scroller.ownerDocument.documentElement.classList?.remove('epub-page-stack-active');
+    try {
+      transition?.skipTransition();
+    } catch {
+      // Cleanup is still required if the browser has already discarded it.
+    }
+    return transition;
+  }
+
+  function clearClosing(): void {
+    if (!closing) return;
+    if (closing.frame !== null) cancelAnimationFrame(closing.frame);
+    if (closing.timer !== null) clearTimeout(closing.timer);
+    closing = null;
+  }
+
+  function waitForClosing(transition: ViewTransition, scroller: HTMLElement): void {
+    clearClosing();
+    const record = {
+      scroller,
+      frame: null as number | null,
+      timer: null as ReturnType<typeof setTimeout> | null,
+    };
+    closing = record;
+    const release = () => {
+      if (closing !== record) return;
+      clearClosing();
+      if (active && valid(active)) advance(active);
+    };
+    // rAF is a lifecycle yield, not proof that a paint completed. A timer also
+    // releases a hidden/throttled window whose rAF does not execute.
+    record.frame = requestAnimationFrame(release);
+    record.timer = setTimeout(release, preparationTimeout);
+    void transition.finished.then(release, release);
+  }
+
+  function end(session: PageScrollSession, direction: -1 | 0 | 1, notify: boolean): void {
+    if (active !== session) return;
+    const ownsScroller = options.getScroller() === session.scroller;
+    clearTimers(session);
+    stopSpring(session);
+    session.prepareRevision += 1;
+    for (const abort of session.prepareAborts) abort.abort();
+    session.prepareAborts.clear();
+    if (ownsScroller) {
+      session.scroller.scrollLeft = direction === 0 ? session.origin : session.target;
+    }
+    const transition = removeSnapshot(session);
+    active = null;
+    generation += 1;
+    if (transition && !disposed) waitForClosing(transition, session.scroller);
+    if (notify && ownsScroller) options.onSettled?.(direction);
+  }
+
+  function fallback(
+    session: PageScrollSession,
+    requested = session.ready ? session.presentation : session.distance,
+  ): void {
+    if (!valid(session)) return;
+    stopSpring(session);
+    session.distance = requested;
+    removeSnapshot(session);
+    session.scroller.scrollLeft = session.origin;
+    session.stack = false;
+    render(session, requested);
+    if (session.finishRequested) finish(session);
+  }
+
+  function sheetAnimation(session: PageScrollSession, direction: -1 | 1, travel: number): void {
+    if (session.animationDirection === direction && session.animationExtent === travel) return;
+    session.animation?.cancel();
+    session.animation = session.scroller.ownerDocument.documentElement.animate(
+      [
+        { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+        { opacity: 1, transform: 'translate3d(' + -direction * travel + 'px, 0, 0)' },
+      ],
       {
         duration: 1_000,
         easing: 'linear',
@@ -542,433 +501,374 @@ export function createStackedPageScrollGesture(
         pseudoElement: '::view-transition-old(lexianchor-page)',
       },
     );
-    sheetAnimation.pause();
+    session.animation.pause();
+    session.animationDirection = direction;
+    session.animationExtent = travel;
   }
 
-  function prepareTransition(): void {
-    if (
-      isDisposed ||
-      transition ||
-      closingTransition ||
-      isTracking ||
-      isSettling ||
-      options.isEnabled?.() === false ||
-      options.shouldPrearm?.() === false
-    ) {
-      return;
-    }
-
-    const scroller = options.getScroller();
-    const document = scroller?.ownerDocument;
-    if (
-      !scroller ||
-      !document ||
-      typeof document.startViewTransition !== 'function' ||
-      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    ) {
-      return;
-    }
-
-    previousTransitionName = scroller.style.viewTransitionName;
-    scroller.style.viewTransitionName = 'lexianchor-page';
-    document.documentElement.classList?.add('epub-page-stack-prepared');
-    const ownSequence = ++sequence;
-    const preparedTransition = document.startViewTransition(() => undefined);
-    transition = preparedTransition;
-
-    void preparedTransition.ready.then(
-      () => {
-        if (ownSequence !== sequence || transition !== preparedTransition) {
-          return;
-        }
-        isReady = true;
-        beginBufferedGesture();
-      },
-      () => {
-        if (transition === preparedTransition) {
-          transition = null;
-          isReady = false;
-          scroller.style.viewTransitionName = previousTransitionName;
-          document.documentElement.classList?.remove('epub-page-stack-prepared');
-        }
-      },
-    );
-    void preparedTransition.finished.then(
-      () => {
-        if (transition !== preparedTransition || isTracking || isSettling || sheetAnimation) {
-          return;
-        }
-        transition = null;
-        isReady = false;
-        scroller.style.viewTransitionName = previousTransitionName;
-        document.documentElement.classList?.remove('epub-page-stack-prepared');
-      },
-      () => undefined,
-    );
+  function recapture(session: PageScrollSession, requested: number): void {
+    if (!valid(session)) return;
+    stopSpring(session);
+    session.distance = requested;
+    const transition = removeSnapshot(session);
+    session.scroller.scrollLeft = session.origin;
+    session.presentation = 0;
+    session.direction = 0;
+    session.target = session.origin;
+    session.started = false;
+    // Named ::new is a captured neighbour, not a live strip. It cannot be
+    // reused across zero for the other direction. Preserve the gesture origin
+    // and buffered input, but acquire a fresh pair after the old one closes.
+    if (transition) waitForClosing(transition, session.scroller);
+    else advance(session);
   }
 
-  function beginBufferedGesture(): void {
-    if (
-      isDisposed ||
-      closingTransition ||
-      (transition && !isReady) ||
-      Math.abs(bufferedDistance) < 2
-    ) {
+  function render(session: PageScrollSession, requested: number): void {
+    if (!valid(session)) return;
+    if (!session.stack) {
+      const position = clamp(session.scroller, session.origin + requested);
+      session.scroller.scrollLeft = position;
+      // Some engines quantize scrollLeft. Keep fractional integration state:
+      // rounding it back every frame creates a dead zone before the endpoint.
+      session.presentation = position - session.origin;
       return;
     }
-
-    const scroller = options.getScroller();
-    if (!scroller) {
-      bufferedDistance = 0;
-      bufferedVelocity = 0;
-      bufferedLastInputAt = 0;
+    if (!session.ready) return;
+    const direction = sign(requested);
+    if (direction !== 0 && session.snapshotDirection !== direction) {
+      recapture(session, requested);
       return;
     }
-
-    isTracking = true;
-    distance = bufferedDistance;
-    velocity = bufferedVelocity;
-    lastInputAt = bufferedLastInputAt;
-    bufferedDistance = 0;
-    bufferedVelocity = 0;
-    bufferedLastInputAt = 0;
-
-    if (!beginTransition(scroller, distance > 0 ? 1 : -1)) {
-      isTracking = false;
+    if (direction === 0) {
+      session.presentation = 0;
+      session.scroller.scrollLeft = session.origin;
+      if (session.animation) session.animation.currentTime = 0;
+      session.direction = 0;
+      session.target = session.origin;
       return;
     }
-
-    if (endTimer !== null) {
-      clearTimeout(endTimer);
+    const target = clamp(session.scroller, session.origin + direction * session.extent);
+    const travel = Math.abs(target - session.origin);
+    if (travel < 1) {
+      session.presentation = 0;
+      session.scroller.scrollLeft = session.origin;
+      if (session.animation) session.animation.currentTime = 0;
+      session.direction = 0;
+      session.target = session.origin;
+      return;
     }
-    endTimer = setTimeout(finishGesture, gestureIdleDelay);
+    try {
+      sheetAnimation(session, direction, travel);
+      session.direction = direction;
+      session.target = target;
+      session.scroller.scrollLeft = target;
+      session.presentation = direction * Math.min(travel, Math.abs(requested));
+      if (session.animation)
+        session.animation.currentTime = (Math.abs(session.presentation) / travel) * 1_000;
+    } catch {
+      fallback(session, requested);
+    }
   }
 
-  function bufferInput(delta: number, now: number): void {
-    const elapsed = bufferedLastInputAt > 0 ? Math.max(8, now - bufferedLastInputAt) : 16;
-    bufferedLastInputAt = now;
-    bufferedDistance += delta;
-    const instantaneousVelocity = (delta / elapsed) * 1000;
-    bufferedVelocity = bufferedVelocity * 0.42 + instantaneousVelocity * 0.58;
-  }
-
-  function cleanup(committedDirection: -1 | 0 | 1, notify = true, prepareNext = true): void {
-    const scroller = options.getScroller();
-    const endingTransition = transition;
-    stopAnimation();
-    sheetAnimation?.cancel();
-    sheetAnimation = null;
-    transition = null;
-
-    if (scroller) {
-      scroller.style.viewTransitionName = previousTransitionName;
-      scroller.classList.remove('epub-page-stack-transition');
-      scroller.ownerDocument.documentElement.classList?.remove('epub-page-stack-prepared');
-      scroller.ownerDocument.documentElement.classList?.remove('epub-page-stack-active');
-    }
-
-    isTracking = false;
-    isReady = false;
-    isSettling = false;
-    settlingCommit = false;
-    shouldFinishWhenReady = false;
-    direction = 0;
-    distance = 0;
-    velocity = 0;
-    lastInputAt = 0;
-    progress = 0;
-    activeExtent = 1;
-    if (notify) {
-      options.onSettled?.(committedDirection);
-    }
-
-    if (endingTransition) {
-      endingTransition.skipTransition();
-      // Chromium normally resolves `finished` immediately after a skip, but
-      // some Electron/macOS combinations keep it pending behind the old
-      // pseudo-element animation. Never let that browser lifecycle hold the
-      // next physical gesture hostage for more than one paint.
-      const closing = Promise.race([
-        endingTransition.finished.then(
-          () => undefined,
-          () => undefined,
-        ),
-        afterNextPaint(),
-      ]);
-      closingTransition = closing;
-      void closing.then(() => {
-        if (closingTransition !== closing) {
-          return;
-        }
-        closingTransition = null;
-        if (Math.abs(bufferedDistance) >= 2) {
-          beginBufferedGesture();
-        } else if (prepareNext && options.shouldPrearm?.() !== false) {
-          prepareTransition();
-        }
+  function capture(session: PageScrollSession): void {
+    if (!valid(session) || session.transition) return;
+    const document = session.scroller.ownerDocument;
+    const captureRevision = ++session.captureRevision;
+    const current = () => valid(session) && session.captureRevision === captureRevision;
+    session.previousTransitionName = session.scroller.style.viewTransitionName;
+    session.scroller.style.viewTransitionName = 'lexianchor-page';
+    session.scroller.classList.add('epub-page-stack-transition');
+    document.documentElement.classList?.add('epub-page-stack-active');
+    try {
+      const transition = document.startViewTransition(() => {
+        if (!current()) return;
+        const direction = sign(session.distance);
+        session.snapshotDirection = direction;
+        session.target = clamp(session.scroller, session.origin + direction * session.extent);
+        session.scroller.scrollLeft = session.target;
       });
-      return;
-    }
-
-    if (Math.abs(bufferedDistance) >= 2) {
-      beginBufferedGesture();
-    } else if (prepareNext && options.shouldPrearm?.() !== false) {
-      prepareTransition();
+      session.transition = transition;
+      session.readyTimer = setTimeout(() => {
+        if (current()) fallback(session);
+      }, preparationTimeout);
+      void transition.ready.then(
+        () => {
+          if (!current()) return;
+          if (session.readyTimer !== null) clearTimeout(session.readyTimer);
+          session.readyTimer = null;
+          session.ready = true;
+          advance(session);
+        },
+        () => {
+          if (current()) fallback(session);
+        },
+      );
+      void transition.finished.then(
+        () => {
+          if (current()) fallback(session);
+        },
+        () => {
+          if (current()) fallback(session);
+        },
+      );
+    } catch {
+      fallback(session);
     }
   }
 
-  function settle(commit: boolean): void {
-    if (!isReady) {
-      shouldFinishWhenReady = true;
-      return;
+  function prepare(session: PageScrollSession, direction: -1 | 1): void {
+    if (!valid(session) || session.preparing) return;
+    session.preparing = true;
+    const revision = ++session.prepareRevision;
+    const abort = new AbortController();
+    session.prepareAborts.add(abort);
+    // A missing neighbour can rebase the strip. Expose the origin, not the
+    // preview target, before asking the adapter to preserve that content.
+    if (session.started) {
+      render(session, 0);
+      session.scroller.scrollLeft = session.origin;
     }
-
-    const scroller = options.getScroller();
-    if (!scroller) {
-      cleanup(0);
-      return;
+    const current = () =>
+      valid(session) && session.prepareRevision === revision && !abort.signal.aborted;
+    const complete = (failed: boolean) => {
+      if (!current()) return;
+      if (session.prepareTimer !== null) clearTimeout(session.prepareTimer);
+      session.prepareTimer = null;
+      session.preparing = false;
+      // Read pixels only after the adapter has preserved/rebased the origin.
+      session.origin = session.scroller.scrollLeft;
+      session.extent = extent();
+      session.prepared.add(direction);
+      if (failed) {
+        abort.abort();
+        session.stack = false;
+        removeSnapshot(session);
+      }
+      advance(session);
+    };
+    session.prepareTimer = setTimeout(() => complete(true), preparationTimeout);
+    try {
+      const result = options.preparePage?.(direction, abort.signal);
+      if (result)
+        void Promise.resolve(result).then(
+          () => complete(false),
+          () => complete(true),
+        );
+      else complete(false);
+    } catch {
+      complete(true);
     }
+  }
 
-    isSettling = true;
-    settlingCommit = commit;
-    stopAnimation();
-    const ownSequence = sequence;
-    const destination = commit ? 1 : 0;
-    const response = 0.28;
-    const stiffness = ((2 * Math.PI) / response) ** 2;
-    const damping = 2 * Math.sqrt(stiffness);
-    let springVelocity = direction === 0 ? 0 : (velocity * direction) / activeExtent;
-    let previousTime = performance.now();
-
-    const tick = (time: number) => {
-      if (ownSequence !== sequence) {
+  function advance(session: PageScrollSession): void {
+    if (!valid(session) || session.preparing || closing) return;
+    const direction = sign(session.distance);
+    if (!session.started) {
+      if (direction === 0 || Math.abs(session.distance) < 2) {
+        if (session.finishRequested) end(session, 0, true);
         return;
       }
+      if (!session.prepared.has(direction)) {
+        prepare(session, direction);
+        return;
+      }
+      session.started = true;
+      if (session.stack) capture(session);
+    }
+    if (session.stack && session.transition && !session.ready) return;
+    const requestedTarget = clamp(session.scroller, session.origin + direction * session.extent);
+    if (
+      direction !== 0 &&
+      Math.abs(requestedTarget - session.origin) < 1 &&
+      !session.prepared.has(direction)
+    ) {
+      prepare(session, direction);
+      return;
+    }
+    render(session, session.distance);
+    if (session.finishRequested) finish(session);
+  }
 
+  function finish(session: PageScrollSession): void {
+    if (!valid(session)) return;
+    session.endTimer = null;
+    session.finishRequested = true;
+    if (!session.started && !session.preparing && !closing) {
+      end(session, 0, true);
+      return;
+    }
+    if (session.settling) return;
+    if (session.preparing || closing || (session.stack && !session.ready)) return;
+    const threshold = session.stack ? 0.025 : 0.16;
+    const speedThreshold = session.stack ? 120 : 480;
+    const projected =
+      session.distance +
+      Math.max(
+        -session.extent * 0.55,
+        Math.min(session.extent * 0.55, projectedDistance(session.velocity)),
+      );
+    const direction = sign(session.distance);
+    const commit =
+      direction !== 0 &&
+      (projected * direction > session.extent * threshold ||
+        session.velocity * direction > speedThreshold);
+    const target = commit
+      ? clamp(session.scroller, session.origin + direction * session.extent)
+      : session.origin;
+    const settledDirection = target === session.origin ? 0 : direction;
+    session.target = target;
+    const destination = target - session.origin;
+    if (reducedMotion()) {
+      render(session, destination);
+      end(session, settledDirection, true);
+      return;
+    }
+    stopSpring(session);
+    session.settling = true;
+    const revision = session.springRevision;
+    const stiffness = ((2 * Math.PI) / (session.stack ? 0.28 : 0.32)) ** 2;
+    const damping = 2 * Math.sqrt(stiffness);
+    let previousTime = performance.now();
+    let expectedScroll = session.scroller.scrollLeft;
+    const tick = (time: number) => {
+      if (!valid(session) || revision !== session.springRevision) return;
+      if (
+        !session.stack &&
+        Math.abs(session.scroller.scrollLeft - expectedScroll) > session.extent * 0.45
+      ) {
+        // A renderer rebase preserves content but invalidates old pixel targets.
+        session.origin = session.scroller.scrollLeft;
+        end(session, 0, true);
+        return;
+      }
       const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
       previousTime = time;
-      const acceleration = -stiffness * (progress - destination) - damping * springVelocity;
-      springVelocity += acceleration * elapsed;
-      render(progress + springVelocity * elapsed);
-
-      if (Math.abs(progress - destination) < 0.001 && Math.abs(springVelocity) < 0.01) {
-        render(destination);
-        animationFrame = null;
-        if (!commit) {
-          scroller.scrollLeft = origin;
-        }
-        cleanup(commit ? direction : 0);
+      const acceleration =
+        -stiffness * (session.presentation - destination) - damping * session.velocity;
+      session.velocity += acceleration * elapsed;
+      const next = session.presentation + session.velocity * elapsed;
+      if (destination === 0 && next * session.presentation <= 0) {
+        session.velocity = 0;
+        render(session, 0);
+        end(session, 0, true);
         return;
       }
-
-      animationFrame = requestAnimationFrame(tick);
+      render(session, next);
+      if (!valid(session) || revision !== session.springRevision) return;
+      expectedScroll = session.scroller.scrollLeft;
+      if (Math.abs(session.presentation - destination) < 0.5 && Math.abs(session.velocity) < 5) {
+        render(session, destination);
+        session.frame = null;
+        end(session, settledDirection, true);
+        return;
+      }
+      session.frame = requestAnimationFrame(tick);
     };
-
-    animationFrame = requestAnimationFrame(tick);
+    session.frame = requestAnimationFrame(tick);
   }
 
-  function finishGesture(): void {
-    endTimer = null;
-    if (!isTracking || direction === 0) {
-      isTracking = false;
-      return;
-    }
-
-    const extent = activeExtent;
-    const projected =
-      distance + Math.max(-extent * 0.55, Math.min(extent * 0.55, projectedDistance(velocity)));
-    const commit =
-      direction > 0
-        ? projected > extent * 0.025 || velocity > 120
-        : projected < -extent * 0.025 || velocity < -120;
-    settle(commit);
-  }
-
-  function beginTransition(scroller: HTMLElement, nextDirection: -1 | 1): boolean {
-    const document = scroller.ownerDocument;
-    if (
-      typeof document.startViewTransition !== 'function' ||
-      globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    ) {
-      return false;
-    }
-
-    const extent = pageExtent();
-    const maximum = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
-    origin = scroller.scrollLeft;
-    target = Math.max(0, Math.min(maximum, origin + nextDirection * extent));
-    if (Math.abs(target - origin) < 1) {
-      return false;
-    }
-
-    direction = nextDirection;
-    activeExtent = Math.abs(target - origin);
-    scroller.classList.add('epub-page-stack-transition');
-    document.documentElement.classList?.remove('epub-page-stack-prepared');
-    document.documentElement.classList?.add('epub-page-stack-active');
-
-    if (transition && isReady) {
-      scroller.scrollLeft = target;
-      sequence += 1;
-      createSheetAnimation(document);
-      render(Math.min(1, Math.abs(distance) / activeExtent));
-      return true;
-    }
-
-    previousTransitionName = scroller.style.viewTransitionName;
-    scroller.style.viewTransitionName = 'lexianchor-page';
-    const ownSequence = ++sequence;
-    transition = document.startViewTransition(() => {
-      scroller.scrollLeft = target;
-    });
-
-    void transition.ready.then(
-      () => {
-        if (ownSequence !== sequence || !transition) {
-          return;
-        }
-
-        createSheetAnimation(document);
-        isReady = true;
-        render(Math.min(1, Math.abs(distance) / activeExtent));
-
-        if (shouldFinishWhenReady) {
-          settle(
-            direction > 0
-              ? distance > activeExtent * 0.025 || velocity > 120
-              : distance < -activeExtent * 0.025 || velocity < -120,
-          );
-        }
-      },
-      () => {
-        if (ownSequence === sequence) {
-          scroller.scrollLeft = origin;
-          cleanup(0);
-        }
-      },
-    );
-    return true;
+  function invalidate(): void {
+    clearClosing();
+    if (active) end(active, 0, false);
+    clearClosing();
+    generation += 1;
   }
 
   return {
-    prepare: prepareTransition,
-    invalidate() {
-      if (transition) {
-        cleanup(0, false, false);
-      }
-    },
-    handleWheel(event: WheelEvent) {
-      if (
-        options.isEnabled?.() === false ||
-        Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15
-      ) {
+    // Prearming held browser hit testing hostage. Capture only after an
+    // interaction starts, even if an older caller still invokes prepare().
+    prepare: () => undefined,
+    invalidate,
+    handleWheel(event) {
+      if (disposed) return;
+      if (active) valid(active);
+      if (options.isEnabled?.() === false) {
+        invalidate();
         return;
       }
-
+      if (event.ctrlKey || event.metaKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15)
+        return;
       const scroller = options.getScroller();
-      if (!scroller) {
-        return;
-      }
-
-      const document = scroller.ownerDocument;
+      if (!scroller) return;
       if (
-        typeof document.startViewTransition !== 'function' ||
-        globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        active &&
+        !active.stack &&
+        !active.preparing &&
+        active.started &&
+        Math.abs(scroller.scrollLeft - active.origin - active.presentation) > active.extent * 0.45
       ) {
-        fallback.handleWheel(event);
-        return;
+        active.origin = scroller.scrollLeft;
+        end(active, 0, true);
       }
-
       event.preventDefault();
       const now = performance.now();
-      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
-      const delta = event.deltaX * scale;
-
-      if (isSettling) {
-        if (settlingCommit && delta * direction > 0) {
-          render(1);
-          cleanup(direction);
-          bufferInput(delta, now);
-          beginBufferedGesture();
-          return;
-        }
-
-        stopAnimation();
-        isSettling = false;
-        settlingCommit = false;
-        isTracking = true;
-        distance = progress * activeExtent * direction;
-        lastInputAt = now;
+      if (!active) {
+        const session: PageScrollSession = {
+          id: ++generation,
+          scroller,
+          origin: scroller.scrollLeft,
+          extent: extent(),
+          distance: 0,
+          presentation: 0,
+          velocity: 0,
+          lastInputAt: 0,
+          direction: 0,
+          target: scroller.scrollLeft,
+          stack:
+            stacked &&
+            !reducedMotion() &&
+            typeof scroller.ownerDocument?.startViewTransition === 'function',
+          started: false,
+          preparing: false,
+          prepared: new Set(),
+          prepareAborts: new Set(),
+          prepareRevision: 0,
+          captureRevision: 0,
+          ready: false,
+          finishRequested: false,
+          settling: false,
+          springRevision: 0,
+          frame: null,
+          endTimer: null,
+          prepareTimer: null,
+          readyTimer: null,
+          transition: null,
+          animation: null,
+          animationDirection: 0,
+          animationExtent: 0,
+          snapshotDirection: 0,
+          previousTransitionName: scroller.style?.viewTransitionName ?? '',
+        };
+        active = session;
+        options.onInteractionStart?.();
+        if (!valid(session)) return;
       }
-
-      if (closingTransition) {
-        bufferInput(delta, now);
-        return;
+      const session = active;
+      if (!session) return;
+      if (session.settling) {
+        stopSpring(session);
+        session.distance = session.presentation;
+        session.lastInputAt = 0;
       }
-
-      if (transition && !isReady && direction === 0) {
-        bufferInput(delta, now);
-        if (endTimer !== null) {
-          clearTimeout(endTimer);
-        }
-        endTimer = setTimeout(finishGesture, gestureIdleDelay);
-        return;
-      }
-
-      const elapsed = lastInputAt > 0 ? Math.max(8, now - lastInputAt) : 16;
-      lastInputAt = now;
-
-      if (!isTracking) {
-        isTracking = true;
-        origin = scroller.scrollLeft;
-        distance = 0;
-        velocity = 0;
-      }
-
-      shouldFinishWhenReady = false;
-      if (animationFrame !== null) {
-        stopAnimation();
-      }
-      distance += delta;
-      const instantaneousVelocity = (delta / elapsed) * 1000;
-      velocity = velocity * 0.42 + instantaneousVelocity * 0.58;
-
-      if (direction === 0 && Math.abs(distance) >= 2) {
-        if (!beginTransition(scroller, distance > 0 ? 1 : -1)) {
-          isTracking = false;
-          fallback.handleWheel(event);
-          return;
-        }
-      }
-
-      if (direction !== 0 && isReady) {
-        const directionalDistance = Math.max(0, distance * direction);
-        render(Math.min(1, directionalDistance / activeExtent));
-      }
-
-      if (endTimer !== null) {
-        clearTimeout(endTimer);
-      }
-      endTimer = setTimeout(finishGesture, gestureIdleDelay);
+      const delta =
+        event.deltaX *
+        (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? session.extent
+            : 1);
+      const elapsed = session.lastInputAt > 0 ? Math.max(8, now - session.lastInputAt) : 16;
+      session.lastInputAt = now;
+      session.distance += delta;
+      session.velocity = session.velocity * 0.42 + (delta / elapsed) * 1_000 * 0.58;
+      session.finishRequested = false;
+      if (session.endTimer !== null) clearTimeout(session.endTimer);
+      session.endTimer = setTimeout(() => finish(session), idleDelay);
+      advance(session);
     },
     dispose() {
-      isDisposed = true;
-      fallback.dispose();
-      stopAnimation();
-      if (endTimer !== null) {
-        clearTimeout(endTimer);
-        endTimer = null;
-      }
-      const scroller = options.getScroller();
-      if (scroller && transition && (isTracking || isSettling || direction !== 0)) {
-        scroller.scrollLeft = origin;
-      }
-      if (transition) {
-        cleanup(0, false, false);
-      }
-      bufferedDistance = 0;
-      bufferedVelocity = 0;
-      bufferedLastInputAt = 0;
+      invalidate();
+      disposed = true;
     },
   };
 }

@@ -3007,6 +3007,7 @@ html.epub-page-stack-active::view-transition-old(lexianchor-page) {
 
 ::view-transition-new(lexianchor-page) {
   z-index: 1;
+  opacity: 1;
 }
 
 .reader-status,
