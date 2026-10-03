@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
+import { waitForEpubLayout, waitForEpubOpen } from './epub-readiness';
+
 type Spread = 'single' | 'double';
 
 async function checkpoint(page: Page) {
@@ -222,7 +224,15 @@ for (const spread of ['single', 'double'] as const) {
         route.abort('internetdisconnected'),
       );
       const evidence: { label: string; geometry: Awaited<ReturnType<typeof geometry>> }[] = [];
+      let fontSizePercent = 100;
+      const layoutReady = () =>
+        waitForEpubLayout(page, {
+          pageSpread: spread,
+          contentWidthPercent: textWidth,
+          fontSizePercent,
+        });
       const verify = async (label: string) => {
+        await layoutReady();
         evidence.push({ label, geometry: await assertGeometry(page, spread, label) });
       };
       try {
@@ -231,6 +241,7 @@ for (const spread of ['single', 'double'] as const) {
         await page
           .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre de test/ })
           .click();
+        await waitForEpubOpen(page);
         await expect(page.getByTestId('epub-container').locator('iframe').first()).toBeVisible();
         await page.locator('details.reader-appearance-panel > summary').click();
         await page
@@ -239,9 +250,15 @@ for (const spread of ['single', 'double'] as const) {
         await page
           .getByRole('combobox', { name: /Page columns|页面栏数|Colonnes/ })
           .selectOption(spread);
+        await waitForEpubLayout(page, {
+          pageSpread: spread,
+          contentWidthPercent: 90,
+          fontSizePercent,
+        });
         await page
           .getByRole('slider', { name: /Text width|正文宽度|Largeur du texte/ })
           .fill(String(textWidth));
+        await layoutReady();
         await page
           .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
           .click();
@@ -251,10 +268,14 @@ for (const spread of ['single', 'double'] as const) {
         // turns even in two columns; the final crop check uses the reported
         // 1728 × 1117 full-width geometry, not a synthetic DOM fixture.
         await page.setViewportSize({ width: 1728, height: 620 });
+        await layoutReady();
         await page
           .getByRole('button', { name: /Show reader sidebar|显示阅读侧栏|Afficher le panneau/ })
           .click();
+        await layoutReady();
         await page.getByRole('slider', { name: /Text size|文字大小|Taille du texte/ }).fill('180');
+        fontSizePercent = 180;
+        await layoutReady();
         await page
           .getByRole('button', { name: /Hide reader sidebar|隐藏阅读侧栏|Masquer le panneau/ })
           .click();

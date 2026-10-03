@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { inflateSync } from 'node:zlib';
 
+import { waitForEpubLayout, waitForEpubOpen } from './epub-readiness';
+
 interface Probe {
   writes: { cfi?: string; href?: string }[];
   snapshots: { old: string[]; next: string[] }[];
@@ -150,6 +152,7 @@ async function openBook(page: Page, effect: 'slide' | 'stack' = 'stack', columns
   await page
     .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre de test/ })
     .click();
+  await waitForEpubOpen(page);
   await expect(page.getByTestId('epub-container').locator('iframe').first()).toBeVisible();
   const panel = page.locator('details.reader-appearance-panel');
   await panel.locator('summary').click();
@@ -159,6 +162,11 @@ async function openBook(page: Page, effect: 'slide' | 'stack' = 'stack', columns
   await page
     .getByRole('combobox', { name: /Page columns|页面栏数|Colonnes/ })
     .selectOption(columns);
+  await waitForEpubLayout(page, {
+    pageSpread: columns as 'single' | 'double',
+    contentWidthPercent: 90,
+    fontSizePercent: 100,
+  });
   await expect.poll(async () => (await checkpoint(page)).pageCount ?? 0).toBeGreaterThan(10);
   await page.waitForTimeout(200);
 }
@@ -469,6 +477,11 @@ test('two-column turns count a screen once and keep the publisher child after la
   await page
     .getByRole('combobox', { name: /Page columns|页面栏数|Colonnes/ })
     .selectOption('single');
+  await waitForEpubLayout(page, {
+    pageSpread: 'single',
+    contentWidthPercent: 90,
+    fontSizePercent: 100,
+  });
   await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
   await expect.poll(async () => (await checkpoint(page)).pageCount ?? 0).toBeGreaterThan(10);
 });
