@@ -412,8 +412,9 @@ function EpubReaderPage({
         }
       },
       onPaginationReady: () => {
+        if (!isCurrentSession()) return;
         void engine.getTableOfContents().then((navigation) => {
-          if (isActive && !isClosingRef.current) {
+          if (isCurrentSession()) {
             setTableOfContents(navigation);
             setIsPaginationReady(true);
           }
@@ -421,6 +422,8 @@ function EpubReaderPage({
       },
       onError: (readerError) => isActive && !isClosingRef.current && setError(readerError.message),
     });
+    const isCurrentSession = () =>
+      isActive && !isClosingRef.current && engineRef.current === engine;
     engineRef.current = engine;
     engineReadyRef.current = false;
     container.replaceChildren();
@@ -463,7 +466,9 @@ function EpubReaderPage({
       // Unstamped legacy records retain the existing local-first fallback.
       .open(container, source, openingLocator)
       .then(async () => {
+        if (!isCurrentSession()) return;
         await engine.setPreferences(initialPreferencesRef.current);
+        if (!isCurrentSession()) return;
         // Applying typography repaginates the freshly opened section. Re-apply
         // the saved destination after that first layout pass. Otherwise the
         // intermediate CFI reported under EPUB.js' default typography becomes
@@ -476,10 +481,11 @@ function EpubReaderPage({
           : openingLocator;
         if (postLayoutTarget) {
           await engine.goTo(postLayoutTarget);
+          if (!isCurrentSession()) return;
         }
         const navigation = await engine.getTableOfContents().catch(() => []);
 
-        if (isActive && !isClosingRef.current) {
+        if (isCurrentSession()) {
           setTableOfContents(navigation);
           engineReadyRef.current = true;
           if (locatorRef.current) {
@@ -487,8 +493,8 @@ function EpubReaderPage({
           }
         }
       })
-      .then(() => isActive && !isClosingRef.current && setIsLoading(false))
-      .catch(() => isActive && !isClosingRef.current && setIsLoading(false));
+      .then(() => isCurrentSession() && setIsLoading(false))
+      .catch(() => isCurrentSession() && setIsLoading(false));
 
     return () => {
       isActive = false;

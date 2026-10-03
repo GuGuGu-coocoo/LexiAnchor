@@ -77,10 +77,12 @@ function location(cfi: string, href = 'chapter.xhtml', page = 1): Location {
 
 function deferred() {
   let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<void>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function harness(ownedQueue = false) {
@@ -174,12 +176,14 @@ function harness(ownedQueue = false) {
       },
       _display: internalDisplay,
     });
+  const renderTo = vi.fn((_container: unknown, options: { manager: typeof managerClass }) => {
+    managerClass = options.manager;
+    return rendition as unknown as Rendition;
+  });
+  const destroyBook = vi.fn();
   const book = {
     ready: Promise.resolve(),
-    renderTo: vi.fn((_container: unknown, options: { manager: typeof managerClass }) => {
-      managerClass = options.manager;
-      return rendition as unknown as Rendition;
-    }),
+    renderTo,
     locations: {
       generate: () =>
         generated.promise.then(() => {
@@ -189,7 +193,7 @@ function harness(ownedQueue = false) {
       locationFromCfi: () => (indexed ? 5 : -1),
       length: () => (indexed ? 20 : 0),
     },
-    destroy: vi.fn(),
+    destroy: destroyBook,
   } as unknown as Book;
   mock.createBook = () => book;
   const callbacks = {
@@ -203,6 +207,8 @@ function harness(ownedQueue = false) {
   const engine = new EpubJsReaderEngine(callbacks);
   return {
     book,
+    renderTo,
+    destroyBook,
     engine,
     callbacks,
     rendition,
@@ -308,6 +314,124 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('EPUB committed locator ownership', () => {
+  it('immediate close cancels open before any book, rendition, or callback is created', async () => {
+    const f = harness();
+    const createBook = vi.fn(() => f.book);
+    mock.createBook = createBook;
+    const opening = f.engine.open({} as HTMLElement, {
+      name: 'canceled.epub',
+      data: 'mock',
+      format: 'epub',
+    });
+    await f.engine.close();
+    await opening;
+    expect(createBook).not.toHaveBeenCalled();
+    expect(f.renderTo).not.toHaveBeenCalled();
+    expect(f.rendition.destroy).not.toHaveBeenCalled();
+    expect(mock.gestures).toHaveLength(0);
+    for (const callback of Object.values(f.callbacks)) expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('overlapping same-engine opens create only the latest session', async () => {
+    const old = harness();
+    const openingOld = old.engine.open({} as HTMLElement, {
+      name: 'old.epub',
+      data: 'mock',
+      format: 'epub',
+    });
+    const current = harness();
+    current.setLive(location('current-session'));
+    const createBook = vi.fn(() => current.book);
+    mock.createBook = createBook;
+    const openingCurrent = old.engine.open({} as HTMLElement, {
+      name: 'current.epub',
+      data: 'mock',
+      format: 'epub',
+    });
+    await Promise.all([openingOld, openingCurrent]);
+    expect(createBook).toHaveBeenCalledTimes(1);
+    expect(old.renderTo).not.toHaveBeenCalled();
+    expect(current.renderTo).toHaveBeenCalledTimes(1);
+    expect(current.rendition.destroy).not.toHaveBeenCalled();
+    expect(old.callbacks.onLocationChange.mock.calls.map(([locator]) => locator.cfi)).toEqual([
+      'current-session',
+    ]);
+  });
+
+  it('a closed session stops at book.ready without accessing rendition.started', async () => {
+    const f = harness();
+    const pending = deferred();
+    Object.assign(f.book, { ready: pending.promise });
+    const started = vi.fn(() => Promise.resolve());
+    Object.defineProperty(f.rendition, 'started', { get: started });
+    const opening = f.engine.open({} as HTMLElement, {
+      name: 'closed.epub',
+      data: 'mock',
+      format: 'epub',
+    });
+    await Promise.resolve();
+    await f.engine.close();
+    pending.resolve();
+    await opening;
+    expect(started).not.toHaveBeenCalled();
+    expect(f.rendition.display).not.toHaveBeenCalled();
+    expect(f.callbacks.onLocationChange).not.toHaveBeenCalled();
+    expect(f.callbacks.onError).not.toHaveBeenCalled();
+  });
+
+  it('a closed session stops after rendition.started without displaying or publishing', async () => {
+    const f = harness();
+    const pending = deferred();
+    f.rendition.started = pending.promise;
+    const opening = f.engine.open({} as HTMLElement, {
+      name: 'closed.epub',
+      data: 'mock',
+      format: 'epub',
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await f.engine.close();
+    pending.resolve();
+    await opening;
+    expect(f.rendition.display).not.toHaveBeenCalled();
+    expect(f.callbacks.onLocationChange).not.toHaveBeenCalled();
+    expect(f.callbacks.onError).not.toHaveBeenCalled();
+  });
+
+  it.each(['ready', 'started'] as const)(
+    'a late old %s rejection neither reports an error nor closes the newer session',
+    async (stage) => {
+      const old = harness();
+      const pending = deferred();
+      Object.assign(stage === 'ready' ? old.book : old.rendition, { [stage]: pending.promise });
+      const openingOld = old.engine.open({} as HTMLElement, {
+        name: 'old.epub',
+        data: 'mock',
+        format: 'epub',
+      });
+      await Promise.resolve();
+      if (stage === 'started') await Promise.resolve();
+      expect(old.renderTo).toHaveBeenCalledTimes(1);
+      const current = harness();
+      current.setLive(location('current-session'));
+      await old.engine.open({} as HTMLElement, {
+        name: 'current.epub',
+        data: 'mock',
+        format: 'epub',
+      });
+      old.callbacks.onLocationChange.mockClear();
+      pending.reject(new Error('Destroyed old session'));
+      await expect(openingOld).resolves.toBeUndefined();
+      expect(old.callbacks.onError).not.toHaveBeenCalled();
+      expect(old.callbacks.onLocationChange).not.toHaveBeenCalled();
+      expect(current.rendition.destroy).not.toHaveBeenCalled();
+      expect(current.destroyBook).not.toHaveBeenCalled();
+      await old.engine.next();
+      expect(current.rendition.next).toHaveBeenCalledTimes(1);
+      expect(old.callbacks.onLocationChange.mock.calls.at(-1)?.[0].cfi).toBe('cfi-next');
+    },
+  );
+
   it('retains a completed in-interval semantic CFI through typography and late metadata, not page turns', async () => {
     const f = harness();
     await open(f);

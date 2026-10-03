@@ -587,7 +587,13 @@ export class EpubJsReaderEngine implements ReaderEngine {
     source: ReaderSource,
     initialLocator?: ReaderLocator,
   ): Promise<void> {
-    await this.close();
+    // close() freezes/increments ownership synchronously. React StrictMode
+    // cleanup or another open can supersede this call before its first await
+    // resumes, even when no book/rendition exists yet to destroy.
+    const closing = this.close();
+    const closedGeneration = this.locationGeneration;
+    await closing;
+    if (closedGeneration !== this.locationGeneration) return;
     this.locationFrozen = false;
     const openingGeneration = this.beginLocationOperation('open');
 
@@ -855,7 +861,17 @@ export class EpubJsReaderEngine implements ReaderEngine {
       const openedBook = this.book;
       const openedRendition = this.rendition;
       await openedBook.ready;
+      if (
+        this.book !== openedBook ||
+        !this.isLocationOperationCurrent(openingGeneration, openedRendition)
+      )
+        return;
       await openedRendition.started;
+      if (
+        this.book !== openedBook ||
+        !this.isLocationOperationCurrent(openingGeneration, openedRendition)
+      )
+        return;
       const manager = openedRendition.manager;
       if (manager?.settings) {
         manager.settings.offset = 0;
@@ -901,6 +917,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
           }
         });
     } catch (error) {
+      // A destroyed old book may reject ready/started after a new session has
+      // begun. Its failure owns neither current callbacks nor current close.
+      if (this.locationFrozen || openingGeneration !== this.locationGeneration) return;
       this.callbacks.onError(asError(error));
       await this.close();
       throw error;
