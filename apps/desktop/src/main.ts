@@ -80,6 +80,15 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('will-navigate', (event) => {
+    // Vite reloads this exact page after dependency optimization or a preload
+    // rebuild. Blocking its self-reload can leave the dev client on stale code.
+    // Do not allow other URLs, or relax navigation in the production app.
+    if (
+      MAIN_WINDOW_VITE_DEV_SERVER_URL &&
+      event.url === new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).href
+    ) {
+      return;
+    }
     event.preventDefault();
   });
 

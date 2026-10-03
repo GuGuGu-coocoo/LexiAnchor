@@ -12,5 +12,12 @@ export default defineConfig({
   // as source rather than feeding their query suffixes to the dev optimizer.
   optimizeDeps: {
     exclude: ['@lexianchor/app', '@lexianchor/test-fixtures', '@lexianchor/dictionary'],
+    // The lazy reader imports EPUB.js manager internals. Prebundle their
+    // CommonJS dependencies before the first book opens in development.
+    include: [
+      'epubjs',
+      'epubjs/src/managers/default/index.js',
+      'epubjs/src/managers/continuous/index.js',
+    ],
   },
 });
