@@ -357,7 +357,9 @@ function createPageScrollGesture(
   // A recovery ceiling, not an input-latency target. Normal preparation/ready
   // completes immediately; a missing browser/adapter promise cannot lock input.
   const preparationTimeout = 250;
-  const idleDelay = stacked ? 170 : 90;
+  // Wheel has no finger-up event. A brief hesitation is still the same drag,
+  // not permission to pull the page away from the user's next input.
+  const idleDelay = 200;
   let active: PageScrollSession | null = null;
   let generation = 0;
   let disposed = false;
@@ -714,8 +716,10 @@ function createPageScrollGesture(
     }
     if (session.settling) return;
     if (session.preparing || closing || (session.stack && !session.ready)) return;
-    const threshold = session.stack ? 0.025 : 0.16;
-    const speedThreshold = session.stack ? 120 : 480;
+    // A single tiny wheel packet can have a very high instantaneous velocity.
+    // Require actual travel before projection can qualify as a page flick,
+    // with identical intent rules for stack, slide and snapshot fallback.
+    const minimumTravel = Math.min(120, Math.max(64, session.extent * 0.1));
     const projected =
       session.distance +
       Math.max(
@@ -725,8 +729,8 @@ function createPageScrollGesture(
     const direction = sign(session.distance);
     const commit =
       direction !== 0 &&
-      (projected * direction > session.extent * threshold ||
-        session.velocity * direction > speedThreshold);
+      Math.abs(session.distance) >= minimumTravel &&
+      projected * direction > session.extent * 0.35;
     const target = commit
       ? clamp(session.scroller, session.origin + direction * session.extent)
       : session.origin;

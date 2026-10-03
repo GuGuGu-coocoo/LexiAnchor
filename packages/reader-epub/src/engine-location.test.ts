@@ -232,8 +232,8 @@ function harness(ownedQueue = false) {
   };
 }
 
-async function open(fixture: ReturnType<typeof harness>) {
-  await fixture.engine.open({} as HTMLElement, {
+async function open(fixture: ReturnType<typeof harness>, container = {} as HTMLElement) {
+  await fixture.engine.open(container, {
     name: 'isolated.epub',
     data: 'mock',
     format: 'epub',
@@ -965,7 +965,82 @@ function adjacentRuntime(blockDisplay = false, clampCounter = false) {
   return { runtime, all, scroller, pending, created };
 }
 
+describe('host wheel routing', () => {
+  it('owns root-hit input only inside the current reader and removes it on close', async () => {
+    const f = harness();
+    const root = {};
+    const body = {};
+    const popup = {};
+    const callbacks = new Map<string, (event: WheelEvent) => void>();
+    const document = {
+      documentElement: root,
+      body,
+      querySelector: vi.fn<() => { getClientRects(): object[] } | null>(() => null),
+      addEventListener: vi.fn((name: string, callback: (event: WheelEvent) => void) => {
+        callbacks.set(name, callback);
+      }),
+      removeEventListener: vi.fn(),
+    };
+    const scroller = {
+      contains: vi.fn(() => false),
+      getBoundingClientRect: () => ({ left: 100, right: 1000, top: 50, bottom: 600 }),
+    };
+    Object.assign(f.manager, { container: scroller });
+    await open(f, { ownerDocument: document } as unknown as HTMLElement);
+    expect(document.addEventListener).toHaveBeenCalledWith('wheel', expect.any(Function), {
+      capture: true,
+      passive: false,
+    });
+    const handle = callbacks.get('wheel')!;
+    const event = { target: root, clientX: 500, clientY: 200, defaultPrevented: false };
+    handle(event as unknown as WheelEvent);
+    expect(mock.gestures[0]!.controller.handleWheel).toHaveBeenCalledExactlyOnceWith(event);
+    expect(mock.gestures[1]!.controller.handleWheel).toHaveBeenCalledExactlyOnceWith(event);
+    for (const extra of [
+      { target: popup },
+      { clientX: 50 },
+      { clientY: 650 },
+      { defaultPrevented: true },
+    ])
+      handle({ ...event, ...extra } as unknown as WheelEvent);
+    expect(mock.gestures[0]!.controller.handleWheel).toHaveBeenCalledTimes(1);
+    document.querySelector.mockReturnValue({ getClientRects: () => [{}] });
+    handle(event as unknown as WheelEvent);
+    expect(mock.gestures[0]!.controller.handleWheel).toHaveBeenCalledTimes(1);
+    document.querySelector.mockReturnValue(null);
+    await f.engine.setPreferences({ ...defaultReaderPreferences, flow: 'scrolled' });
+    handle(event as unknown as WheelEvent);
+    expect(mock.gestures[0]!.controller.handleWheel).toHaveBeenCalledTimes(1);
+    await f.engine.close();
+    expect(document.removeEventListener).toHaveBeenCalledWith('wheel', handle, true);
+    handle(event as unknown as WheelEvent);
+    expect(mock.gestures[0]!.controller.handleWheel).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('bounded EPUB adjacent view preparation', () => {
+  it('does not await an unrelated opposite section when the requested page already exists', async () => {
+    const f = harness();
+    await open(f);
+    const r = adjacentRuntime(true);
+    // At the start of a long chapter, next is in this rendered view; only
+    // previous would require loading. Its deliberately blocked display must
+    // not delay the first forward input.
+    r.scroller.scrollWidth = 300;
+    const manager = new (f.getManagerClass())(r.runtime);
+    await manager.prepareAdjacent(1, new AbortController().signal, () => true);
+    expect(r.created).toHaveLength(1);
+    expect(r.all.map((view) => view.section.index)).toEqual([1]);
+    expect(r.scroller.scrollLeft).toBe(0);
+    const reversed = manager.prepareAdjacent(-1, new AbortController().signal, () => true);
+    expect(r.created).toHaveLength(2);
+    r.pending.resolve();
+    await reversed;
+    expect(r.all.map((view) => view.section.index)).toEqual([0, 1]);
+    expect(r.scroller.scrollLeft).toBe(100);
+    expect(r.all[1]?.position().left).toBe(0);
+  });
+
   it('an already-running display cannot move or show its view after a new gesture owns the strip', async () => {
     const f = harness();
     await open(f);
@@ -1018,9 +1093,9 @@ describe('bounded EPUB adjacent view preparation', () => {
       const r = adjacentRuntime(false, clampCounter);
       const manager = new (f.getManagerClass())(r.runtime);
       await manager.prepareAdjacent(-1, new AbortController().signal, () => true);
-      expect(r.all.map((view) => view.section.index)).toEqual([0, 1, 2]);
+      expect(r.all.map((view) => view.section.index)).toEqual([0, 1]);
       expect(r.scroller.scrollLeft).toBe(100);
-      expect(r.created).toHaveLength(3);
+      expect(r.created).toHaveLength(2);
       expect(r.runtime.counter).toHaveBeenCalledTimes(1);
       expect(r.all[1]?.position().left).toBe(0);
     },

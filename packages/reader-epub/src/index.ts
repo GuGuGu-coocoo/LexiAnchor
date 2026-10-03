@@ -308,8 +308,10 @@ class AnchoredContinuousViewManager extends ContinuousViewManager {
     const revision = this.preparationRevision;
     const alive = () => !signal.aborted && revision === this.preparationRevision && isCurrent();
     // Do not call continuous fill(): it recursively loads the whole strip.
-    // The requested side is prepared first, and at most one section per side.
-    for (const side of [direction, -direction]) {
+    // Prepare only the requested neighbour. Waiting for an unrelated section
+    // (and its prepend/rebase) blocks the first visible gesture response.
+    // Crossing zero requests the other side through the same owned barrier.
+    for (const side of [direction]) {
       if (!alive()) return;
       const extent = Math.max(1, runtime.layout.delta || runtime.container.clientWidth);
       const needsSection =
@@ -605,6 +607,8 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private preferenceUpdate = 0;
   private interactionRevision = 0;
   private pageGesture: HorizontalPageGestureController | null = null;
+  private hostWheelCleanup: (() => void) | null = null;
+  private readerDocument: Document | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeFrame: number | null = null;
   private resizeSettleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -728,6 +732,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
           stackedGesture.dispose();
         },
       };
+      this.installHostWheelNavigation(container, sessionRendition);
       this.resizeObserver = new ResizeObserver((entries) => {
         if (this.locationFrozen || this.locationGate === 'open') return;
         const size = entries[0]?.contentRect;
@@ -783,9 +788,13 @@ export class EpubJsReaderEngine implements ReaderEngine {
               : this.callbacks.onNavigationCommand,
           ),
         );
-        contents.document.addEventListener('wheel', this.handleWheelNavigation, {
-          passive: false,
-        });
+        contents.document.addEventListener(
+          'wheel',
+          (event) => {
+            if (sessionRendition === this.rendition) this.handleWheelNavigation(event);
+          },
+          { passive: false },
+        );
         contents.document.addEventListener(
           'click',
           (event) => {
@@ -970,6 +979,9 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
   close(): Promise<void> {
     this.freezeLocation();
+    this.hostWheelCleanup?.();
+    this.hostWheelCleanup = null;
+    this.readerDocument = null;
     this.pageGesture?.dispose();
     this.pageGesture = null;
     this.resizeObserver?.disconnect();
@@ -1171,8 +1183,50 @@ export class EpubJsReaderEngine implements ReaderEngine {
 
   private readonly handleWheelNavigation = (event: WheelEvent): void => {
     if (this.locationFrozen) return;
+    const modal = this.readerDocument?.querySelector?.(
+      'dialog[open], [role="dialog"][aria-modal="true"]',
+    );
+    if (modal && modal.getClientRects().length > 0) return;
     this.pageGesture?.handleWheel(event);
   };
+
+  private installHostWheelNavigation(container: HTMLElement, rendition: ContinuousRendition): void {
+    const document = container.ownerDocument;
+    if (!document) return;
+    this.readerDocument = document;
+    const handle = (event: WheelEvent) => {
+      if (
+        this.locationFrozen ||
+        rendition !== this.rendition ||
+        this.preferences?.flow !== 'paginated' ||
+        event.defaultPrevented
+      )
+        return;
+      const scroller = rendition.manager?.container;
+      const target = event.target;
+      if (!scroller || !target) return;
+      // A ViewTransition suppresses iframe hit testing. Subsequent trusted
+      // wheel packets hit the host HTML/BODY instead of the book document.
+      // Keep that same gesture alive without stealing sidebar/popover input.
+      if (
+        target !== document.documentElement &&
+        target !== document.body &&
+        !scroller.contains(target as Node)
+      )
+        return;
+      const bounds = scroller.getBoundingClientRect();
+      if (
+        event.clientX < bounds.left ||
+        event.clientX >= bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY >= bounds.bottom
+      )
+        return;
+      this.handleWheelNavigation(event);
+    };
+    document.addEventListener('wheel', handle, { capture: true, passive: false });
+    this.hostWheelCleanup = () => document.removeEventListener('wheel', handle, true);
+  }
 
   private applyContentWidthPadding(rendition: ContinuousRendition): void {
     if (!this.preferences) return;

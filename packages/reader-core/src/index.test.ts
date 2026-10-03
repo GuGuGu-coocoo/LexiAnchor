@@ -270,7 +270,7 @@ describe('single-page swipe bounds', () => {
         expect(f.presentation()).toBe(direction * 1_000);
         f.wheel(direction * -20);
         expect(f.presentation()).toBe(direction * 980);
-        vi.advanceTimersByTime(180);
+        vi.advanceTimersByTime(220);
         f.settleFrames();
         expect(f.scroller.scrollLeft).toBe(2_000 + direction * 1_000);
         expect(f.writes.every((position) => Math.abs(position - 2_000) <= 1_000)).toBe(true);
@@ -284,7 +284,7 @@ describe('single-page swipe bounds', () => {
         const f = fixture(mode);
         f.wheel(direction * 990);
         await f.ready();
-        vi.advanceTimersByTime(180);
+        vi.advanceTimersByTime(220);
         for (let index = 0; index < 240 && f.frames.size > 0; index += 1) {
           f.stepFrame();
           expect(Math.abs(f.presentation())).toBeLessThanOrEqual(1_000);
@@ -324,13 +324,94 @@ describe('single-page swipe bounds', () => {
   });
 });
 
+describe('trackpad intent', () => {
+  it.each([false, true])(
+    'prepares the reverse neighbour only when crossing zero at a chapter start (stack=%s)',
+    async (stacked) => {
+      const prepared: number[] = [];
+      const f = fixture({
+        stacked,
+        preparePage(direction) {
+          prepared.push(direction);
+          if (direction < 0) {
+            Object.assign(f.scroller, { scrollWidth: f.scroller.scrollWidth + 1_000 });
+            f.scroller.scrollLeft += 1_000;
+          }
+        },
+      });
+      f.scroller.scrollLeft = 0;
+      f.wheel(40);
+      await f.ready();
+      expect(prepared).toEqual([1]);
+      f.wheel(-80);
+      if (stacked) f.stepFrame();
+      await f.ready();
+      expect(prepared).toEqual([1, -1]);
+      if (stacked) expect(f.presentation()).toBe(-40);
+      else expect(f.scroller.scrollLeft).toBe(960);
+      expect(f.settled).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(220);
+      f.settleFrames();
+      expect(f.scroller.scrollLeft).toBe(1_000);
+      expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
+      f.gesture.dispose();
+    },
+  );
+
+  const modes = [
+    { name: 'slide', stacked: false },
+    { name: 'stack', stacked: true },
+    { name: 'stack fallback', stacked: true, viewTransitions: false },
+  ];
+
+  for (const mode of modes) {
+    it.each([4, 14, 48, -4, -14, -48])(
+      `${mode.name}: a small isolated pulse returns to the current page (%i px)`,
+      async (pixels) => {
+        const f = fixture(mode);
+        f.wheel(pixels);
+        await f.ready();
+        expect(f.presentation()).toBe(pixels);
+        vi.advanceTimersByTime(220);
+        f.settleFrames();
+        expect(f.scroller.scrollLeft).toBe(2_000);
+        expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
+        f.gesture.dispose();
+      },
+    );
+
+    it.each([100, 140])(
+      `${mode.name}: a brief pause remains directly manipulable (%i ms)`,
+      async (pause) => {
+        const f = fixture(mode);
+        for (let input = 0; input < 24; input += 1) {
+          f.wheel(4);
+          await f.ready();
+          f.stepFrame(16);
+        }
+        expect(f.presentation()).toBe(96);
+        f.stepFrame(pause);
+        expect(f.presentation()).toBe(96);
+        expect(f.settled).not.toHaveBeenCalled();
+        f.wheel(-8);
+        expect(f.presentation()).toBe(88);
+        vi.advanceTimersByTime(220);
+        f.settleFrames();
+        expect(f.scroller.scrollLeft).toBe(2_000);
+        expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
+        f.gesture.dispose();
+      },
+    );
+  }
+});
+
 describe('sliding page gesture', () => {
   it('directly follows input and commits once after settling', () => {
     const f = fixture({ stacked: false });
     f.wheel(180);
     expect(f.scroller.scrollLeft).toBe(2_180);
     expect(f.order[0]).toBe('start');
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.scroller.scrollLeft).toBe(3_000);
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(1);
@@ -340,10 +421,10 @@ describe('sliding page gesture', () => {
   it('starts a later gesture from a renderer-rebased visible page', () => {
     const f = fixture({ stacked: false });
     f.wheel(120);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     f.scroller.scrollLeft = 3_000;
     f.wheel(120);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.scroller.scrollLeft).toBe(4_000);
     expect(f.settled.mock.calls).toEqual([[0], [1]]);
@@ -353,7 +434,7 @@ describe('sliding page gesture', () => {
   it('invalidates an old spring without pulling a later navigation back', () => {
     const f = fixture({ stacked: false });
     f.wheel(180);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     const staleFrames = [...f.frames.values()];
     f.gesture.invalidate?.();
     expect(f.scroller.scrollLeft).toBe(2_000);
@@ -368,7 +449,7 @@ describe('sliding page gesture', () => {
   it('notifies cancellation once when a live renderer rebase abandons a spring', () => {
     const f = fixture({ stacked: false });
     f.wheel(180);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     const staleFrames = [...f.frames.values()];
     f.scroller.scrollLeft = 4_000;
     f.stepFrame();
@@ -386,7 +467,7 @@ describe('sliding page gesture', () => {
     const f = fixture({ stacked: false });
     f.wheel(180);
     f.wheel(-180);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.scroller.scrollLeft).toBe(2_000);
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
@@ -395,7 +476,7 @@ describe('sliding page gesture', () => {
       vi.advanceTimersByTime(16);
     }
     expect(f.scroller.scrollLeft).toBe(2_550);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.scroller.scrollLeft).toBe(3_000);
     expect(f.settled.mock.calls).toEqual([[0], [1]]);
@@ -409,7 +490,7 @@ describe('sliding page gesture', () => {
       f.wheel(938 * 0.055);
       vi.advanceTimersByTime(16);
     }
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.scroller.scrollLeft).toBe(2_938);
     expect(f.frames.size).toBe(0);
@@ -423,7 +504,7 @@ describe('sliding page gesture', () => {
     (direction) => {
       const f = fixture({ stacked: false, integerScroll: true, pageExtent: 938 });
       f.wheel(direction * 180);
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(220);
       f.stepFrame();
       const before = f.scroller.scrollLeft;
       const staleFrames = [...f.frames.values()];
@@ -433,7 +514,7 @@ describe('sliding page gesture', () => {
       const takenOver = f.scroller.scrollLeft;
       staleFrames.forEach((callback) => callback(performance.now() + 16));
       expect(f.scroller.scrollLeft).toBe(takenOver);
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(220);
       f.settleFrames();
       expect(f.scroller.scrollLeft).toBe(2_000 + direction * 938);
       expect(f.settled).toHaveBeenCalledExactlyOnceWith(direction);
@@ -455,7 +536,7 @@ describe('stacked page gesture', () => {
     f.wheel(80);
     expect(f.presentation()).toBe(500);
     expect(f.scroller.scrollLeft).toBe(3_000);
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(1);
     expect(f.classes.size).toBe(0);
@@ -541,7 +622,7 @@ describe('stacked page gesture', () => {
       const f = fixture();
       f.wheel(direction * 220);
       await f.ready();
-      vi.advanceTimersByTime(180);
+      vi.advanceTimersByTime(220);
       f.stepFrame();
       const before = f.presentation();
       const staleFrames = [...f.frames.values()];
@@ -553,7 +634,7 @@ describe('stacked page gesture', () => {
       expect(f.presentation()).toBeCloseTo(before + direction * 8, 5);
       f.wheel(direction * -16);
       expect(f.presentation()).toBeCloseTo(before - direction * 8, 5);
-      vi.advanceTimersByTime(180);
+      vi.advanceTimersByTime(220);
       f.settleFrames();
       expect(f.settled).toHaveBeenCalledTimes(1);
       f.gesture.dispose();
@@ -565,7 +646,7 @@ describe('stacked page gesture', () => {
     f.wheel(20);
     await f.ready();
     f.wheel(-18);
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.writes.length = 0;
     f.settleFrames();
     expect(f.scroller.scrollLeft).toBe(2_000);
@@ -578,7 +659,7 @@ describe('stacked page gesture', () => {
     const f = fixture();
     f.wheel(220);
     await f.ready();
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.stepFrame();
     const before = f.presentation();
     expect(before).toBeGreaterThan(220);
@@ -601,7 +682,7 @@ describe('stacked page gesture', () => {
     const f = fixture();
     f.wheel(220);
     await f.ready();
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.stepFrame();
     const before = f.presentation();
     const staleFrames = [...f.frames.values()];
@@ -616,7 +697,11 @@ describe('stacked page gesture', () => {
     staleFrames.forEach((callback) => callback(performance.now() + 16));
     expect(f.scroller.scrollLeft).toBeCloseTo(1_960, 5);
     expect(f.settled).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(180);
+    // The takeover itself is only a 40px reverse preview, not a page flick.
+    // Continue dragging before asking this fallback to commit the neighbour.
+    f.wheel(-150);
+    expect(f.scroller.scrollLeft).toBeCloseTo(1_810, 5);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(-1);
     expect(vi.getTimerCount()).toBe(0);
@@ -641,7 +726,7 @@ describe('stacked page gesture', () => {
     expect(f.scroller.scrollLeft).toBe(1_000);
     expect(f.started).toHaveBeenCalledTimes(1);
     expect(f.settled).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.settleFrames();
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(-1);
     f.gesture.dispose();
@@ -730,7 +815,7 @@ describe('stacked page gesture', () => {
     const f = fixture();
     f.wheel(420);
     await f.ready();
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.settleFrames(true);
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(1);
     f.wheel(40);
@@ -747,7 +832,7 @@ describe('stacked page gesture', () => {
     const f = fixture();
     f.wheel(420);
     await f.ready();
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     f.settleFrames(true);
     f.wheel(40);
     f.gesture.invalidate?.();
@@ -770,7 +855,7 @@ describe('stacked page gesture', () => {
       f.wheel(40);
       f.setEnabled(false);
       if (trigger === 'wheel') f.wheel(10);
-      else vi.advanceTimersByTime(180);
+      else vi.advanceTimersByTime(220);
       expect(f.scroller.scrollLeft).toBe(2_000);
       expect(f.classes.size).toBe(0);
       expect(f.rootClasses.size).toBe(0);
@@ -913,7 +998,7 @@ describe('stacked page gesture', () => {
   it('ends a sub-threshold gesture without leaving a pending session', () => {
     const f = fixture();
     f.wheel(1);
-    vi.advanceTimersByTime(180);
+    vi.advanceTimersByTime(220);
     expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
     f.wheel(40);
     expect(f.started).toHaveBeenCalledTimes(2);

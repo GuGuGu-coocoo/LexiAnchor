@@ -2,6 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+import { waitForEpubLayout, waitForEpubOpen } from './epub-readiness';
+
 test.beforeEach(async ({ context }) => {
   await context.route('https://en.wiktionary.org/**', (route) =>
     route.abort('internetdisconnected'),
@@ -197,6 +199,7 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
   await page
     .getByRole('button', { name: /Open test book|打开测试书|Ouvrir le livre test/ })
     .click();
+  await waitForEpubOpen(page);
   await expectEpubHeading(page, 'A Quiet Beginning');
   await expect(
     page
@@ -212,7 +215,11 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
       name: /Page turn effect|翻页效果|Effet de changement de page/,
     })
     .selectOption('stack');
-  await page.waitForTimeout(250);
+  await waitForEpubLayout(page, {
+    pageSpread: 'single',
+    contentWidthPercent: 90,
+    fontSizePercent: 100,
+  });
 
   const scroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
   const initial = await scroller.evaluate((element) => ({
@@ -229,7 +236,9 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
       );
       return key ? (JSON.parse(localStorage.getItem(key) ?? '{}') as { cfi?: string }).cfi : '';
     });
-    for (let sample = 0; sample < 5; sample += 1) {
+    // Deliberate half-page drags, not the old 5×8px light touch: that small
+    // contact must now cancel instead of exploiting the low stack threshold.
+    for (let sample = 0; sample < 8; sample += 1) {
       await page
         .locator('.epub-container iframe')
         .last()
@@ -239,7 +248,7 @@ test('turns at least ten stacked EPUB pages without swallowing consecutive gestu
           bubbles: true,
           cancelable: true,
           deltaMode: 0,
-          deltaX: 8,
+          deltaX: initial.extent * 0.07,
           deltaY: 1,
         });
       await page.waitForTimeout(12);
