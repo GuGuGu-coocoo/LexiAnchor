@@ -10,6 +10,7 @@ interface Checkpoint {
   totalPageCount?: number;
 }
 interface FrameSample {
+  index: number;
   time: number;
   wheelCount: number;
   phase: string;
@@ -36,11 +37,13 @@ interface Trace {
   releasedAt: number;
   readyTimes: number[];
   frames: FrameSample[];
+  pauses: { requestedDuration: number; start: FrameSample; end: FrameSample }[];
   wheels: WheelSample[];
   writes: { time: number; checkpoint: Checkpoint }[];
 }
 interface Runtime {
   trace: Trace;
+  pause(duration: number): Promise<void>;
   stop(): Trace;
 }
 type TraceWindow = Window & { __trackpadIntent?: Runtime };
@@ -192,6 +195,7 @@ async function startTrace(page: Page) {
       releasedAt: Number.POSITIVE_INFINITY,
       readyTimes: [],
       frames: [],
+      pauses: [],
       wheels: [],
       writes: [],
     };
@@ -230,7 +234,7 @@ async function startTrace(page: Page) {
     const observer = new MutationObserver(frames);
     observer.observe(scroller, { childList: true, subtree: true });
     let frameId = 0;
-    const sample = () => {
+    const sampleOnce = (): FrameSample => {
       // Equal quantized timestamps do not imply event order. Snapshot the
       // number of already delivered wheel packets in this synchronous frame.
       const wheelCount = trace.wheels.length;
@@ -250,7 +254,8 @@ async function startTrace(page: Page) {
           ? (-new DOMMatrix(end).m41 * Number(animation.currentTime)) /
             Number(effect?.getTiming().duration)
           : scroller.scrollLeft - trace.origin;
-      trace.frames.push({
+      const frame = {
+        index: trace.frames.length,
         time: performance.now() - trace.startedAt,
         wheelCount,
         phase: trace.phase,
@@ -258,12 +263,24 @@ async function startTrace(page: Page) {
         scrollDistance: scroller.scrollLeft - trace.origin,
         native: Boolean(animation),
         cfi: read().cfi,
-      });
+      };
+      trace.frames.push(frame);
+      return frame;
+    };
+    const sample = () => {
+      sampleOnce();
       frameId = requestAnimationFrame(sample);
     };
     sample();
     (window as unknown as TraceWindow).__trackpadIntent = {
       trace,
+      pause: async (requestedDuration) => {
+        trace.phase = 'short-pause';
+        const start = sampleOnce();
+        await new Promise((resolve) => setTimeout(resolve, requestedDuration));
+        const end = sampleOnce();
+        trace.pauses.push({ requestedDuration, start, end });
+      },
       stop: () => {
         cancelAnimationFrame(frameId);
         observer.disconnect();
@@ -316,7 +333,7 @@ async function runTrace(
         if (!body) throw new Error('Missing current EPUB body');
         for (const segment of protocol) {
           runtime.trace.phase = segment.phase;
-          if (segment.pause) await new Promise((resolve) => setTimeout(resolve, segment.pause));
+          if (segment.pause) await runtime.pause(segment.pause);
           for (const deltaX of segment.deltas) {
             body.dispatchEvent(
               new WheelEvent('wheel', {
@@ -351,12 +368,30 @@ async function runTrace(
         }
         // dispatchMouseEvent packets exercise trusted hit testing, but CDP can
         // append phaseEnded per packet. They are not a physical macOS stream.
-        for (const segment of input === 'synthetic' ? [] : segments) {
-          await page.evaluate((phase) => {
-            const active = (window as unknown as TraceWindow).__trackpadIntent;
-            if (active) active.trace.phase = phase;
-          }, segment.phase);
-          if (segment.pause) await new Promise((resolve) => setTimeout(resolve, segment.pause));
+        const protocol = input === 'synthetic' ? [] : segments;
+        let phaseAlreadySet = false;
+        for (const [index, segment] of protocol.entries()) {
+          if (segment.pause) {
+            // One renderer task owns both pause boundaries and the resumed
+            // phase. Do not add phase-only roundtrips around a short silence.
+            await page.evaluate(
+              async ({ duration, nextPhase }) => {
+                const active = (window as unknown as TraceWindow).__trackpadIntent;
+                if (!active) throw new Error('Missing isolated trace runtime');
+                await active.pause(duration);
+                if (nextPhase) active.trace.phase = nextPhase;
+              },
+              { duration: segment.pause, nextPhase: protocol[index + 1]?.phase },
+            );
+            phaseAlreadySet = true;
+            continue;
+          }
+          if (!phaseAlreadySet)
+            await page.evaluate((phase) => {
+              const active = (window as unknown as TraceWindow).__trackpadIntent;
+              if (active) active.trace.phase = phase;
+            }, segment.phase);
+          phaseAlreadySet = false;
           let deadline = Date.now();
           const pending = [];
           for (const deltaX of segment.deltas) {
@@ -464,25 +499,79 @@ test('stack: CDP synthetic continuous mouse gesture retains hit-test routing at 
 
 function verifyContinuous(result: Awaited<ReturnType<typeof runTrace>>, effect: Effect) {
   const { trace, final } = result;
+  const moving = trace.wheels.filter((wheel) => Math.abs(wheel.delta) > 0);
+  const maxInputGap = Math.max(
+    0,
+    ...moving.slice(1).map((wheel, index) => wheel.time - moving[index]!.time),
+  );
+  const cumulativeInput = (sample: FrameSample) =>
+    trace.wheels.slice(0, sample.wheelCount).reduce((sum, wheel) => sum + wheel.delta, 0);
+  const pauseSamples = trace.pauses.map(({ requestedDuration, start, end }) => ({
+    requestedDuration,
+    elapsed: end.time - start.time,
+    sampleCount: end.index - start.index + 1,
+    maxSampleGap: Math.max(
+      0,
+      ...trace.frames
+        .slice(start.index + 1, end.index + 1)
+        .map((sample) => sample.time - trace.frames[sample.index - 1]!.time),
+    ),
+    lastWheelToStart: start.time - (trace.wheels[start.wheelCount - 1]?.time ?? 0),
+    endToNextWheel: (trace.wheels[end.wheelCount]?.time ?? trace.releasedAt) - end.time,
+    lastWheelToNextWheel:
+      (trace.wheels[end.wheelCount]?.time ?? trace.releasedAt) -
+      (trace.wheels[end.wheelCount - 1]?.time ?? 0),
+    samples: trace.frames.slice(start.index, end.index + 1).map((sample) => ({
+      time: sample.time,
+      wheelCount: sample.wheelCount,
+      distance: sample.distance,
+      input: cumulativeInput(sample),
+      error: sample.distance - cumulativeInput(sample),
+    })),
+  }));
+  console.log(
+    JSON.stringify({
+      effect,
+      input: result.input,
+      initialPage: trace.initial.pageNumber,
+      readyTimes: trace.readyTimes,
+      maxInputGap,
+      pauses: pauseSamples,
+    }),
+  );
+  expect(
+    maxInputGap,
+    'input producer must keep actual delivered nonzero packet gaps below the 200ms idle boundary',
+  ).toBeLessThan(200);
   const held = trace.frames.filter((frame) => frame.time < trace.releasedAt);
   expect(held.length).toBeGreaterThan(20);
   expect(held.every((frame) => frame.cfi === trace.initial.cfi)).toBe(true);
   expect(trace.writes.filter((write) => write.time < trace.releasedAt)).toEqual([]);
-  const pause = held.filter((frame) => frame.phase === 'short-pause');
-  expect(pause.length).toBeGreaterThan(2);
-  expect(
-    Math.max(...pause.map((frame) => frame.distance)) -
-      Math.min(...pause.map((frame) => frame.distance)),
-  ).toBeLessThan(1.1);
+  expect(trace.pauses).toHaveLength(1);
+  for (const { requestedDuration, start, end } of trace.pauses) {
+    expect(
+      end.time - start.time,
+      'pause must not finish before its requested duration',
+    ).toBeGreaterThanOrEqual(requestedDuration - 1);
+    for (const sample of trace.frames.slice(start.index, end.index + 1)) {
+      expect(
+        Math.abs(sample.distance - cumulativeInput(sample)),
+        `pause following at ${sample.time}ms with ${sample.wheelCount} delivered packets`,
+      ).toBeLessThan(1.1);
+    }
+    if (start.wheelCount === end.wheelCount)
+      expect(
+        Math.abs(end.distance - start.distance),
+        'pause boundaries without new input must stay still',
+      ).toBeLessThan(1.1);
+  }
   const preparedAt = effect === 'stack' ? trace.readyTimes[0] : 0;
   expect(preparedAt).toBeDefined();
   const following = held.filter(
     (frame) => frame.time > (preparedAt ?? 0) + 20 && frame.phase !== 'start',
   );
   for (const frame of following) {
-    const input = trace.wheels
-      .slice(0, frame.wheelCount)
-      .reduce((sum, wheel) => sum + wheel.delta, 0);
+    const input = cumulativeInput(frame);
     expect(
       Math.abs(frame.distance - input),
       `first-frame following at ${frame.time}ms/${frame.phase}`,
