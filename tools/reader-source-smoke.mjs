@@ -340,8 +340,9 @@ async function startupEvidence(profile) {
 
 function expectedEpubScriptBlock(details, sandbox) {
   // Keep the exact native denial during this owned EPUB verification in the
-  // evidence. Its script source is unknown; do not enable scripts or infer a
-  // cause from an empty sourceId. Other stages/messages remain failures.
+  // evidence. Chromium reports either no source or the exact srcdoc document;
+  // neither identifies the attempted script. Other sources/stages fail, and
+  // no script permission is granted to make the diagnostic disappear.
   return (
     typeof sandbox?.permissions === 'string' &&
     sandbox.permissions.split(/\s+/).includes('allow-same-origin') &&
@@ -352,7 +353,7 @@ function expectedEpubScriptBlock(details, sandbox) {
     details.at <= sandbox.completedAt &&
     details.message ===
       "Blocked script execution in 'about:srcdoc' because the document's frame is sandboxed and the 'allow-scripts' permission is not set." &&
-    !details.sourceId
+    (details.sourceId === '' || details.sourceId === 'about:srcdoc')
   );
 }
 
