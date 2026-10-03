@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      package_desktop:
+        description: Explicitly build macOS/Windows application packages
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -44,6 +51,8 @@ jobs:
 
   desktop-package:
     name: Desktop package (${{ matrix.os }})
+    # Normal code synchronization must never create a new app package.
+    if: github.event_name == 'workflow_dispatch' && inputs.package_desktop == true
     strategy:
       fail-fast: false
       matrix:
