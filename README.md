@@ -165,6 +165,10 @@ pnpm dev:desktop
 
 localhost 只有在开发命令持续运行时才能访问；关闭终端后，本地网页服务也会停止。
 
+在 Mac 上测试当前源码，也可以双击仓库根目录的 [Launch LexiAnchor.command](<Launch LexiAnchor.command>)。需先安装上述环境并完成一次 `pnpm install`；启动器不会自动安装依赖或打包 app。保留打开的终端，在阅读器按 `⌘Q` 退出。
+
+源码启动器使用固定的独立 `source-test/profile` 资料目录。第一次书库为空不代表安装版的数据丢失；请导入测试书。后续启动会保留这里的书籍、词卡与预设，旧 app 的资料不会被读取、清空或迁移。不要删除该目录，也不要让开发服务器切换端口——不同网址会使用不同的浏览器存储。
+
 #### 打包与测试
 
 ```bash
@@ -349,6 +353,10 @@ pnpm dev:desktop
 
 localhost only works while the development command is running. Closing the terminal stops the local Web server.
 
+On a Mac, you can also double-click [Launch LexiAnchor.command](<Launch LexiAnchor.command>) in the repository root to test the current source. Install the requirements above and run `pnpm install` once first. The launcher does not install dependencies or package an app. Keep its terminal open; press `⌘Q` in the reader to quit.
+
+The launcher uses a fixed, separate `source-test/profile`. Its empty first library does not mean your installed app's data is lost; import a test book. Later launches retain this profile's books, cards, and presets. Your installed app's profile is not read, cleared, or migrated. Do not delete the test profile or switch the development server's port: a different URL uses different browser storage.
+
 #### Package and test
 
 ```bash
@@ -532,6 +540,10 @@ pnpm dev:desktop
 ```
 
 localhost fonctionne uniquement tant que la commande de développement reste active. La fermeture du terminal arrête le serveur Web local.
+
+Sur Mac, vous pouvez aussi double-cliquer sur [Launch LexiAnchor.command](<Launch LexiAnchor.command>) à la racine du dépôt pour tester le code actuel. Installez les outils ci-dessus et exécutez une fois `pnpm install`. Le lanceur n’installe aucune dépendance et ne crée pas de paquet d’application. Gardez le terminal ouvert ; quittez le lecteur avec `⌘Q`.
+
+Le lanceur utilise le profil indépendant et fixe `source-test/profile`. Une bibliothèque vide au premier lancement ne signifie pas que les données de l’application installée ont disparu : importez un livre de test. Les lancements suivants conservent les livres, fiches et préréglages de ce profil. L’ancien profil n’est ni lu, ni effacé, ni migré. Ne supprimez pas ce dossier et ne changez pas le port du serveur : une autre URL utilise un autre stockage du navigateur.
 
 #### Création et tests
 

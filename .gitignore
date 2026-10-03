@@ -31,6 +31,7 @@ playwright-report/
 test-results/
 blob-report/
 .nyc_output/
+/source-test/
 
 # Logs and diagnostics
 logs/
