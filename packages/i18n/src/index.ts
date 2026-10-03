@@ -257,6 +257,11 @@ const english = {
   selectionHint: 'Select a word or phrase in the book to inspect its sentence.',
   loadingBook: 'Opening book…',
   readerError: 'The book could not be opened.',
+  readerUnavailableTitle: 'The reader could not start.',
+  readerUnavailableInstructions: 'Return to the library, then restart LexiAnchor to try again.',
+  readerUnavailableDataNotice:
+    'This loading error does not clear your books, word cards, presets, or reading progress.',
+  readerReturnToLibrary: 'Return to library',
   pdfReader: 'PDF reader',
   pdfReaderDescription:
     'The page keeps its original layout. Zoom and selection use the available PDF text layer.',
@@ -605,6 +610,10 @@ const simplifiedChinese: Record<MessageKey, string> = {
   selectionHint: '在书中选中单词或短语，这里会显示所在原句。',
   loadingBook: '正在打开书籍…',
   readerError: '无法打开这本书。',
+  readerUnavailableTitle: '阅读器未能启动。',
+  readerUnavailableInstructions: '请先返回书库，再重新启动 LexiAnchor 后打开书籍。',
+  readerUnavailableDataNotice: '这次加载错误不会清空书籍、词卡、预设或阅读记录。',
+  readerReturnToLibrary: '返回书库',
   pdfReader: 'PDF 阅读器',
   pdfReaderDescription: '页面保留原始版式；缩放与选词使用 PDF 中已有的文本层。',
   pdfFocusDescription: '在可选文本层中强调每个英文单词的前半部分。',
@@ -956,6 +965,12 @@ const french: Record<MessageKey, string> = {
   selectionHint: 'Sélectionnez un mot ou une phrase pour afficher son contexte.',
   loadingBook: 'Ouverture du livre…',
   readerError: "Le livre n'a pas pu être ouvert.",
+  readerUnavailableTitle: "Le lecteur n'a pas pu démarrer.",
+  readerUnavailableInstructions:
+    'Retournez à la bibliothèque, puis redémarrez LexiAnchor pour réessayer.',
+  readerUnavailableDataNotice:
+    "Cette erreur de chargement n'efface ni vos livres, ni vos fiches de vocabulaire, ni vos préréglages, ni votre progression de lecture.",
+  readerReturnToLibrary: 'Retour à la bibliothèque',
   pdfReader: 'Lecteur PDF',
   pdfReaderDescription:
     'La mise en page originale est conservée. Le zoom et la sélection utilisent la couche de texte disponible.',

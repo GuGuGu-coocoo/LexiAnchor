@@ -53,6 +53,7 @@ import {
 } from './storage-health';
 import type { Theme } from './theme';
 import { WordCardDetailDialog } from './word-card-detail-dialog';
+import { ReaderErrorBoundary } from './reader-error-boundary';
 
 type Section = 'home' | 'library' | 'cards' | 'settings';
 type IconName = Section | 'expand' | 'lock' | 'book-open';
@@ -1279,41 +1280,52 @@ export function App({ platform }: AppProps) {
   if (openBook) {
     return (
       <div className="reader-session">
-        <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
-          <ReaderPage
-            key={`${openBook.bookId ?? 'sample'}:${openBook.source.format}:${openBook.source.name}`}
-            source={openBook.source}
-            preferenceScopeId={openBook.bookId ?? openBook.source.name}
-            initialLocator={openBook.initialLocator}
-            theme={theme}
-            isFullscreen={isFullscreen}
-            locale={locale}
-            t={t}
-            onClose={closeReader}
-            onOpenWordCards={() => {
-              setIsReaderSettingsOpen(false);
-              setIsReaderCardsOpen(true);
-            }}
-            onOpenSettings={() => {
-              setIsReaderCardsOpen(false);
-              setIsReaderSettingsOpen(true);
-            }}
-            onThemeChange={setTheme}
-            onToggleFullscreen={toggleFullscreen}
-            onLocationChange={persistLocation}
-            onOpenExternal={(url) => platform.openExternal(url)}
-            onAddWordCard={addWordCard}
-            dictionaryProviders={dictionaryProviders}
-            localTranslationProvider={localTranslationProvider}
-            installedTranslationTargets={(
-              Object.entries(translationModels) as [
-                TranslationTargetLanguage,
-                TranslationModelInstallStatus,
-              ][]
-            ).flatMap(([target, status]) => (status.installed ? [target] : []))}
-            onlineTranslationProvider={onlineTranslationProvider}
-          />
-        </Suspense>
+        <ReaderErrorBoundary
+          title={t('readerUnavailableTitle')}
+          instructions={t('readerUnavailableInstructions')}
+          dataNotice={t('readerUnavailableDataNotice')}
+          returnLabel={t('readerReturnToLibrary')}
+          onReturnToLibrary={() => {
+            setActiveSection('library');
+            closeReader();
+          }}
+        >
+          <Suspense fallback={<p className="app-loading">{t('loadingBook')}</p>}>
+            <ReaderPage
+              key={`${openBook.bookId ?? 'sample'}:${openBook.source.format}:${openBook.source.name}`}
+              source={openBook.source}
+              preferenceScopeId={openBook.bookId ?? openBook.source.name}
+              initialLocator={openBook.initialLocator}
+              theme={theme}
+              isFullscreen={isFullscreen}
+              locale={locale}
+              t={t}
+              onClose={closeReader}
+              onOpenWordCards={() => {
+                setIsReaderSettingsOpen(false);
+                setIsReaderCardsOpen(true);
+              }}
+              onOpenSettings={() => {
+                setIsReaderCardsOpen(false);
+                setIsReaderSettingsOpen(true);
+              }}
+              onThemeChange={setTheme}
+              onToggleFullscreen={toggleFullscreen}
+              onLocationChange={persistLocation}
+              onOpenExternal={(url) => platform.openExternal(url)}
+              onAddWordCard={addWordCard}
+              dictionaryProviders={dictionaryProviders}
+              localTranslationProvider={localTranslationProvider}
+              installedTranslationTargets={(
+                Object.entries(translationModels) as [
+                  TranslationTargetLanguage,
+                  TranslationModelInstallStatus,
+                ][]
+              ).flatMap(([target, status]) => (status.installed ? [target] : []))}
+              onlineTranslationProvider={onlineTranslationProvider}
+            />
+          </Suspense>
+        </ReaderErrorBoundary>
         {isReaderSettingsOpen ? (
           <div className="reader-settings-overlay" role="dialog" aria-modal="true">
             <div className="reader-settings-overlay-bar">
