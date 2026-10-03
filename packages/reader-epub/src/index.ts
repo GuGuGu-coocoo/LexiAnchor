@@ -68,8 +68,26 @@ interface PreparedContents {
 }
 
 interface PreparedLayout {
+  readonly name?: string;
   readonly pageWidth: number;
+  readonly divisor?: number;
+  columnWidth?: number;
+  gap?: number;
+  spreadWidth?: number;
+  readonly props?: {
+    readonly flow?: string;
+    columnWidth?: number;
+    gap?: number;
+    spreadWidth?: number;
+  };
   format(contents: PreparedContents, ...arguments_: unknown[]): unknown;
+}
+
+function readingColumnGeometry(pageWidth: number, contentWidthPercent: number) {
+  // Chromium lays out CSS in 1/64 px units. Keep margins and the column gap
+  // on the same grid so rounding cannot accumulate across a long chapter.
+  const padding = Math.round(((pageWidth * (100 - contentWidthPercent)) / 200) * 64) / 64;
+  return { padding, gap: padding * 2, columnWidth: pageWidth - padding * 2 };
 }
 
 interface PreparedView {
@@ -233,11 +251,13 @@ class AnchoredContinuousViewManager extends ContinuousViewManager {
   }
 
   setLayout(layout: PreparedLayout): void {
+    this.applyColumnGeometry(layout);
     if (this.paddedLayout !== layout) {
       const format = layout.format.bind(layout);
       layout.format = (contents: PreparedContents, ...arguments_: unknown[]) => {
+        const geometry = this.applyColumnGeometry(layout);
         const result = format(contents, ...arguments_);
-        const padding = `${(layout.pageWidth * (100 - this.contentWidthPercent)) / 200}px`;
+        const padding = `${geometry.padding}px`;
         // columns() writes important inline padding on every location read.
         // Apply the reader's fixed column margin before view.expand(), not
         // after expansion, to keep both reading width and strip size stable.
@@ -245,11 +265,33 @@ class AnchoredContinuousViewManager extends ContinuousViewManager {
         contents.css('padding-right', padding, true);
         contents.css('padding-top', '0', true);
         contents.css('padding-bottom', '0', true);
+        if (layout.name === 'reflowable' && layout.props?.flow === 'paginated') {
+          // Padding alone changes CSS's used column stride, even when EPUB.js
+          // still advances by pageWidth. Align all three before expand/mapping.
+          contents.css('column-width', `${geometry.columnWidth}px`, true);
+          contents.css('column-gap', `${geometry.gap}px`, true);
+        }
         return result;
       };
       this.paddedLayout = layout;
     }
     DefaultViewManager.prototype.setLayout.call(this, layout);
+  }
+
+  private applyColumnGeometry(layout: PreparedLayout) {
+    const geometry = readingColumnGeometry(layout.pageWidth, this.contentWidthPercent);
+    if (layout.name === 'reflowable' && layout.props?.flow === 'paginated') {
+      const values = {
+        columnWidth: geometry.columnWidth,
+        gap: geometry.gap,
+        spreadWidth: geometry.columnWidth * (layout.divisor ?? 1) + geometry.gap,
+      };
+      // Mapping holds layout.props by reference; its geometry must agree with
+      // CSS and the unchanged logical pageWidth/delta used by both gestures.
+      Object.assign(layout, values);
+      Object.assign(layout.props, values);
+    }
+    return geometry;
   }
 
   async prepareAdjacent(
@@ -1139,11 +1181,8 @@ export class EpubJsReaderEngine implements ReaderEngine {
       rendition.manager?.layout?.delta ??
       rendition.manager?.container?.clientWidth ??
       1;
-    rendition.themes.override(
-      'padding',
-      `0 ${(columnWidth * (100 - this.preferences.contentWidthPercent)) / 200}px`,
-      true,
-    );
+    const { padding } = readingColumnGeometry(columnWidth, this.preferences.contentWidthPercent);
+    rendition.themes.override('padding', `0 ${padding}px`, true);
   }
 
   /** Freeze the committed checkpoint before the host starts closing/flushing. */

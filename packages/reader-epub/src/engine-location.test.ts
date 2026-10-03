@@ -1034,29 +1034,75 @@ describe('bounded EPUB adjacent view preparation', () => {
     const css = vi.fn();
     const contents = { css };
     const format = vi.fn();
-    const layout = { pageWidth: 938, format };
+    const layout = {
+      name: 'reflowable',
+      pageWidth: 938,
+      delta: 938,
+      divisor: 1,
+      columnWidth: 938,
+      gap: 78,
+      spreadWidth: 938,
+      props: { flow: 'paginated', columnWidth: 938, gap: 78, spreadWidth: 938 },
+      format,
+    };
     manager.setLayout(layout);
     layout.format(contents);
     expect(format).toHaveBeenCalledWith(contents);
     expect(css.mock.calls).toEqual([
-      ['padding-left', '46.9px', true],
-      ['padding-right', '46.9px', true],
+      ['padding-left', '46.90625px', true],
+      ['padding-right', '46.90625px', true],
       ['padding-top', '0', true],
       ['padding-bottom', '0', true],
+      ['column-width', '844.1875px', true],
+      ['column-gap', '93.8125px', true],
     ]);
+    expect(layout.columnWidth + layout.gap).toBe(layout.pageWidth);
+    expect(layout.props.columnWidth).toBe(layout.columnWidth);
+    expect(layout.props.gap).toBe(layout.gap);
     manager.setContentWidthPercent(70);
     layout.format(contents);
-    expect(css).toHaveBeenCalledWith('padding-left', '140.7px', true);
+    expect(css).toHaveBeenCalledWith('padding-left', '140.703125px', true);
+    expect(layout.columnWidth + layout.gap).toBe(layout.pageWidth);
     // A double-page spread is 938 px but each column is only 469 px.
     layout.pageWidth = 469;
+    layout.divisor = 2;
     manager.setLayout(layout);
     layout.format(contents);
-    expect(css).toHaveBeenCalledWith('padding-left', '70.35px', true);
+    expect(css).toHaveBeenCalledWith('padding-left', '70.34375px', true);
+    expect(layout.columnWidth + layout.gap).toBe(layout.pageWidth);
+    expect(layout.delta).toBe(938);
+    expect(layout.spreadWidth).toBe(layout.columnWidth * 2 + layout.gap);
+    expect(layout.props.spreadWidth).toBe(layout.spreadWidth);
     layout.pageWidth = 350;
+    layout.delta = 700;
     layout.format(contents);
     expect(css).toHaveBeenCalledWith('padding-left', '52.5px', true);
     expect(format).toHaveBeenCalledTimes(4);
   });
+
+  it.each(['scrolled', 'pre-paginated'])(
+    'does not replace column geometry for %s content',
+    async (mode) => {
+      const f = harness();
+      await open(f);
+      const manager = new (f.getManagerClass())(adjacentRuntime().runtime);
+      const css = vi.fn();
+      const layout = {
+        name: mode === 'scrolled' ? 'reflowable' : mode,
+        pageWidth: 938,
+        columnWidth: 938,
+        gap: 0,
+        props: { flow: mode === 'scrolled' ? 'scrolled' : 'paginated', columnWidth: 938, gap: 0 },
+        format: vi.fn(),
+      };
+      manager.setLayout(layout);
+      layout.format({ css });
+      expect(layout.columnWidth).toBe(938);
+      expect(layout.gap).toBe(0);
+      expect(layout.props).toMatchObject({ columnWidth: 938, gap: 0 });
+      expect(css.mock.calls.some(([name]) => String(name).startsWith('column-'))).toBe(false);
+    },
+  );
 
   it('abort removes an in-flight prepend synchronously and forbids late strip rebase/show', async () => {
     const f = harness();
