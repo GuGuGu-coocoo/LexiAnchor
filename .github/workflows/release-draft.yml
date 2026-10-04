@@ -99,7 +99,7 @@ jobs:
         run: |
           mkdir -p candidate
           node -e "require('node:fs').copyFileSync(process.env.SOURCE, process.env.OUTPUT)"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}-${{ matrix.arch }}
           path: candidate/${{ matrix.output }}
