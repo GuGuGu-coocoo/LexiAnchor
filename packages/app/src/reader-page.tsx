@@ -615,7 +615,7 @@ function EpubReaderPage({
   }, [clearNavigationTarget]);
 
   const progress = Math.round((locator?.totalProgression ?? 0) * 100);
-  const chapterPages = epubPageCount(locator, preferences);
+  const chapterPagesRemaining = epubPageCount(locator, preferences).remaining;
   const flatTableOfContents = useMemo(
     () => flattenNavigationItems(tableOfContents),
     [tableOfContents],
@@ -979,17 +979,13 @@ function EpubReaderPage({
           />
           {!isLoading ? (
             <ReaderFooter
-              pageLabel={t('chapterPage')}
-              currentPage={chapterPages.current}
-              totalPages={chapterPages.total}
-              pagesRemaining={chapterPages.remaining}
+              currentPage={locator?.totalPageNumber}
+              totalPages={locator?.totalPageCount}
+              pagesRemaining={chapterPagesRemaining}
               backLabel={
-                linkOrigin
-                  ? `${t('backToPage')} ${epubPageCount(linkOrigin, preferences).current ?? '—'}`
-                  : undefined
+                linkOrigin ? `${t('backToPage')} ${linkOrigin.totalPageNumber ?? '—'}` : undefined
               }
               pagesRemainingLabel={t('pagesLeftInChapter')}
-              ofLabel={t('of')}
               onBack={
                 linkOrigin
                   ? () => {

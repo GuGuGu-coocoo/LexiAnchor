@@ -773,7 +773,6 @@ export function PdfReaderPage({
                 linkOriginPage === null ? undefined : `${t('backToPage')} ${linkOriginPage}`
               }
               pagesRemainingLabel={t('pagesLeftInDocument')}
-              ofLabel={t('of')}
               onBack={
                 linkOriginPage === null
                   ? undefined

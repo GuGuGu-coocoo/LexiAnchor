@@ -141,6 +141,8 @@ async function checkpoint(page: Page) {
           href?: string;
           pageNumber?: number;
           pageCount?: number;
+          totalPageNumber?: number;
+          totalPageCount?: number;
         })
       : {};
   });
@@ -296,7 +298,6 @@ for (const effect of ['slide', 'stack'] as const) {
   }) => {
     await openBook(page, effect);
     const before = await checkpoint(page);
-    const initialFooter = Number(await page.locator('.reader-footer-page-current').textContent());
     await resetProbe(page);
     await sample(page, 20);
     await page.waitForTimeout(20);
@@ -314,9 +315,6 @@ for (const effect of ['slide', 'stack'] as const) {
       .poll(async () => (await checkpoint(page)).pageNumber)
       .toBe((before.pageNumber ?? 1) + 1);
     await waitSettled(page);
-    expect(Number(await page.locator('.reader-footer-page-current').textContent())).toBe(
-      initialFooter + 1,
-    );
     expect((await checkpoint(page)).pageCount).toBe(before.pageCount);
     const forward = await page.evaluate(() => (window as ProbeWindow).__epubGestureProbe);
     expect(new Set(forward.writes.map((value) => value.cfi)).size).toBe(1);
@@ -464,11 +462,11 @@ test('two-column turns count a screen once and keep the publisher child after la
 }) => {
   await openBook(page, 'stack', 'double');
   const before = await checkpoint(page);
-  const footer = Number(await page.locator('.reader-footer-page-current').textContent());
+  const beforeScreen = Math.ceil((before.pageNumber ?? 0) / 2);
   await swipe(page, 1);
   await expect
-    .poll(() => page.locator('.reader-footer-page-current').textContent())
-    .toBe(String(footer + 1));
+    .poll(async () => Math.ceil(((await checkpoint(page)).pageNumber ?? 0) / 2))
+    .toBe(beforeScreen + 1);
   await waitSettled(page);
   expect((await checkpoint(page)).pageCount).toBe(before.pageCount);
   await toc(page, 'The Bookmark');
@@ -484,6 +482,24 @@ test('two-column turns count a screen once and keep the publisher child after la
   });
   await expect.poll(() => intersects(page, '#page-turn-3 > h2')).toBe(true);
   await expect.poll(async () => (await checkpoint(page)).pageCount ?? 0).toBeGreaterThan(10);
+});
+
+test('EPUB footer keeps the whole-book total visible across chapters', async ({ page }) => {
+  await openBook(page);
+  await expect.poll(async () => (await checkpoint(page)).totalPageCount ?? 0).toBeGreaterThan(0);
+  const before = await checkpoint(page);
+  const footer = page.locator('.reader-footer-page');
+  await expect(footer).toBeVisible();
+  await expect(footer).toHaveText(`${before.totalPageNumber} / ${before.totalPageCount}`);
+
+  await toc(page, 'Finding an Anchor');
+  await expect.poll(async () => (await checkpoint(page)).href).toContain('chapter-2.xhtml');
+  await expect
+    .poll(async () => (await checkpoint(page)).totalPageNumber ?? 0)
+    .toBeGreaterThan(before.totalPageNumber ?? 0);
+  const after = await checkpoint(page);
+  await expect(footer).toBeVisible();
+  await expect(footer).toHaveText(`${after.totalPageNumber} / ${before.totalPageCount}`);
 });
 
 test('a slide immediately after typography changes is not reset by a stale display', async ({

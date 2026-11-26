@@ -1284,11 +1284,11 @@ test('imports and reads a text-layer PDF with zoom, selection, gestures, and res
 
   await page.locator('.pdf-annotation-link[data-internal-page="3"]').click();
   await expect(page.locator('.reader-engine-label')).toContainText(/3.*3.*100%/);
-  await expect(page.locator('.reader-footer-page-current')).toBeVisible();
-  await expect(page.locator('.reader-footer-page-details')).toBeHidden();
+  const footerPage = page.locator('.reader-footer-page');
+  await expect(footerPage).toBeVisible();
+  await expect(footerPage).toHaveText('3 / 3');
   await page.locator('.reader-footer').hover();
-  await expect(page.locator('.reader-footer-page-current')).toBeHidden();
-  await expect(page.locator('.reader-footer-page-details')).toBeVisible();
+  await expect(footerPage).toHaveText('3 / 3');
   const backToLinkedPage = page.locator('.reader-footer-leading button');
   await expect(backToLinkedPage).toBeVisible();
   await backToLinkedPage.click();

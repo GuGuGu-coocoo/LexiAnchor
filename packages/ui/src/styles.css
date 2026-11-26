@@ -2814,10 +2814,6 @@ button {
   font-weight: 680;
 }
 
-.reader-footer-page-details {
-  display: none;
-}
-
 .reader-footer-leading,
 .reader-footer-trailing {
   min-width: 0;
@@ -2841,16 +2837,6 @@ button {
   cursor: pointer;
   font: inherit;
   font-weight: 680;
-}
-
-.reader-footer:hover .reader-footer-page-current,
-.reader-footer:focus-within .reader-footer-page-current {
-  display: none;
-}
-
-.reader-footer:hover .reader-footer-page-details,
-.reader-footer:focus-within .reader-footer-page-details {
-  display: inline;
 }
 
 .reader-footer:hover .reader-footer-leading,

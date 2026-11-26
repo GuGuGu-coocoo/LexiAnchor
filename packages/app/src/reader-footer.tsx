@@ -1,29 +1,23 @@
 interface ReaderFooterProps {
-  readonly pageLabel?: string;
   readonly currentPage: number | undefined;
   readonly totalPages: number | undefined;
   readonly pagesRemaining: number | undefined;
   readonly backLabel: string | undefined;
   readonly pagesRemainingLabel: string;
-  readonly ofLabel: string;
   readonly onBack: (() => void) | undefined;
 }
 
 export function ReaderFooter({
-  pageLabel = '',
   currentPage,
   totalPages,
   pagesRemaining,
   backLabel,
   pagesRemainingLabel,
-  ofLabel,
   onBack,
 }: ReaderFooterProps) {
+  const pagePosition = `${currentPage ?? '—'} / ${totalPages ?? '—'}`;
   return (
-    <footer
-      className="reader-footer"
-      aria-label={`${pageLabel} ${currentPage ?? '—'} ${ofLabel} ${totalPages ?? '—'}`.trim()}
-    >
+    <footer className="reader-footer" aria-label={pagePosition}>
       <div className="reader-footer-leading">
         {onBack ? (
           <button type="button" onClick={onBack}>
@@ -31,13 +25,7 @@ export function ReaderFooter({
           </button>
         ) : null}
       </div>
-      <output className="reader-footer-page">
-        <span className="reader-footer-page-current">{currentPage ?? '—'}</span>
-        <span className="reader-footer-page-details">
-          {pageLabel ? `${pageLabel} ` : ''}
-          {currentPage ?? '—'} {ofLabel} {totalPages ?? '—'}
-        </span>
-      </output>
+      <output className="reader-footer-page">{pagePosition}</output>
       <span className="reader-footer-trailing">
         {pagesRemaining === undefined ? '' : `${pagesRemaining} ${pagesRemainingLabel}`}
       </span>
