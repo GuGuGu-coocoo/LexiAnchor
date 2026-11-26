@@ -6,12 +6,11 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { _electron as electron, type ElectronApplication } from 'playwright';
 
-const electronExecutable = createRequire(import.meta.url)('electron') as string;
-
 async function launchPackagedApp(
   applicationEntry: string,
   userDataDirectory: string,
 ): Promise<{ app: ElectronApplication; page: Page }> {
+  const electronExecutable = createRequire(import.meta.url)('electron') as string;
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({

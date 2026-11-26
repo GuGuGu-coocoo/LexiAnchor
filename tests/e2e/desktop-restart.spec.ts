@@ -6,8 +6,6 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { _electron as electron, type ElectronApplication } from 'playwright';
 
-const electronExecutable = createRequire(import.meta.url)('electron') as string;
-
 async function launchDesktop(
   mainEntry: string,
   userDataDirectory: string,
@@ -15,7 +13,7 @@ async function launchDesktop(
   const environment = { ...process.env };
   delete environment.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
-    executablePath: electronExecutable,
+    executablePath: createRequire(import.meta.url)('electron') as string,
     args: [mainEntry, `--user-data-dir=${userDataDirectory}`],
     env: environment,
   });

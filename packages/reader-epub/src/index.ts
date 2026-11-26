@@ -11,11 +11,12 @@ import type {
   ReaderPreferences,
   ReaderSelection,
   ReaderSource,
+  TrackpadPageSample,
 } from '@lexianchor/reader-core';
 import {
   createHorizontalPageScrollGesture,
   createStackedPageScrollGesture,
-  type HorizontalPageGestureController,
+  type PageScrollGestureController,
 } from '@lexianchor/reader-core';
 
 import { applyFocusMarkup, removeFocusMarkup } from './focus-markup';
@@ -606,7 +607,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private requestedLocator: ReaderLocator | null = null;
   private preferenceUpdate = 0;
   private interactionRevision = 0;
-  private pageGesture: HorizontalPageGestureController | null = null;
+  private pageGesture: PageScrollGestureController | null = null;
   private hostWheelCleanup: (() => void) | null = null;
   private readerDocument: Document | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -729,6 +730,10 @@ export class EpubJsReaderEngine implements ReaderEngine {
         handleWheel: (event) => {
           slidingGesture.handleWheel(event);
           stackedGesture.handleWheel(event);
+        },
+        handleTrackpad: (sample) => {
+          slidingGesture.handleTrackpad(sample);
+          stackedGesture.handleTrackpad(sample);
         },
         prepare: () => stackedGesture.prepare?.(),
         invalidate: () => {
@@ -1199,12 +1204,22 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.preparePageGesture();
   }
 
-  private readonly handleWheelNavigation = (event: WheelEvent): void => {
-    if (this.locationFrozen) return;
+  handleTrackpad(sample: TrackpadPageSample): void {
+    if (sample.phase !== 'cancel' && !this.canHandlePageInput()) return;
+    if (sample.phase === 'begin') this.callbacks.onContentInteraction?.();
+    this.pageGesture?.handleTrackpad(sample);
+  }
+
+  private canHandlePageInput(): boolean {
+    if (this.locationFrozen) return false;
     const modal = this.readerDocument?.querySelector?.(
       'dialog[open], [role="dialog"][aria-modal="true"]',
     );
-    if (modal && modal.getClientRects().length > 0) return;
+    return !modal || modal.getClientRects().length === 0;
+  }
+
+  private readonly handleWheelNavigation = (event: WheelEvent): void => {
+    if (!this.canHandlePageInput()) return;
     this.callbacks.onContentInteraction?.();
     this.pageGesture?.handleWheel(event);
   };

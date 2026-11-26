@@ -1298,6 +1298,7 @@ export function App({ platform }: AppProps) {
               initialLocator={openBook.initialLocator}
               theme={theme}
               isFullscreen={isFullscreen}
+              trackpad={isReaderSettingsOpen || isReaderCardsOpen ? undefined : platform.trackpad}
               locale={locale}
               t={t}
               onClose={closeReader}

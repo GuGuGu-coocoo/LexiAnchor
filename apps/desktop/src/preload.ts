@@ -1,9 +1,23 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-import { platformChannels, type PlatformBridge } from '@lexianchor/platform';
+import { platformChannels, type PlatformBridge, type TrackpadSample } from '@lexianchor/platform';
 
 const platformBridge: PlatformBridge = {
   target: 'desktop',
+  trackpad:
+    process.platform === 'darwin'
+      ? {
+          setBounds(bounds) {
+            ipcRenderer.send(platformChannels.trackpadBounds, bounds);
+          },
+          subscribe(callback) {
+            const listener = (_event: Electron.IpcRendererEvent, sample: TrackpadSample) =>
+              callback(sample);
+            ipcRenderer.on(platformChannels.trackpadSample, listener);
+            return () => ipcRenderer.removeListener(platformChannels.trackpadSample, listener);
+          },
+        }
+      : undefined,
   getAppVersion() {
     return ipcRenderer.invoke(platformChannels.getAppVersion) as Promise<string>;
   },

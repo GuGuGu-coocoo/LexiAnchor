@@ -1083,40 +1083,38 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     name: /Page turn effect|翻页效果|Effet de changement de page/,
   });
   await pageTurnEffect.selectOption('stack');
-  await page.waitForTimeout(250);
   const stackedScroller = page.getByTestId('epub-container').locator(':scope > .epub-container');
-  await stackedScroller.evaluate((scroller) => {
-    if (scroller.scrollWidth - scroller.clientWidth - scroller.scrollLeft < scroller.clientWidth) {
-      scroller.scrollLeft = 0;
+  const stackedStart = await stackedScroller.evaluate(async (scroller) => {
+    const before = scroller.scrollLeft;
+    const direction =
+      scroller.scrollWidth - scroller.clientWidth - before < scroller.clientWidth ? -1 : 1;
+    const bounds = scroller.getBoundingClientRect();
+    // A hover on the last loaded iframe can scroll to it before sending input.
+    // Keep the physical baseline and target in the same stable reader viewport.
+    for (let index = 0; index < 6; index += 1) {
+      scroller.dispatchEvent(
+        new WheelEvent('wheel', {
+          bubbles: true,
+          cancelable: true,
+          clientX: bounds.left + bounds.width / 2,
+          clientY: bounds.top + bounds.height / 2,
+          deltaX: direction * 70,
+          deltaY: 2,
+        }),
+      );
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
+    return { before, direction };
   });
-  const stackedStart = await stackedScroller.evaluate((scroller) => scroller.scrollLeft);
-  const stackedPageBody = page
-    .locator('.epub-container iframe')
-    .last()
-    .contentFrame()
-    .locator('body');
-  await stackedPageBody.hover();
-  await page.waitForTimeout(30);
-  for (let index = 0; index < 6; index += 1) {
-    await stackedPageBody.dispatchEvent('wheel', {
-      bubbles: true,
-      cancelable: true,
-      deltaMode: 0,
-      deltaX: 70,
-      deltaY: 2,
-    });
-    await page.waitForTimeout(16);
-  }
-  expect(await stackedScroller.evaluate((scroller) => scroller.scrollLeft)).toBeGreaterThan(
-    stackedStart + 100,
-  );
-  await page.waitForTimeout(30);
+  const stackedTravel = () =>
+    stackedScroller.evaluate(
+      (scroller, { before, direction }) => (scroller.scrollLeft - before) * direction,
+      stackedStart,
+    );
+  await expect.poll(stackedTravel).toBeGreaterThan(100);
   await page.screenshot({ path: 'test-results/epub-stacked-page-turn.png', fullPage: true });
-  await expect
-    .poll(() => stackedScroller.evaluate((scroller) => scroller.scrollLeft))
-    .toBeGreaterThan(stackedStart + 100);
   await expect(stackedScroller).not.toHaveClass(/epub-page-stack-transition/);
+  await expect.poll(stackedTravel).toBeGreaterThan(100);
 
   await page.getByRole('button', { name: /Library|返回书库|Bibliothèque/ }).click();
   await page

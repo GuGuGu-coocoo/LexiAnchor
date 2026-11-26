@@ -254,6 +254,49 @@ describe('single-page swipe bounds', () => {
   ];
 
   for (const mode of modes) {
+    it(`${mode.name}: native release starts on the next frame and accepts another contact at 48 ms`, async () => {
+      const f = fixture(mode);
+      const send = (phase: 'begin' | 'move' | 'end' | 'cancel', deltaX = 0) =>
+        f.gesture.handleTrackpad({ phase, deltaX });
+      send('begin', 430);
+      await f.ready();
+      f.stepFrame(16);
+      send('move', 120);
+      expect(f.presentation()).toBe(550);
+      send('end');
+      f.stepFrame();
+      expect(f.presentation()).toBeGreaterThan(550);
+      f.stepFrame();
+      f.stepFrame();
+      expect(f.settled).toHaveBeenCalledTimes(mode.reducedMotion ? 1 : 0);
+      send('begin', 110);
+      expect(f.settled.mock.calls).toEqual([[1]]);
+      f.stepFrame();
+      await f.ready();
+      send('move', 440);
+      const liveStack = f.animations.at(-1)?.cancelled === false;
+      expect(f.presentation()).toBe(liveStack ? 550 : 1550);
+      send('end');
+      // The second turn must finish promptly, with no idle timer or click.
+      for (let i = 0; i < 16; ++i) f.stepFrame();
+      expect(f.settled.mock.calls).toEqual([[1], [1]]);
+      expect(f.scroller.scrollLeft).toBe(4_000);
+      f.gesture.dispose();
+    });
+
+    it(`${mode.name}: native cancellation returns even after crossing the turn threshold`, async () => {
+      const f = fixture(mode);
+      f.gesture.handleTrackpad({ phase: 'begin', deltaX: 500 });
+      await f.ready();
+      f.gesture.handleTrackpad({ phase: 'cancel', deltaX: 0 });
+      f.stepFrame();
+      expect(f.presentation()).toBeLessThan(500);
+      for (let i = 0; i < 16; ++i) f.stepFrame();
+      expect(f.scroller.scrollLeft).toBe(2_000);
+      expect(f.settled).toHaveBeenCalledExactlyOnceWith(0);
+      f.gesture.dispose();
+    });
+
     it.each([1, -1])(
       `${mode.name}: bounds a long burst to one page and immediately follows reversal (%i)`,
       async (direction) => {

@@ -11,8 +11,24 @@ export {
 
 import { checkLatestStableRelease, type UpdateCheckResult } from './updates';
 
+export type TrackpadBounds = Readonly<{
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}>;
+
+export type TrackpadSample = Readonly<{
+  phase: 'begin' | 'move' | 'end' | 'cancel';
+  deltaX: number;
+}>;
+
 export interface PlatformBridge {
   readonly target: RuntimeTarget;
+  readonly trackpad?: {
+    setBounds(bounds: TrackpadBounds | null): void;
+    subscribe(callback: (sample: TrackpadSample) => void): () => void;
+  };
   getAppVersion(): Promise<string>;
   checkForUpdates(): Promise<UpdateCheckResult>;
   isFullscreen(): Promise<boolean>;
@@ -26,6 +42,8 @@ export const platformChannels = {
   isFullscreen: 'platform:is-fullscreen',
   setFullscreen: 'platform:set-fullscreen',
   openExternal: 'platform:open-external',
+  trackpadBounds: 'platform:trackpad-bounds',
+  trackpadSample: 'platform:trackpad-sample',
 } as const;
 
 export function createWebPlatformBridge(): PlatformBridge {

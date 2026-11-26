@@ -4,6 +4,8 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 
 import { checkLatestStableRelease, platformChannels } from '@lexianchor/platform';
 
+import { installTrackpadMonitor } from './trackpad';
+
 // Keep this profile name stable across packaging and installer changes. The
 // application bundle can be replaced without moving or deleting the separate
 // userData directory derived from this name.
@@ -66,6 +68,8 @@ function createWindow() {
       sandbox: true,
     },
   });
+
+  installTrackpadMonitor(mainWindow);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();

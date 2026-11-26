@@ -9,6 +9,7 @@ import {
   mkdtemp,
   readFile,
   realpath,
+  rename,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -105,7 +106,13 @@ async function dependencies() {
   }
   let electronExecutable;
   try {
-    electronExecutable = require('electron');
+    // Requiring Electron's entry point can download an absent runtime.
+    // The source launcher may only use a runtime already installed locally.
+    const electronDirectory = path.dirname(require.resolve('electron/package.json'));
+    const relativeExecutable = (
+      await readFile(path.join(electronDirectory, 'path.txt'), 'utf8')
+    ).trim();
+    electronExecutable = path.join(electronDirectory, 'dist', relativeExecutable);
     await access(electronExecutable);
     require.resolve('@electron-forge/cli/package.json');
     require.resolve('vite');
@@ -128,7 +135,44 @@ function offlineEnvironment() {
   };
   delete environment.ELECTRON_RUN_AS_NODE;
   delete environment.NODE_OPTIONS;
+  delete environment.LEXIANCHOR_MAC_TRACKPAD_ADDON;
   return environment;
+}
+
+async function enableMacTrackpad(environment) {
+  if (process.platform !== 'darwin') return;
+  try {
+    const source = path.join(desktopDirectory, 'native', 'trackpad.mm');
+    const include = path.resolve(await realpath(process.execPath), '../../include/node');
+    await access(path.join(include, 'node_api.h'));
+    const hash = sha256(await readFile(source)).slice(0, 16);
+    const addon = path.join(sourceDirectory, `trackpad-${process.arch}-${hash}.node`);
+    try {
+      await access(addon);
+    } catch {
+      const output = `${addon}.${process.pid}`;
+      await mkdir(sourceDirectory, { recursive: true });
+      await command('xcrun', [
+        'clang++',
+        '-O2',
+        '-fobjc-arc',
+        '-bundle',
+        '-undefined',
+        'dynamic_lookup',
+        '-framework',
+        'AppKit',
+        '-I',
+        include,
+        '-o',
+        output,
+        source,
+      ]);
+      await rename(output, addon);
+    }
+    environment.LEXIANCHOR_MAC_TRACKPAD_ADDON = addon;
+  } catch (error) {
+    console.warn(`原生触控板不可用，使用浏览器手势 / Mac trackpad fallback: ${error.message}`);
+  }
 }
 
 function processExists(pid) {
@@ -914,6 +958,7 @@ async function launchDevelopment(pnpmExecutable, verifyLaunch = false) {
     // Installed Forge 7.11.2 splits at -- and passes the remainder to Electron.
     const args = ['dev:desktop', '--', `--user-data-dir=${profile}`];
     const environment = offlineEnvironment();
+    await enableMacTrackpad(environment);
     if (verifyLaunch) {
       const isolationEntry = path.join(profile, 'dev-isolation.cjs');
       await writeFile(
@@ -1299,12 +1344,14 @@ export async function launchSourceApp(applicationEntry, profile) {
     profile,
   );
   const { _electron: electron } = await import('playwright');
+  const environment = offlineEnvironment();
+  await enableMacTrackpad(environment);
   const app = await electron.launch({
     executablePath: electronExecutable,
     // Pinned Electron default_app.asar handles -r via Module._preloadModules
     // before its async package metadata import, so isolation is pre-ready.
     args: ['-r', isolationEntry, bootstrapDirectory, `--user-data-dir=${profile}`],
-    env: offlineEnvironment(),
+    env: environment,
     timeout: 30_000,
   });
   try {

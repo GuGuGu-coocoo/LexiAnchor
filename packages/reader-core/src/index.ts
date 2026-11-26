@@ -97,6 +97,15 @@ export interface HorizontalPageGestureController {
   dispose(): void;
 }
 
+export type TrackpadPageSample = Readonly<{
+  phase: 'begin' | 'move' | 'end' | 'cancel';
+  deltaX: number;
+}>;
+
+export interface PageScrollGestureController extends HorizontalPageGestureController {
+  handleTrackpad(sample: TrackpadPageSample): void;
+}
+
 export interface HorizontalPageScrollGestureOptions {
   readonly getScroller: () => HTMLElement | null;
   readonly getPageExtent?: () => number;
@@ -306,13 +315,13 @@ export function createHorizontalPageGesture(
  */
 export function createHorizontalPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
-): HorizontalPageGestureController {
+): PageScrollGestureController {
   return createPageScrollGesture(options, false);
 }
 
 export function createStackedPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
-): HorizontalPageGestureController {
+): PageScrollGestureController {
   return createPageScrollGesture(options, true);
 }
 
@@ -336,6 +345,8 @@ interface PageScrollSession {
   captureRevision: number;
   ready: boolean;
   finishRequested: boolean;
+  releaseCancelled: boolean;
+  nativeInput: boolean;
   settling: boolean;
   settleDirection: -1 | 0 | 1;
   settleDestination: number;
@@ -355,7 +366,7 @@ interface PageScrollSession {
 function createPageScrollGesture(
   options: HorizontalPageScrollGestureOptions,
   stacked: boolean,
-): HorizontalPageGestureController {
+): PageScrollGestureController {
   // A recovery ceiling, not an input-latency target. Normal preparation/ready
   // completes immediately; a missing browser/adapter promise cannot lock input.
   const preparationTimeout = 250;
@@ -710,16 +721,7 @@ function createPageScrollGesture(
     if (session.finishRequested) finish(session);
   }
 
-  function finish(session: PageScrollSession): void {
-    if (!valid(session)) return;
-    session.endTimer = null;
-    session.finishRequested = true;
-    if (!session.started && !session.preparing && !closing) {
-      end(session, 0, true);
-      return;
-    }
-    if (session.settling) return;
-    if (session.preparing || closing || (session.stack && !session.ready)) return;
+  function releaseTarget(session: PageScrollSession): number {
     // A single tiny wheel packet can have a very high instantaneous velocity.
     // Require actual travel before projection can qualify as a page flick,
     // with identical intent rules for stack, slide and snapshot fallback.
@@ -732,13 +734,28 @@ function createPageScrollGesture(
       );
     const direction = sign(session.distance);
     const commit =
+      !session.releaseCancelled &&
       direction !== 0 &&
       Math.abs(session.distance) >= minimumTravel &&
       projected * direction > session.extent * 0.35;
-    const target = commit
+    return commit
       ? clamp(session.scroller, session.origin + direction * session.extent)
       : session.origin;
-    const settledDirection = target === session.origin ? 0 : direction;
+  }
+
+  function finish(session: PageScrollSession): void {
+    if (!valid(session)) return;
+    if (session.endTimer !== null) clearTimeout(session.endTimer);
+    session.endTimer = null;
+    session.finishRequested = true;
+    if (!session.started && !session.preparing && !closing) {
+      end(session, 0, true);
+      return;
+    }
+    if (session.settling) return;
+    if (session.preparing || closing || (session.stack && !session.ready)) return;
+    const target = releaseTarget(session);
+    const settledDirection = sign(target - session.origin);
     session.target = target;
     const destination = target - session.origin;
     if (reducedMotion()) {
@@ -751,8 +768,8 @@ function createPageScrollGesture(
     session.settleDirection = settledDirection;
     session.settleDestination = destination;
     const revision = session.springRevision;
-    const stiffness = ((2 * Math.PI) / (session.stack ? 0.28 : 0.32)) ** 2;
-    const damping = 2 * Math.sqrt(stiffness);
+    const rate = (2 * Math.PI) / 0.15;
+    let position = session.presentation;
     let previousTime = performance.now();
     let expectedScroll = session.scroller.scrollLeft;
     const tick = (time: number) => {
@@ -766,21 +783,25 @@ function createPageScrollGesture(
         end(session, 0, true);
         return;
       }
-      const elapsed = Math.min(0.032, Math.max(0.001, (time - previousTime) / 1000));
+      const elapsed = Math.max(0, (time - previousTime) / 1000);
       previousTime = time;
-      const acceleration =
-        -stiffness * (session.presentation - destination) - damping * session.velocity;
-      session.velocity += acceleration * elapsed;
-      const next = session.presentation + session.velocity * elapsed;
-      if (destination === 0 && next * session.presentation <= 0) {
+      // Integrate the critical spring exactly so the faster response stays
+      // stable at lower frame rates and on surfaces with integer scrollLeft.
+      const offset = position - destination;
+      const drift = session.velocity + rate * offset;
+      const decay = Math.exp(-rate * elapsed);
+      const next = destination + (offset + drift * elapsed) * decay;
+      session.velocity = (session.velocity - rate * drift * elapsed) * decay;
+      if ((next - destination) * offset <= 0) {
         session.velocity = 0;
-        render(session, 0);
-        end(session, 0, true);
+        render(session, destination);
+        end(session, settledDirection, true);
         return;
       }
       render(session, next);
       if (!valid(session) || revision !== session.springRevision) return;
-      if (Math.abs(next - session.presentation) > 0.5) session.velocity = 0;
+      position = pageDistance(session, next);
+      if (Math.abs(position - session.presentation) > 0.5) session.velocity = 0;
       expectedScroll = session.scroller.scrollLeft;
       if (Math.abs(session.presentation - destination) < 0.5 && Math.abs(session.velocity) < 5) {
         render(session, destination);
@@ -800,123 +821,146 @@ function createPageScrollGesture(
     generation += 1;
   }
 
+  function move(deltaX: number, deltaMode: number, phase?: 'begin' | 'move', prevent?: () => void) {
+    if (disposed) return;
+    if (active) valid(active);
+    if (options.isEnabled?.() === false) {
+      invalidate();
+      return;
+    }
+    const scroller = options.getScroller();
+    if (!scroller) return;
+    // This owner has accepted the packet. Settlement can replace/disable it,
+    // but must not let that same packet leak into native scrolling.
+    prevent?.();
+    if (
+      active &&
+      !active.stack &&
+      !active.preparing &&
+      active.started &&
+      Math.abs(scroller.scrollLeft - active.origin - active.presentation) > active.extent * 0.45
+    ) {
+      active.origin = scroller.scrollLeft;
+      end(active, 0, true);
+      if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false) return;
+    }
+    if (active?.finishRequested && phase === 'begin') {
+      // A new OS contact can begin before the previous spring finishes.
+      // Commit a released turn before accepting its independent page delta.
+      const target = active.settling ? active.target : releaseTarget(active);
+      const direction = sign(target - active.origin);
+      if (direction !== 0) {
+        active.target = target;
+        end(active, direction, true);
+        if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false)
+          return;
+      }
+    } else if (
+      phase === undefined &&
+      active?.settling &&
+      active.settleDirection !== 0 &&
+      sign(deltaX) === active.settleDirection &&
+      Math.abs(active.presentation - active.settleDestination) <= 1
+    ) {
+      // The committed sheet is already at its endpoint to pixel precision.
+      // Do not make fresh outward input reuse its exhausted page budget
+      // merely because the old spring has not reached its velocity epsilon.
+      // A cancellation, reversal or mid-flight takeover keeps the old origin.
+      end(active, active.settleDirection, true);
+      // Settlement callbacks can navigate, close, or replace this owner.
+      if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false) return;
+    }
+    const now = performance.now();
+    if (!active) {
+      const session: PageScrollSession = {
+        id: ++generation,
+        scroller,
+        origin: scroller.scrollLeft,
+        extent: extent(),
+        distance: 0,
+        presentation: 0,
+        velocity: 0,
+        lastInputAt: 0,
+        direction: 0,
+        target: scroller.scrollLeft,
+        stack:
+          stacked &&
+          !reducedMotion() &&
+          typeof scroller.ownerDocument?.startViewTransition === 'function',
+        started: false,
+        preparing: false,
+        prepared: new Set(),
+        prepareAborts: new Set(),
+        prepareRevision: 0,
+        captureRevision: 0,
+        ready: false,
+        finishRequested: false,
+        releaseCancelled: false,
+        nativeInput: phase !== undefined,
+        settling: false,
+        settleDirection: 0,
+        settleDestination: 0,
+        springRevision: 0,
+        frame: null,
+        endTimer: null,
+        prepareTimer: null,
+        readyTimer: null,
+        transition: null,
+        animation: null,
+        animationDirection: 0,
+        animationExtent: 0,
+        snapshotDirection: 0,
+        previousTransitionName: scroller.style?.viewTransitionName ?? '',
+      };
+      active = session;
+      options.onInteractionStart?.();
+      if (!valid(session)) return;
+    }
+    const session = active;
+    if (!session) return;
+    if (session.settling) {
+      stopSpring(session);
+      session.distance = session.presentation;
+      session.lastInputAt = 0;
+    }
+    const delta = deltaX * (deltaMode === 1 ? 16 : deltaMode === 2 ? session.extent : 1);
+    const elapsed = session.lastInputAt > 0 ? Math.max(8, now - session.lastInputAt) : 16;
+    session.lastInputAt = now;
+    // Keep the accumulator bounded too: limiting only the rendered page
+    // stores invisible extra travel, making a reverse gesture feel stuck.
+    session.distance = pageDistance(session, session.distance + delta);
+    session.velocity =
+      Math.abs(session.distance) === session.extent && delta * session.distance > 0
+        ? 0
+        : session.velocity * 0.42 + (delta / elapsed) * 1_000 * 0.58;
+    session.finishRequested = false;
+    session.releaseCancelled = false;
+    session.nativeInput = phase !== undefined;
+    if (session.endTimer !== null) clearTimeout(session.endTimer);
+    // Native input has an explicit finger-up. The timer is only a recovery
+    // ceiling there; unphased wheel input still needs the inactivity heuristic.
+    session.endTimer = setTimeout(() => finish(session), phase ? 1500 : idleDelay);
+    advance(session);
+  }
+
   return {
     // Prearming held browser hit testing hostage. Capture only after an
     // interaction starts, even if an older caller still invokes prepare().
     prepare: () => undefined,
     invalidate,
     handleWheel(event) {
-      if (disposed) return;
-      if (active) valid(active);
-      if (options.isEnabled?.() === false) {
-        invalidate();
-        return;
-      }
       if (event.ctrlKey || event.metaKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.15)
         return;
-      const scroller = options.getScroller();
-      if (!scroller) return;
-      // This owner has accepted the packet. Settlement can replace/disable it,
-      // but must not let that same packet leak into native scrolling.
-      event.preventDefault();
-      if (
-        active &&
-        !active.stack &&
-        !active.preparing &&
-        active.started &&
-        Math.abs(scroller.scrollLeft - active.origin - active.presentation) > active.extent * 0.45
-      ) {
-        active.origin = scroller.scrollLeft;
-        end(active, 0, true);
-        if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false)
-          return;
+      move(event.deltaX, event.deltaMode, undefined, () => event.preventDefault());
+    },
+    handleTrackpad(sample) {
+      if (sample.phase === 'begin' || sample.phase === 'move') {
+        move(sample.deltaX, 0, sample.phase);
+      } else if (active?.nativeInput && !active.finishRequested) {
+        active.releaseCancelled = sample.phase === 'cancel';
+        if (active.releaseCancelled) active.velocity = 0;
+        finish(active);
       }
-      if (
-        active?.settling &&
-        active.settleDirection !== 0 &&
-        sign(event.deltaX) === active.settleDirection &&
-        Math.abs(active.presentation - active.settleDestination) <= 1
-      ) {
-        // The committed sheet is already at its endpoint to pixel precision.
-        // Do not make fresh outward input reuse its exhausted page budget
-        // merely because the old spring has not reached its velocity epsilon.
-        // A cancellation, reversal or mid-flight takeover keeps the old origin.
-        end(active, active.settleDirection, true);
-        // Settlement callbacks can navigate, close, or replace this owner.
-        if (disposed || options.getScroller() !== scroller || options.isEnabled?.() === false)
-          return;
-      }
-      const now = performance.now();
-      if (!active) {
-        const session: PageScrollSession = {
-          id: ++generation,
-          scroller,
-          origin: scroller.scrollLeft,
-          extent: extent(),
-          distance: 0,
-          presentation: 0,
-          velocity: 0,
-          lastInputAt: 0,
-          direction: 0,
-          target: scroller.scrollLeft,
-          stack:
-            stacked &&
-            !reducedMotion() &&
-            typeof scroller.ownerDocument?.startViewTransition === 'function',
-          started: false,
-          preparing: false,
-          prepared: new Set(),
-          prepareAborts: new Set(),
-          prepareRevision: 0,
-          captureRevision: 0,
-          ready: false,
-          finishRequested: false,
-          settling: false,
-          settleDirection: 0,
-          settleDestination: 0,
-          springRevision: 0,
-          frame: null,
-          endTimer: null,
-          prepareTimer: null,
-          readyTimer: null,
-          transition: null,
-          animation: null,
-          animationDirection: 0,
-          animationExtent: 0,
-          snapshotDirection: 0,
-          previousTransitionName: scroller.style?.viewTransitionName ?? '',
-        };
-        active = session;
-        options.onInteractionStart?.();
-        if (!valid(session)) return;
-      }
-      const session = active;
-      if (!session) return;
-      if (session.settling) {
-        stopSpring(session);
-        session.distance = session.presentation;
-        session.lastInputAt = 0;
-      }
-      const delta =
-        event.deltaX *
-        (event.deltaMode === WheelEvent.DOM_DELTA_LINE
-          ? 16
-          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-            ? session.extent
-            : 1);
-      const elapsed = session.lastInputAt > 0 ? Math.max(8, now - session.lastInputAt) : 16;
-      session.lastInputAt = now;
-      // Keep the accumulator bounded too: limiting only the rendered page
-      // stores invisible extra travel, making a reverse gesture feel stuck.
-      session.distance = pageDistance(session, session.distance + delta);
-      session.velocity =
-        Math.abs(session.distance) === session.extent && delta * session.distance > 0
-          ? 0
-          : session.velocity * 0.42 + (delta / elapsed) * 1_000 * 0.58;
-      session.finishRequested = false;
-      if (session.endTimer !== null) clearTimeout(session.endTimer);
-      session.endTimer = setTimeout(() => finish(session), idleDelay);
-      advance(session);
     },
     dispose() {
       invalidate();

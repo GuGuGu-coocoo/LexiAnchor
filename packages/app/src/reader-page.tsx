@@ -18,6 +18,7 @@ import {
 import { EpubJsReaderEngine, type EpubNavigationItem } from '@lexianchor/reader-epub';
 import type { Locale, MessageKey } from '@lexianchor/i18n';
 import type { DictionaryProvider } from '@lexianchor/dictionary';
+import type { PlatformBridge } from '@lexianchor/platform';
 import type {
   BergamotTranslationProvider,
   TranslationTargetLanguage,
@@ -53,6 +54,7 @@ interface ReaderPageProps {
   readonly initialLocator?: ReaderLocator;
   readonly theme: Theme;
   readonly isFullscreen: boolean;
+  readonly trackpad?: PlatformBridge['trackpad'];
   readonly locale: Locale;
   readonly t: (key: MessageKey) => string;
   readonly onClose: () => void;
@@ -183,6 +185,7 @@ function EpubReaderPage({
   initialLocator,
   theme,
   isFullscreen,
+  trackpad,
   locale,
   t,
   onClose,
@@ -517,6 +520,36 @@ function EpubReaderPage({
     source,
     updateActiveTocHref,
   ]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (
+      !trackpad ||
+      !container ||
+      isLoading ||
+      error ||
+      preferences.flow !== 'paginated' ||
+      isTableOfContentsOpen ||
+      selection
+    )
+      return;
+    const unsubscribe = trackpad.subscribe((sample) => engineRef.current?.handleTrackpad(sample));
+    const publishBounds = () => {
+      const { left, top, right, bottom } = container.getBoundingClientRect();
+      trackpad.setBounds({ left, top, right, bottom });
+    };
+    const observer = new ResizeObserver(publishBounds);
+    observer.observe(container);
+    window.addEventListener('resize', publishBounds);
+    publishBounds();
+    return () => {
+      engineRef.current?.handleTrackpad({ phase: 'cancel', deltaX: 0 });
+      unsubscribe();
+      observer.disconnect();
+      window.removeEventListener('resize', publishBounds);
+      trackpad.setBounds(null);
+    };
+  }, [error, isLoading, isTableOfContentsOpen, preferences.flow, selection, trackpad]);
 
   useEffect(() => {
     if (!engineReadyRef.current) {
