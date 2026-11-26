@@ -42,8 +42,16 @@ export function useFullscreenToolbar(isFullscreen: boolean) {
     introTimer.current = globalThis.setTimeout(hideToolbar, 450);
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (event.pointerType !== 'touch' && event.buttons === 0 && event.clientY <= 16) {
+      if (event.pointerType === 'touch' || event.buttons !== 0) return;
+      if (event.target instanceof Element && event.target.closest('.reader-toolbar')) {
         revealToolbar();
+      } else if (event.clientY <= 16) {
+        revealToolbar();
+        // The pointer can leave the edge for an EPUB iframe before the
+        // revealed toolbar receives any pointer events of its own.
+        introTimer.current = globalThis.setTimeout(hideToolbar, 450);
+      } else {
+        hideToolbar();
       }
     };
     const handleKeyboardFocus = (event: FocusEvent) => {

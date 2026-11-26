@@ -619,6 +619,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private displayQueue: Promise<void> = Promise.resolve();
   private navigationPositionCache = new Map<string, Promise<EpubNavigationPosition>>();
   private pendingLinkOrigin: ReaderLocator | null = null;
+  private locationIndexReady = false;
   private locationGeneration = 0;
   private locationGate: 'open' | 'gesture' | 'navigation' | 'layout' | null = null;
   private gestureGeneration = -1;
@@ -701,7 +702,11 @@ export class EpubJsReaderEngine implements ReaderEngine {
           if (!rendition || !this.isLocationOperationCurrent(generation, rendition)) return;
           this.locationGate = null;
           this.gestureGeneration = -1;
-          if (direction === 0) return;
+          if (direction === 0) {
+            if (this.currentLocator && this.locationIndexReady)
+              this.publishLocation(this.enrichLocation(this.currentLocator));
+            return;
+          }
           // Clear a publisher TOC checkpoint only for a committed page turn,
           // before publishing its exact live CFI. Preview/cancel changes none.
           this.callbacks.onPageInteraction?.();
@@ -968,6 +973,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
           ) {
             // Derive new index metadata from the latest committed CFI, not
             // from a queued rendition report or a gesture's live preview.
+            this.locationIndexReady = true;
             if (!this.locationGate && this.currentLocator)
               this.publishLocation(this.enrichLocation(this.currentLocator));
             this.callbacks.onPaginationReady?.();
@@ -1021,6 +1027,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
     this.navigationRevision += 1;
     this.displayQueue = Promise.resolve();
     this.navigationPositionCache.clear();
+    this.locationIndexReady = false;
     this.pendingLinkOrigin = null;
     return Promise.resolve();
   }
@@ -1278,7 +1285,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
   }
 
   private enrichLocation(locator: ReaderLocator): ReaderLocator {
-    if (!locator.cfi || !this.book) return locator;
+    if (!locator.cfi || !this.book || !this.locationIndexReady) return locator;
     const totalProgression = this.book.locations.percentageFromCfi(locator.cfi);
     const count = this.book.locations.length();
     const rawLocation = this.book.locations.locationFromCfi(locator.cfi) as unknown;
@@ -1655,7 +1662,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       return Promise.resolve({});
     }
 
-    const cacheKey = `${book.locations.length()}:${href}`;
+    const cacheKey = `${this.locationIndexReady ? book.locations.length() : 0}:${href}`;
     const cached = this.navigationPositionCache.get(cacheKey);
     if (cached) {
       return cached;
@@ -1691,9 +1698,10 @@ export class EpubJsReaderEngine implements ReaderEngine {
       section.unload();
     }
 
-    const rawLocation = cfi ? (book.locations.locationFromCfi(cfi) as unknown) : -1;
+    const indexed = this.book === book && this.locationIndexReady && cfi;
+    const rawLocation = indexed ? (book.locations.locationFromCfi(indexed) as unknown) : -1;
     const location = typeof rawLocation === 'number' ? rawLocation : -1;
-    const totalProgression = cfi ? book.locations.percentageFromCfi(cfi) : undefined;
+    const totalProgression = indexed ? book.locations.percentageFromCfi(indexed) : undefined;
     return {
       // Passing a synthetic start CFI to rendition.display() can land near the
       // end of a long chapter in EPUB.js. A plain href is exact for top-level

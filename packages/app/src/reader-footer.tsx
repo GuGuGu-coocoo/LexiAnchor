@@ -1,6 +1,7 @@
 interface ReaderFooterProps {
   readonly currentPage: number | undefined;
   readonly totalPages: number | undefined;
+  readonly pageStatus?: string;
   readonly pagesRemaining: number | undefined;
   readonly backLabel: string | undefined;
   readonly pagesRemainingLabel: string;
@@ -10,12 +11,13 @@ interface ReaderFooterProps {
 export function ReaderFooter({
   currentPage,
   totalPages,
+  pageStatus,
   pagesRemaining,
   backLabel,
   pagesRemainingLabel,
   onBack,
 }: ReaderFooterProps) {
-  const pagePosition = `${currentPage ?? '—'} / ${totalPages ?? '—'}`;
+  const pagePosition = pageStatus ?? `${currentPage ?? '—'} / ${totalPages ?? '—'}`;
   return (
     <footer className="reader-footer" aria-label={pagePosition}>
       <div className="reader-footer-leading">

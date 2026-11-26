@@ -614,7 +614,14 @@ function EpubReaderPage({
     return () => globalThis.removeEventListener('keydown', navigateWithKeyboard);
   }, [clearNavigationTarget]);
 
-  const progress = Math.round((locator?.totalProgression ?? 0) * 100);
+  const progress =
+    locator?.totalProgression === undefined
+      ? undefined
+      : Math.round(locator.totalProgression * 100);
+  const pageStatus =
+    locator?.totalPageNumber !== undefined && locator.totalPageCount !== undefined
+      ? undefined
+      : t(isPaginationReady || error ? 'bookPagesUnavailable' : 'calculatingBookPages');
   const chapterPagesRemaining = epubPageCount(locator, preferences).remaining;
   const flatTableOfContents = useMemo(
     () => flattenNavigationItems(tableOfContents),
@@ -778,7 +785,7 @@ function EpubReaderPage({
               ▾
             </span>
             <span className="reader-engine-label">
-              {source.name} · EPUB.js · {progress}%
+              {source.name} · EPUB.js{progress === undefined ? '' : ` · ${progress}%`}
             </span>
           </button>
           {isTableOfContentsOpen ? (
@@ -857,7 +864,8 @@ function EpubReaderPage({
           <button
             className="reader-icon-button reader-toolbar-visibility-button"
             type="button"
-            aria-label={
+            aria-label={t('autoHideFullscreenToolbar')}
+            title={
               autoHideFullscreenToolbar
                 ? t('keepFullscreenToolbarVisible')
                 : t('autoHideFullscreenToolbar')
@@ -981,6 +989,7 @@ function EpubReaderPage({
             <ReaderFooter
               currentPage={locator?.totalPageNumber}
               totalPages={locator?.totalPageCount}
+              pageStatus={pageStatus}
               pagesRemaining={chapterPagesRemaining}
               backLabel={
                 linkOrigin ? `${t('backToPage')} ${linkOrigin.totalPageNumber ?? '—'}` : undefined

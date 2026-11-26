@@ -656,6 +656,8 @@ describe('EPUB committed locator ownership', () => {
           String(cfi),
         ) as unknown as ReturnType<Book['locations']['locationFromCfi']>,
     );
+    f.generated.resolve();
+    await vi.waitFor(() => expect(f.callbacks.onPaginationReady).toHaveBeenCalledTimes(1));
     const toc = await f.engine.getTableOfContents();
     expect(section.unload).toHaveBeenCalledTimes(1);
     expect(section.document).toBeUndefined();
@@ -784,6 +786,33 @@ describe('EPUB committed locator ownership', () => {
     f.setLive(location('cfi-next'));
     gesture.onSettled?.(1);
     expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].totalProgression).toBe(0.6);
+  });
+
+  it('withholds partial book totals and refreshes the committed page after a cancelled swipe', async () => {
+    const f = harness();
+    const length = vi.spyOn(f.book.locations, 'length').mockReturnValue(2);
+    const position = vi
+      .spyOn(f.book.locations, 'locationFromCfi')
+      .mockReturnValue(0 as unknown as ReturnType<Book['locations']['locationFromCfi']>);
+    await open(f);
+    await f.engine.next();
+    expect(position).not.toHaveBeenCalled();
+    expect(f.callbacks.onLocationChange.mock.calls.at(-1)?.[0].totalPageCount).toBeUndefined();
+
+    const gesture = mock.gestures[0]!.options;
+    gesture.onInteractionStart?.();
+    f.setLive(location('uncommitted-preview'));
+    length.mockRestore();
+    position.mockRestore();
+    f.callbacks.onLocationChange.mockClear();
+    f.generated.resolve();
+    await vi.waitFor(() => expect(f.callbacks.onPaginationReady).toHaveBeenCalledTimes(1));
+    expect(f.callbacks.onLocationChange).not.toHaveBeenCalled();
+
+    gesture.onSettled?.(0);
+    expect(f.callbacks.onLocationChange).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ cfi: 'cfi-next', totalPageNumber: 6, totalPageCount: 20 }),
+    );
   });
 
   it('index completion cannot publish an old CFI while a newer child navigation is pending', async () => {

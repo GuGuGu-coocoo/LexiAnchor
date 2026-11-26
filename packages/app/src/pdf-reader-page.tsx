@@ -528,7 +528,8 @@ export function PdfReaderPage({
           <button
             className="reader-icon-button reader-toolbar-visibility-button"
             type="button"
-            aria-label={
+            aria-label={t('autoHideFullscreenToolbar')}
+            title={
               autoHideFullscreenToolbar
                 ? t('keepFullscreenToolbarVisible')
                 : t('autoHideFullscreenToolbar')

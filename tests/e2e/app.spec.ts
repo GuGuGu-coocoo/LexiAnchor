@@ -217,6 +217,15 @@ for (const format of ['EPUB', 'PDF']) {
     await expect(reader).toHaveClass(/reader-page--toolbar-hidden/, { timeout: 1_200 });
     await expect(toolbar).toHaveCSS('pointer-events', 'none');
 
+    // Enter the reveal zone without targeting the toolbar, then let it
+    // dismiss even when no pointerleave arrives from the reading frame.
+    await page.locator('html').dispatchEvent('pointermove', {
+      pointerType: 'mouse',
+      clientY: 1,
+    });
+    await expect(reader).not.toHaveClass(/reader-page--toolbar-hidden/);
+    await expect(reader).toHaveClass(/reader-page--toolbar-hidden/, { timeout: 1_200 });
+
     await page.mouse.move(200, 1);
     await expect(toolbar).toHaveCSS('opacity', '1');
     // Retain a toolbar button's focus while delivering input to the reading
@@ -242,7 +251,10 @@ for (const format of ['EPUB', 'PDF']) {
 
     await page.mouse.move(240, 1);
     await expect(toolbar).toHaveCSS('opacity', '1');
-    await toolbar.getByRole('button', { name: 'Keep full-screen toolbar visible' }).click();
+    const autoHideToggle = toolbar.getByRole('button', { name: 'Auto-hide full-screen toolbar' });
+    await expect(autoHideToggle).toHaveAttribute('aria-pressed', 'true');
+    await autoHideToggle.click();
+    await expect(autoHideToggle).toHaveAttribute('aria-pressed', 'false');
     await content.dispatchEvent('pointerdown', { pointerType: 'mouse', buttons: 1 });
     await expect(reader).not.toHaveClass(/reader-page--toolbar-hidden/);
     await expect(toolbar).toHaveCSS('opacity', '1');
