@@ -693,13 +693,13 @@ async function verifyDevelopmentLaunch(child, inspectorEndpoint, profile, status
       if (dimensions.width <= 0 || dimensions.height <= 0)
         throw new Error(`${title} has no rendered PDF canvas.`);
       await expect(page.locator('.reader-error')).toHaveCount(0);
-      const beforePage = Number(await page.locator('.reader-footer-page-current').textContent());
+      const pagePosition = page.locator('.reader-footer-page');
+      await expect(pagePosition).toHaveText(/^\d+ \/ \d+$/);
+      const [beforePage, totalPages] = (await pagePosition.textContent()).split(' / ').map(Number);
       const nextPage = page.getByRole('button', { name: /^(Next|下一页|Suivant)$/ });
       if (await nextPage.isEnabled()) {
         await nextPage.click();
-        await expect(page.locator('.reader-footer-page-current')).toHaveText(
-          String(beforePage + 1),
-        );
+        await expect(pagePosition).toHaveText(`${beforePage + 1} / ${totalPages}`);
       }
       fixtures.push({ title, format: 'pdf', dimensions });
       await page.getByRole('button', { name: /^(Library|返回书库|Bibliothèque)$/ }).click();
