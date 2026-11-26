@@ -244,9 +244,10 @@ function EpubReaderPage({
   const [error, setError] = useState('');
   const {
     autoHide: autoHideFullscreenToolbar,
-    isToolbarVisible,
+    toolbarVisibilityClass,
     revealToolbar,
-    scheduleHide,
+    hideToolbar,
+    dismissToolbar,
     setAutoHide: setAutoHideFullscreenToolbar,
   } = useFullscreenToolbar(isFullscreen);
 
@@ -340,6 +341,7 @@ function EpubReaderPage({
     isClosingRef.current = false;
     checkpointRef.current = new CommittedReadingCheckpoint();
     const engine = new EpubJsReaderEngine({
+      onContentInteraction: dismissToolbar,
       onLocationChange: (nextLocator) => {
         if (!isActive || isClosingRef.current) {
           return;
@@ -508,6 +510,7 @@ function EpubReaderPage({
     };
   }, [
     clearNavigationTarget,
+    dismissToolbar,
     initialLocator,
     preferenceScopeId,
     savePageCheckpoint,
@@ -724,9 +727,7 @@ function EpubReaderPage({
 
   return (
     <section
-      className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${
-        isFullscreen && !isToolbarVisible ? ' reader-page--toolbar-hidden' : ''
-      }`}
+      className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${toolbarVisibilityClass}`}
       style={
         {
           '--selection-font-scale': preferences.selectionFontSizePercent / 100,
@@ -734,11 +735,7 @@ function EpubReaderPage({
       }
       aria-label={t('readerExperiment')}
     >
-      <header
-        className="reader-toolbar"
-        onPointerEnter={revealToolbar}
-        onPointerLeave={() => scheduleHide(700)}
-      >
+      <header className="reader-toolbar" onPointerLeave={hideToolbar}>
         <div className="reader-toolbar-leading">
           <button
             className="reader-icon-button"
@@ -961,7 +958,12 @@ function EpubReaderPage({
           />
         </aside>
 
-        <div ref={readerStageRef} className="reader-stage">
+        <div
+          ref={readerStageRef}
+          className="reader-stage"
+          onPointerDownCapture={dismissToolbar}
+          onWheelCapture={dismissToolbar}
+        >
           {isLoading ? <p className="reader-status">{t('loadingBook')}</p> : null}
           {error ? (
             <div className="reader-error" role="alert">

@@ -153,9 +153,9 @@ export function PdfReaderPage({
   const [error, setError] = useState('');
   const {
     autoHide: autoHideFullscreenToolbar,
-    isToolbarVisible,
-    revealToolbar,
-    scheduleHide,
+    toolbarVisibilityClass,
+    hideToolbar,
+    dismissToolbar,
     setAutoHide: setAutoHideFullscreenToolbar,
   } = useFullscreenToolbar(isFullscreen);
 
@@ -479,9 +479,7 @@ export function PdfReaderPage({
 
   return (
     <section
-      className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${
-        isFullscreen && !isToolbarVisible ? ' reader-page--toolbar-hidden' : ''
-      }`}
+      className={`reader-page${isFullscreen ? ' reader-page--fullscreen' : ''}${toolbarVisibilityClass}`}
       style={
         {
           '--selection-font-scale': selectionPreferences.fontSizePercent / 100,
@@ -489,11 +487,7 @@ export function PdfReaderPage({
       }
       aria-label={t('pdfReader')}
     >
-      <header
-        className="reader-toolbar"
-        onPointerEnter={revealToolbar}
-        onPointerLeave={() => scheduleHide(700)}
-      >
+      <header className="reader-toolbar" onPointerLeave={hideToolbar}>
         <div className="reader-toolbar-leading">
           <button
             className="reader-icon-button"
@@ -756,7 +750,12 @@ export function PdfReaderPage({
           ) : null}
         </aside>
 
-        <div ref={readerStageRef} className="reader-stage pdf-reader-stage">
+        <div
+          ref={readerStageRef}
+          className="reader-stage pdf-reader-stage"
+          onPointerDownCapture={dismissToolbar}
+          onWheelCapture={dismissToolbar}
+        >
           {isLoading ? <p className="reader-status">{t('loadingBook')}</p> : null}
           {error ? (
             <div className="reader-error" role="alert">

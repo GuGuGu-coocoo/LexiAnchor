@@ -191,6 +191,64 @@ test('moves between the library and word-card sections', async ({ page }) => {
   ).toBeVisible();
 });
 
+for (const format of ['EPUB', 'PDF']) {
+  test(`${format} fullscreen toolbar yields to reading input`, async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Library', exact: true }).click();
+
+    if (format === 'EPUB') {
+      await page.getByRole('button', { name: 'Open test book' }).click();
+      await waitForEpubOpen(page);
+    } else {
+      await page
+        .locator('input[type="file"]')
+        .setInputFiles(resolve('packages/test-fixtures/generated/lexianchor-text.pdf'));
+      await expect(page.locator('.pdf-text-layer span').first()).toBeVisible();
+    }
+
+    const content =
+      format === 'EPUB'
+        ? page.locator('.epub-container iframe').first().contentFrame().locator('body')
+        : page.getByTestId('pdf-container');
+    const toolbar = page.locator('.reader-toolbar');
+    const reader = page.locator('.reader-page');
+    const dismissClass = /reader-page--toolbar-dismissed/;
+    await page.getByRole('button', { name: 'Full screen', exact: true }).click();
+    await expect(reader).toHaveClass(/reader-page--toolbar-hidden/, { timeout: 1_200 });
+    await expect(toolbar).toHaveCSS('pointer-events', 'none');
+
+    await page.mouse.move(200, 1);
+    await expect(toolbar).toHaveCSS('opacity', '1');
+    // Retain a toolbar button's focus while delivering input to the reading
+    // document. In EPUB that document is a separate browsing context.
+    await toolbar.getByRole('button', { name: 'Next', exact: true }).focus();
+    await content.dispatchEvent('pointerdown', { pointerType: 'touch', buttons: 1 });
+    await expect(reader).toHaveClass(dismissClass);
+    await expect(toolbar).toHaveCSS('opacity', '0');
+    await expect(toolbar).toHaveCSS('transition-property', 'none');
+
+    await page.locator('html').dispatchEvent('pointermove', {
+      pointerType: 'touch',
+      buttons: 1,
+      clientY: 1,
+    });
+    await expect(reader).toHaveClass(dismissClass);
+
+    await page.mouse.move(220, 1);
+    await expect(toolbar).toHaveCSS('opacity', '1');
+    await content.dispatchEvent('wheel', { deltaX: 10 });
+    await expect(reader).toHaveClass(dismissClass);
+    await expect(toolbar).toHaveCSS('opacity', '0');
+
+    await page.mouse.move(240, 1);
+    await expect(toolbar).toHaveCSS('opacity', '1');
+    await toolbar.getByRole('button', { name: 'Keep full-screen toolbar visible' }).click();
+    await content.dispatchEvent('pointerdown', { pointerType: 'mouse', buttons: 1 });
+    await expect(reader).not.toHaveClass(/reader-page--toolbar-hidden/);
+    await expect(toolbar).toHaveCSS('opacity', '1');
+  });
+}
+
 test('turns at least ten stacked EPUB pages without swallowing consecutive gestures', async ({
   page,
 }) => {
@@ -900,6 +958,7 @@ test('opens the EPUB spike and validates selection and focus markup', async ({ p
     return container.getBoundingClientRect().width;
   });
   await page.screenshot({ path: 'test-results/epub-selection-popover.png', fullPage: true });
+  await page.mouse.move(((await page.viewportSize())?.width ?? 600) / 2, 1);
   await page
     .getByRole('button', { name: /^Exit full screen$|^退出全屏$|^Quitter le plein écran$/ })
     .click();

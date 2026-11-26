@@ -1059,15 +1059,20 @@ button {
   transform: translate3d(0, 0, 0);
   backdrop-filter: blur(22px) saturate(155%);
   transition:
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease;
+    transform 150ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease;
   will-change: transform, opacity;
 }
 
-.reader-page--fullscreen.reader-page--toolbar-hidden .reader-toolbar:not(:focus-within) {
+.reader-page--fullscreen.reader-page--toolbar-hidden .reader-toolbar {
   opacity: 0;
   pointer-events: none;
   transform: translate3d(0, calc(-100% - 8px), 0);
+  transition-duration: 100ms;
+}
+
+.reader-page--fullscreen.reader-page--toolbar-dismissed .reader-toolbar {
+  transition: none;
 }
 
 .reader-page--fullscreen .reader-workspace {

@@ -8,64 +8,51 @@ function readAutoHidePreference(): boolean {
 
 export function useFullscreenToolbar(isFullscreen: boolean) {
   const [autoHide, setAutoHideState] = useState(readAutoHidePreference);
-  const [isToolbarVisible, setIsToolbarVisible] = useState(true);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearHideTimer = useCallback(() => {
-    if (hideTimerRef.current !== null) {
-      globalThis.clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleHide = useCallback(
-    (delay = 1100) => {
-      clearHideTimer();
-      if (!isFullscreen || !autoHide) {
-        setIsToolbarVisible(true);
-        return;
-      }
-
-      hideTimerRef.current = globalThis.setTimeout(() => {
-        hideTimerRef.current = null;
-        setIsToolbarVisible(false);
-      }, delay);
-    },
-    [autoHide, clearHideTimer, isFullscreen],
-  );
+  const [visibility, setVisibility] = useState<'visible' | 'hidden' | 'dismissed'>('visible');
+  const introTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const autoHideActive = useRef(false);
 
   const revealToolbar = useCallback(() => {
-    setIsToolbarVisible(true);
-    scheduleHide();
-  }, [scheduleHide]);
+    globalThis.clearTimeout(introTimer.current);
+    setVisibility('visible');
+  }, []);
+
+  const hideToolbar = useCallback(() => {
+    if (!autoHideActive.current) return;
+    globalThis.clearTimeout(introTimer.current);
+    setVisibility((current) => (current === 'dismissed' ? current : 'hidden'));
+  }, []);
+
+  const dismissToolbar = useCallback(() => {
+    if (!autoHideActive.current) return;
+    globalThis.clearTimeout(introTimer.current);
+    setVisibility('dismissed');
+  }, []);
 
   const setAutoHide = useCallback((enabled: boolean) => {
     setAutoHideState(enabled);
+    setVisibility(enabled ? 'hidden' : 'visible');
     globalThis.localStorage?.setItem(fullscreenToolbarStorageKey, String(enabled));
   }, []);
 
   useEffect(() => {
-    if (!isFullscreen || !autoHide) {
-      clearHideTimer();
-      return;
-    }
+    if (!isFullscreen || !autoHide) return;
 
-    const revealFrame = requestAnimationFrame(() => {
-      setIsToolbarVisible(true);
-      scheduleHide(1500);
-    });
+    autoHideActive.current = true;
+    introTimer.current = globalThis.setTimeout(hideToolbar, 450);
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (event.clientY <= 80) {
+      if (event.pointerType !== 'touch' && event.buttons === 0 && event.clientY <= 16) {
         revealToolbar();
-      } else if (event.clientY > 108) {
-        scheduleHide(700);
       }
     };
     const handleKeyboardFocus = (event: FocusEvent) => {
-      if ((event.target as Element | null)?.closest('.reader-toolbar')) {
-        clearHideTimer();
-        setIsToolbarVisible(true);
+      if (
+        event.target instanceof Element &&
+        event.target.matches(':focus-visible') &&
+        event.target.closest('.reader-toolbar')
+      ) {
+        revealToolbar();
       }
     };
 
@@ -73,18 +60,24 @@ export function useFullscreenToolbar(isFullscreen: boolean) {
     globalThis.addEventListener('focusin', handleKeyboardFocus);
 
     return () => {
+      autoHideActive.current = false;
       globalThis.removeEventListener('pointermove', handlePointerMove);
       globalThis.removeEventListener('focusin', handleKeyboardFocus);
-      cancelAnimationFrame(revealFrame);
-      clearHideTimer();
+      globalThis.clearTimeout(introTimer.current);
     };
-  }, [autoHide, clearHideTimer, isFullscreen, revealToolbar, scheduleHide]);
+  }, [autoHide, hideToolbar, isFullscreen, revealToolbar]);
+
+  const toolbarVisibilityClass =
+    isFullscreen && autoHide && (visibility === 'hidden' || visibility === 'dismissed')
+      ? ` reader-page--toolbar-hidden${visibility === 'dismissed' ? ' reader-page--toolbar-dismissed' : ''}`
+      : '';
 
   return {
     autoHide,
-    isToolbarVisible: !isFullscreen || !autoHide || isToolbarVisible,
+    toolbarVisibilityClass,
     revealToolbar,
-    scheduleHide,
+    hideToolbar,
+    dismissToolbar,
     setAutoHide,
   };
 }

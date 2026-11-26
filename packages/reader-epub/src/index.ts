@@ -625,7 +625,10 @@ export class EpubJsReaderEngine implements ReaderEngine {
   private locationFrozen = true;
 
   constructor(
-    private readonly callbacks: ReaderCallbacks & { readonly onPageInteractionStart?: () => void },
+    private readonly callbacks: ReaderCallbacks & {
+      readonly onPageInteractionStart?: () => void;
+      readonly onContentInteraction?: () => void;
+    },
   ) {}
 
   async open(
@@ -787,6 +790,14 @@ export class EpubJsReaderEngine implements ReaderEngine {
               ? undefined
               : this.callbacks.onNavigationCommand,
           ),
+        );
+        contents.document.addEventListener(
+          'pointerdown',
+          () => {
+            if (sessionRendition === this.rendition && !this.locationFrozen)
+              this.callbacks.onContentInteraction?.();
+          },
+          { capture: true, passive: true },
         );
         contents.document.addEventListener(
           'wheel',
@@ -1187,6 +1198,7 @@ export class EpubJsReaderEngine implements ReaderEngine {
       'dialog[open], [role="dialog"][aria-modal="true"]',
     );
     if (modal && modal.getClientRects().length > 0) return;
+    this.callbacks.onContentInteraction?.();
     this.pageGesture?.handleWheel(event);
   };
 
